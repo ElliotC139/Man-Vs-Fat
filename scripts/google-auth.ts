@@ -1,68 +1,105 @@
 import "dotenv/config";
-import http from "node:http";
-import { URL } from "node:url";
-import { google } from "googleapis";
+
+// Device Authorization Grant (RFC 8628): the script and the browser that
+// completes consent don't need to share a network or a localhost port — the
+// user visits a generic URL on any device and types in a short code. That's
+// required here because this script may run somewhere other than the user's
+// own machine. Needs an OAuth client of type "TVs and Limited Input devices"
+// in Google Cloud Console (not "Desktop app", which assumes a loopback
+// redirect this flow doesn't use).
 
 const clientId = process.env.GOOGLE_CLIENT_ID;
 const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-const redirectUri = process.env.GOOGLE_REDIRECT_URI || "http://localhost:8080/callback";
 
 if (!clientId || !clientSecret) {
   console.error(
-    "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env first (from a Google Cloud OAuth client of type 'Desktop app').",
+    "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env first (from a Google Cloud OAuth client of type 'TVs and Limited Input devices').",
   );
   process.exit(1);
 }
 
-const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+interface DeviceCodeResponse {
+  device_code: string;
+  user_code: string;
+  verification_url: string;
+  expires_in: number;
+  interval: number;
+}
 
-const authUrl = oauth2Client.generateAuthUrl({
-  access_type: "offline",
-  prompt: "consent",
-  scope: ["https://www.googleapis.com/auth/drive.file"],
-});
+interface TokenResponse {
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
+  error?: string;
+  error_description?: string;
+}
 
-const redirectUrl = new URL(redirectUri);
-const port = Number(redirectUrl.port) || 8080;
+async function requestDeviceCode(): Promise<DeviceCodeResponse> {
+  const res = await fetch("https://oauth2.googleapis.com/device/code", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId!,
+      scope: "https://www.googleapis.com/auth/drive.file",
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Device code request failed: ${res.status} ${await res.text()}`);
+  }
+  return res.json() as Promise<DeviceCodeResponse>;
+}
 
-const server = http.createServer((req, res) => {
-  void (async () => {
-    if (!req.url) return;
-    const url = new URL(req.url, redirectUri);
-    if (url.pathname !== redirectUrl.pathname) {
-      res.writeHead(404).end();
-      return;
+async function pollForToken(deviceCode: string, intervalSeconds: number): Promise<TokenResponse> {
+  let interval = intervalSeconds;
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, interval * 1000));
+
+    const res = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId!,
+        client_secret: clientSecret!,
+        device_code: deviceCode,
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+      }),
+    });
+    const body = (await res.json()) as TokenResponse;
+
+    if (res.ok) return body;
+
+    if (body.error === "authorization_pending") continue;
+    if (body.error === "slow_down") {
+      interval += 5;
+      continue;
     }
+    throw new Error(`Authorization failed: ${body.error} ${body.error_description ?? ""}`.trim());
+  }
+}
 
-    const code = url.searchParams.get("code");
-    if (!code) {
-      res.writeHead(400).end("Missing ?code in redirect");
-      return;
-    }
+async function main() {
+  const device = await requestDeviceCode();
 
-    res.writeHead(200, { "Content-Type": "text/html" });
-    res.end("<html><body>All set — you can close this tab and go back to the terminal.</body></html>");
+  console.log("\nOn any device, go to:\n");
+  console.log(`  ${device.verification_url}`);
+  console.log("\nand enter this code:\n");
+  console.log(`  ${device.user_code}\n`);
+  console.log("Sign in with the Google account you want Drive uploads to go to, then approve access.");
+  console.log("Waiting for approval...");
 
-    try {
-      const { tokens } = await oauth2Client.getToken(code);
-      console.log("\nAdd this to your .env:\n");
-      console.log(`GOOGLE_REFRESH_TOKEN=${tokens.refresh_token}\n`);
-      if (!tokens.refresh_token) {
-        console.warn(
-          "No refresh_token was returned. If you've authorised this app before, revoke access at " +
-            "https://myaccount.google.com/permissions and run this again so Google issues a fresh one.",
-        );
-      }
-    } catch (error) {
-      console.error("Failed to exchange code for tokens:", error);
-    } finally {
-      server.close();
-    }
-  })();
-});
+  const tokens = await pollForToken(device.device_code, device.interval);
 
-server.listen(port, () => {
-  console.log("Open this URL in a browser signed in to the Google account you want Drive uploads to go to:\n");
-  console.log(authUrl);
-  console.log(`\nWaiting for the redirect on ${redirectUri} ...`);
+  console.log("\nAdd this to your .env:\n");
+  console.log(`GOOGLE_REFRESH_TOKEN=${tokens.refresh_token}\n`);
+  if (!tokens.refresh_token) {
+    console.warn(
+      "No refresh_token was returned. If you've authorised this app before, revoke access at " +
+        "https://myaccount.google.com/permissions and run this again so Google issues a fresh one.",
+    );
+  }
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
 });
