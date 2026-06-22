@@ -16,6 +16,23 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
+      # One-off: the existing machine's SQLite volume got corrupted by
+      # repeated mid-write VM reboots (crash-loop on `prisma migrate deploy`,
+      # "Schema engine error"). No real data exists on it (the app has never
+      # booted successfully), so wipe both and let the next deploy recreate
+      # them clean. Remove this step once confirmed working.
+      - name: Reset corrupted machine + volume (one-off)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          APP_NAME=$(grep '^app =' fly.toml | sed -E 's/app = "(.*)"/\1/')
+          flyctl machine list --app "$APP_NAME" --json | jq -r '.[].id' | while read -r id; do
+            flyctl machine destroy "$id" --app "$APP_NAME" --force || true
+          done
+          flyctl volumes list --app "$APP_NAME" --json | jq -r '.[] | select(.Name=="food_diary_data") | .id' | while read -r vid; do
+            flyctl volumes destroy "$vid" --app "$APP_NAME" -y || true
+          done
+
       # apps/volumes create is not safe to repeat, so each is gated on a
       # check first — this workflow runs on every push to main, not just once.
       - name: Ensure app and volume exist
