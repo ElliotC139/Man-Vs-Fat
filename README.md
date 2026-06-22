@@ -60,11 +60,15 @@ See `.env.example` for the full list with comments. The essentials:
 ## Google Drive one-time setup
 
 1. In a Google Cloud project, enable the **Drive API** and create an OAuth
-   client of type **Desktop app**. Put its client ID/secret in `.env`.
-2. Run `npm run google:auth`. It prints a consent URL — open it, sign in
-   with the Google account reports should land in, approve. The script
-   catches the redirect on `localhost` itself and prints a
-   `GOOGLE_REFRESH_TOKEN` line to paste into `.env`.
+   client of type **TVs and Limited Input devices**. Put its client
+   ID/secret in `.env`.
+2. Run `npm run google:auth`. It uses the OAuth **Device Authorization
+   Grant**, not a localhost redirect — deliberately, since this script may
+   run somewhere other than the machine whose browser you're using (e.g. a
+   remote box or container). It prints a short code and a URL; open the URL
+   on any device, sign in with the Google account reports should land in,
+   and enter the code. The script polls in the background and prints a
+   `GOOGLE_REFRESH_TOKEN` line to paste into `.env` once you approve.
 3. **Gotcha:** on the OAuth consent screen, set publishing status to
    **"In production"** (you can leave it unverified — you'll just click
    through a "Google hasn't verified this app" warning once during step 2).
