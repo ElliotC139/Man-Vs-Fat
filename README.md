@@ -114,6 +114,14 @@ fly secrets set ANTHROPIC_API_KEY=... GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=
 fly deploy
 ```
 
+Alternatively, `.github/workflows/deploy.yml` does all four of the above on
+every push to `main` (and on manual trigger), using `flyctl` on GitHub's
+runners instead of a local machine — useful if you'd rather not install
+`flyctl` anywhere yourself. It needs five repo secrets set once under
+**Settings → Secrets and variables → Actions**: `FLY_API_TOKEN` (from Fly's
+dashboard under Account → Access Tokens) plus the four secrets already
+listed above.
+
 ## Input method
 
 Built: a mobile-friendly web form (text + photo, big touch targets, shows
