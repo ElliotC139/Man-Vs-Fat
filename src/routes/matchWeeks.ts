@@ -1,0 +1,65 @@
+import { Router } from "express";
+import { prisma } from "../db";
+import { config, driveConfigured } from "../config";
+import { getMatchWeekBoundaries, localDayKey } from "../matchWeek";
+import { generateMatchWeekReport } from "../pdf/generateReport";
+import { uploadReportToDrive } from "../drive/uploadToDrive";
+
+export const matchWeeksRouter = Router();
+
+function summarize(entries: { kcal: number | null; timestamp: Date }[]) {
+  const totalKcal = entries.reduce((sum, e) => sum + (e.kcal ?? 0), 0);
+  const daysLogged = new Set(entries.map((e) => localDayKey(e.timestamp, config.TIMEZONE))).size;
+  const dailyAverage = daysLogged > 0 ? Math.round(totalKcal / daysLogged) : 0;
+  return { totalKcal, daysLogged, dailyAverage };
+}
+
+matchWeeksRouter.get("/current", async (_req, res) => {
+  const { start, end } = getMatchWeekBoundaries(new Date(), config.TIMEZONE);
+
+  const week = await prisma.matchWeek.findUnique({
+    where: { startsAt_endsAt: { startsAt: start, endsAt: end } },
+    include: { entries: { orderBy: { timestamp: "asc" } } },
+  });
+
+  const entries = week?.entries ?? [];
+  res.json({
+    id: week?.id ?? null,
+    startsAt: start,
+    endsAt: end,
+    entries,
+    ...summarize(entries),
+  });
+});
+
+matchWeeksRouter.post("/:id/generate-report", async (req, res) => {
+  const id = Number(req.params.id);
+  const week = await prisma.matchWeek.findUnique({ where: { id }, include: { entries: true } });
+  if (!week) {
+    res.status(404).json({ error: "Match week not found" });
+    return;
+  }
+
+  try {
+    const pdfBuffer = await generateMatchWeekReport(week, config.TIMEZONE);
+    const fileName = `${localDayKey(week.startsAt, config.TIMEZONE)}.pdf`;
+
+    let driveFileId: string | undefined;
+    let driveUrl: string | undefined;
+    if (driveConfigured) {
+      const uploaded = await uploadReportToDrive(fileName, pdfBuffer);
+      driveFileId = uploaded.fileId;
+      driveUrl = uploaded.webViewLink;
+    }
+
+    const updated = await prisma.matchWeek.update({
+      where: { id: week.id },
+      data: { reportGeneratedAt: new Date(), reportDriveFileId: driveFileId, reportDriveUrl: driveUrl },
+    });
+
+    res.json({ ...updated, driveConfigured });
+  } catch (error) {
+    console.error("Manual report generation failed:", error);
+    res.status(500).json({ error: "Report generation failed" });
+  }
+});

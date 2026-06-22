@@ -1,0 +1,221 @@
+:root {
+  --pitch: #1f7a3f;
+  --pitch-dark: #15522a;
+  --ink: #1a1a1a;
+  --muted: #6b7280;
+  --bg: #f4f7f5;
+  --card: #ffffff;
+  --hairline: #e3e9e5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.banner {
+  background: linear-gradient(135deg, var(--pitch), var(--pitch-dark));
+  color: white;
+  padding: 28px 20px 22px;
+  text-align: center;
+}
+
+.banner h1 {
+  margin: 0 0 4px;
+  font-size: 1.4rem;
+}
+
+.banner .muted {
+  color: #d7ecdf;
+  margin: 0;
+}
+
+main {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.card {
+  background: var(--card);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+}
+
+textarea,
+input[type="text"],
+input[type="number"] {
+  width: 100%;
+  font-size: 1rem;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  font-family: inherit;
+  margin-bottom: 12px;
+  resize: vertical;
+}
+
+.photo-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--hairline);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.photo-label input[type="file"] {
+  display: none;
+}
+
+button {
+  width: 100%;
+  min-height: 48px;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  background: var(--pitch);
+  color: white;
+  cursor: pointer;
+}
+
+button:active {
+  background: var(--pitch-dark);
+}
+
+button:disabled {
+  opacity: 0.6;
+}
+
+button.ghost {
+  background: transparent;
+  color: var(--pitch);
+  border: 1px solid var(--pitch);
+  margin-top: 8px;
+}
+
+.result-row {
+  display: flex;
+  gap: 8px;
+}
+
+.result-row input {
+  margin-bottom: 0;
+}
+
+#result-kcal {
+  max-width: 90px;
+}
+
+.error {
+  color: #b3261e;
+  font-size: 0.9rem;
+}
+
+.summary {
+  text-align: center;
+}
+
+.summary-total {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+h2 {
+  font-size: 1rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 6px 8px;
+}
+
+.day-group {
+  margin-bottom: 14px;
+}
+
+.day-heading {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--pitch-dark);
+  margin: 0 6px 6px;
+}
+
+.entry-row {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.entry-time {
+  color: var(--muted);
+  font-size: 0.8rem;
+  width: 42px;
+  flex-shrink: 0;
+}
+
+.entry-label {
+  flex: 1;
+  font-size: 0.95rem;
+}
+
+.entry-kcal {
+  font-weight: 700;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.entry-actions button {
+  width: auto;
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--hairline);
+}
+
+.entry-edit-row {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+
+.entry-edit-row input {
+  margin-bottom: 0;
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--muted);
+  padding: 20px;
+}
