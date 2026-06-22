@@ -1,0 +1,31 @@
+# Reference config for deploying on Fly.io — see the "Hosting" section of
+# README.md for why this is the recommended target and what to change.
+app = "match-week-food-diary"
+primary_region = "lhr"
+
+[build]
+
+[env]
+PORT = "8080"
+TIMEZONE = "Europe/London"
+# Relative to prisma/schema.prisma (i.e. /app/prisma), so this resolves to
+# /app/data/dev.db — inside the mounted volume below. Secrets (Anthropic key,
+# Google OAuth creds) are set separately via `fly secrets set`, never here.
+DATABASE_URL = "file:../data/dev.db"
+
+[[mounts]]
+source = "food_diary_data"
+destination = "/app/data"
+
+[http_service]
+internal_port = 8080
+force_https = true
+# Critical: the weekly report relies on an in-process cron firing every
+# Monday at 17:00, which only happens if the machine is actually running.
+# Fly's default autostop/autostart would suspend it between requests.
+auto_stop_machines = false
+auto_start_machines = true
+min_machines_running = 1
+
+[[vm]]
+size = "shared-cpu-1x"

@@ -1,0 +1,47 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// A single Monday 17:00 -> following Monday 17:00 boundary. First-class so
+// reports, averages and the PDF all key off the same definition of "week".
+model MatchWeek {
+  id                Int       @id @default(autoincrement())
+  startsAt          DateTime
+  endsAt            DateTime
+  reportGeneratedAt DateTime?
+  reportDriveFileId String?
+  reportDriveUrl    String?
+  entries           Entry[]
+
+  @@unique([startsAt, endsAt])
+}
+
+model Entry {
+  id          Int       @id @default(autoincrement())
+  timestamp   DateTime  @default(now())
+  rawInput    String?
+  label       String
+  // Nullable: estimation can fail (e.g. unparsable model response); the
+  // entry is still kept so nothing logged is silently lost, and the user
+  // can fill the number in by hand.
+  kcal        Int?
+  imageUrl    String?
+  edited      Boolean   @default(false)
+  matchWeekId Int
+  matchWeek   MatchWeek @relation(fields: [matchWeekId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([matchWeekId])
+}
+
+// Small persistent key/value store for things like the cached Drive folder id.
+model Setting {
+  key   String @id
+  value String
+}
