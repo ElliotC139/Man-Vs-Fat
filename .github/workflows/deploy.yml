@@ -29,7 +29,7 @@ jobs:
           flyctl machine list --app "$APP_NAME" --json | jq -r '.[].id' | while read -r id; do
             flyctl machine destroy "$id" --app "$APP_NAME" --force || true
           done
-          flyctl volumes list --app "$APP_NAME" --json | jq -r '.[] | select(.Name=="food_diary_data") | .id' | while read -r vid; do
+          flyctl volumes list --app "$APP_NAME" --json | jq -r '.[] | select(.name=="food_diary_data") | .id' | while read -r vid; do
             flyctl volumes destroy "$vid" --app "$APP_NAME" -y || true
           done
 
@@ -48,7 +48,7 @@ jobs:
             flyctl apps create "$APP_NAME"
           fi
 
-          if ! flyctl volumes list --app "$APP_NAME" --json | jq -e '.[] | select(.Name=="food_diary_data")' > /dev/null; then
+          if ! flyctl volumes list --app "$APP_NAME" --json | jq -e '.[] | select(.name=="food_diary_data")' > /dev/null; then
             flyctl volumes create food_diary_data --app "$APP_NAME" --region "$REGION" --size 1 --yes
           fi
 
