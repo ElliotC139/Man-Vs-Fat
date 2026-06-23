@@ -32,6 +32,39 @@ matchWeeksRouter.get("/current", async (_req, res) => {
   });
 });
 
+matchWeeksRouter.get("/current/report.pdf", async (_req, res) => {
+  const { start, end } = getMatchWeekBoundaries(new Date(), config.TIMEZONE);
+
+  const week = await prisma.matchWeek.findUnique({
+    where: { startsAt_endsAt: { startsAt: start, endsAt: end } },
+    include: { entries: { orderBy: { timestamp: "asc" } } },
+  });
+
+  // No MatchWeek row exists yet until the first entry is logged; the PDF
+  // generator only reads startsAt/endsAt/entries, so an empty stub renders
+  // a valid "nothing logged this week" report instead of erroring.
+  const weekForPdf = week ?? {
+    id: 0,
+    startsAt: start,
+    endsAt: end,
+    reportGeneratedAt: null,
+    reportDriveFileId: null,
+    reportDriveUrl: null,
+    entries: [],
+  };
+
+  try {
+    const pdfBuffer = await generateMatchWeekReport(weekForPdf, config.TIMEZONE);
+    const fileName = `${localDayKey(start, config.TIMEZONE)}.pdf`;
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error("On-demand report export failed:", error);
+    res.status(500).json({ error: "Report generation failed" });
+  }
+});
+
 matchWeeksRouter.post("/:id/generate-report", async (req, res) => {
   const id = Number(req.params.id);
   const week = await prisma.matchWeek.findUnique({ where: { id }, include: { entries: true } });
