@@ -55,6 +55,12 @@ function toDateInputValue(timestamp) {
   return `${year}-${month}-${day}`;
 }
 
+function isMonday(dateInputValue) {
+  if (!dateInputValue) return false;
+  const [year, month, day] = dateInputValue.split("-").map(Number);
+  return new Date(year, month - 1, day).getDay() === 1;
+}
+
 photoInput.addEventListener("change", () => {
   photoStatus.textContent = photoInput.files?.[0] ? `📷 ${photoInput.files[0].name}` : "📷 Add a photo (optional)";
 });
@@ -179,25 +185,48 @@ function enterEditMode(row, entry) {
     mealSelect.appendChild(option);
   }
 
+  // Monday snacks straddle the 17:00 match-week boundary, so a meal type alone
+  // can't say which week they belong to — this lets the user disambiguate.
+  const snackTimeSelect = document.createElement("select");
+  const daySnackOption = document.createElement("option");
+  daySnackOption.value = "day";
+  daySnackOption.textContent = "Snack (day)";
+  const eveningSnackOption = document.createElement("option");
+  eveningSnackOption.value = "evening";
+  eveningSnackOption.textContent = "Snack (evening)";
+  snackTimeSelect.append(daySnackOption, eveningSnackOption);
+  snackTimeSelect.value = new Date(entry.timestamp).getHours() < 17 ? "day" : "evening";
+
+  function updateSnackTimeVisibility() {
+    snackTimeSelect.hidden = !(mealSelect.value === "snack" && isMonday(dateInput.value));
+  }
+  updateSnackTimeVisibility();
+  dateInput.addEventListener("input", updateSnackTimeVisibility);
+  mealSelect.addEventListener("change", updateSnackTimeVisibility);
+
   const saveBtn = document.createElement("button");
   saveBtn.type = "button";
   saveBtn.textContent = "Save";
   saveBtn.style.width = "auto";
   saveBtn.addEventListener("click", async () => {
+    const body = {
+      label: labelInput.value.trim(),
+      kcal: kcalInput.value === "" ? null : Number(kcalInput.value),
+      mealType: mealSelect.value,
+      date: dateInput.value,
+    };
+    if (mealSelect.value === "snack" && isMonday(dateInput.value)) {
+      body.hour = snackTimeSelect.value === "day" ? 14 : 20;
+    }
     await fetch(`/api/entries/${entry.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        label: labelInput.value.trim(),
-        kcal: kcalInput.value === "" ? null : Number(kcalInput.value),
-        mealType: mealSelect.value,
-        date: dateInput.value,
-      }),
+      body: JSON.stringify(body),
     });
     loadWeek();
   });
 
-  editRow.append(labelInput, kcalInput, dateInput, mealSelect, saveBtn);
+  editRow.append(labelInput, kcalInput, dateInput, mealSelect, snackTimeSelect, saveBtn);
   row.appendChild(editRow);
 }
 
