@@ -36,7 +36,7 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
 
   const entryTimestamp = timestamp ? new Date(timestamp) : new Date();
 
-  const estimate = await estimateMeal({
+  const items = await estimateMeal({
     text,
     imageBase64: photo?.buffer.toString("base64"),
     imageMediaType: photo?.mimetype,
@@ -45,18 +45,22 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
   const imageUrl = photo ? saveUploadedImage(photo.buffer, photo.mimetype) : null;
   const matchWeek = await findOrCreateMatchWeek(entryTimestamp, config.TIMEZONE);
 
-  const entry = await prisma.entry.create({
-    data: {
-      timestamp: entryTimestamp,
-      rawInput: text ?? null,
-      label: estimate.label,
-      kcal: estimate.kcal,
-      imageUrl,
-      matchWeekId: matchWeek.id,
-    },
-  });
+  const entries = await prisma.$transaction(
+    items.map((item) =>
+      prisma.entry.create({
+        data: {
+          timestamp: entryTimestamp,
+          rawInput: text ?? null,
+          label: item.label,
+          kcal: item.kcal,
+          imageUrl,
+          matchWeekId: matchWeek.id,
+        },
+      }),
+    ),
+  );
 
-  res.status(201).json(entry);
+  res.status(201).json(entries);
 });
 
 const updateEntrySchema = z.object({

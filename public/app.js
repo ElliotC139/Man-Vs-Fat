@@ -6,8 +6,7 @@ const submitBtn = document.getElementById("submit-btn");
 const formError = document.getElementById("form-error");
 
 const resultCard = document.getElementById("result-card");
-const resultLabel = document.getElementById("result-label");
-const resultKcal = document.getElementById("result-kcal");
+const resultRows = document.getElementById("result-rows");
 const resultSave = document.getElementById("result-save");
 const resultDismiss = document.getElementById("result-dismiss");
 
@@ -17,7 +16,29 @@ const weekAvgEl = document.getElementById("week-avg");
 const daysLoggedEl = document.getElementById("days-logged");
 const entryListEl = document.getElementById("entry-list");
 
-let lastEntryId = null;
+function renderResultRows(entries) {
+  resultRows.innerHTML = "";
+  for (const entry of entries) {
+    const row = document.createElement("div");
+    row.className = "result-row";
+    row.dataset.id = entry.id;
+
+    const labelInput = document.createElement("input");
+    labelInput.type = "text";
+    labelInput.value = entry.label;
+    labelInput.setAttribute("aria-label", "Label");
+
+    const kcalInput = document.createElement("input");
+    kcalInput.type = "number";
+    kcalInput.min = "0";
+    kcalInput.inputMode = "numeric";
+    kcalInput.value = entry.kcal ?? "";
+    kcalInput.setAttribute("aria-label", "Kcal");
+
+    row.append(labelInput, kcalInput);
+    resultRows.appendChild(row);
+  }
+}
 
 const dateFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
 const dayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" });
@@ -172,11 +193,8 @@ form.addEventListener("submit", async (event) => {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.error ? JSON.stringify(body.error) : "Failed to log entry");
     }
-    const entry = await res.json();
-    lastEntryId = entry.id;
-
-    resultLabel.value = entry.label;
-    resultKcal.value = entry.kcal ?? "";
+    const entries = await res.json();
+    renderResultRows(entries);
     resultCard.hidden = false;
 
     form.reset();
@@ -192,15 +210,20 @@ form.addEventListener("submit", async (event) => {
 });
 
 resultSave.addEventListener("click", async () => {
-  if (!lastEntryId) return;
-  await fetch(`/api/entries/${lastEntryId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      label: resultLabel.value.trim(),
-      kcal: resultKcal.value === "" ? null : Number(resultKcal.value),
+  const rows = resultRows.querySelectorAll(".result-row");
+  await Promise.all(
+    Array.from(rows).map((row) => {
+      const [labelInput, kcalInput] = row.querySelectorAll("input");
+      return fetch(`/api/entries/${row.dataset.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: labelInput.value.trim(),
+          kcal: kcalInput.value === "" ? null : Number(kcalInput.value),
+        }),
+      });
     }),
-  });
+  );
   resultCard.hidden = true;
   loadWeek();
 });

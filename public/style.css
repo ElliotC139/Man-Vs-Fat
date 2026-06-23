@@ -117,14 +117,20 @@ button.ghost {
 .result-row {
   display: flex;
   gap: 8px;
+  margin-bottom: 8px;
 }
 
 .result-row input {
   margin-bottom: 0;
 }
 
-#result-kcal {
+.result-row input[type="text"] {
+  flex: 1;
+}
+
+.result-row input[type="number"] {
   max-width: 90px;
+  flex-shrink: 0;
 }
 
 .error {

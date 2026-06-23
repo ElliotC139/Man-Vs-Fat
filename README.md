@@ -168,14 +168,22 @@ retries it.
 
 ## Estimation edge cases
 
-`src/estimate.ts`'s system prompt explicitly handles: vague input ("just a
-sandwich"), multiple foods in one entry (summed into one number), and
-photo-only entries. If the model call fails outright or returns something
-unparsable, the entry is still saved — with `kcal: null` and a placeholder
-label — rather than being dropped, since losing a logged entry is worse than
-needing to fix a number by hand. The web form and report both render `null`
-as `—` and exclude it from totals (with a footnote on the PDF if it
-happens), and the inline edit UI lets you fill it in immediately.
+`src/estimate.ts` asks the model for a JSON array of `{label, kcal}` items
+rather than one combined object, so a single submission describing several
+distinct foods/snacks/drinks ("chicken stir fry with rice, small handful of
+crisps") becomes one diary entry per item — while the components of a single
+dish ("chicken stir fry with rice") still collapse into one item, since
+that's one meal, not three. `src/routes/entries.ts` creates one `Entry` row
+per returned item, all in a single transaction so a submission is either
+fully logged or not at all.
+
+The Anthropic call is retried (with backoff) before giving up, to absorb the
+transient network/stream errors seen occasionally in production — the kcal
+number should come from the model, not from typing one in by hand. Only once
+every retry is exhausted does an entry fall back to `kcal: null` and a
+placeholder label, rather than being dropped. The web form and report both
+render `null` as `—` and exclude it from totals (with a footnote on the PDF
+if it happens), and the inline edit UI lets you fill it in immediately.
 
 ## What's out of scope (per the brief, intentionally)
 

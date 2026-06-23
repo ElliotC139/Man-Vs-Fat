@@ -6,18 +6,24 @@ const client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
 const SYSTEM_PROMPT = `You help someone keep a deliberately rough, low-friction food diary. \
 You are not a calorie-counting app and must not behave like one: no macro \
 breakdowns, no health commentary, no warnings, no guilt-tripping, no ranges. \
-Given a short free-text description of a meal and/or a photo of it, respond \
-with a single best-guess estimate.
+Given a short free-text description and/or a photo, identify each distinct \
+food/meal/snack/drink being logged and give each one its own best-guess kcal \
+estimate.
 
 Rules:
-- Always give exactly one whole-number kcal guess, even for vague input \
-  ("just a sandwich", "some crisps") or multiple items in one entry (sum \
-  them into one number).
-- If there's a photo but no text, estimate from the photo alone.
-- The label should be short (max 6 words), plain, and human-readable, e.g. \
-  "Chicken stir fry with rice" or "Sandwich and crisps".
+- Treat the components of a single dish as ONE item — "chicken stir fry with \
+  rice" is one item, not three. Only split into multiple items when the \
+  input clearly describes separate, distinct things eaten (separate dishes, \
+  snacks, or drinks), however they're separated: commas, "and", "also", \
+  newlines, or just listed one after another. Most entries are a single item.
+- Always give exactly one whole-number kcal guess per item, even for vague \
+  input ("just a sandwich", "some crisps").
+- If there's a photo but no text, estimate from the photo alone — split into \
+  multiple items only if the photo clearly shows separate distinct foods.
+- Each label should be short (max 6 words), plain, and human-readable, e.g. \
+  "Chicken stir fry with rice" or "Small handful of crisps".
 - Respond with ONLY a JSON object, no markdown fences, no commentary: \
-  {"label": "...", "kcal": 000}`;
+  {"items": [{"label": "...", "kcal": 000}]}`;
 
 export interface EstimateInput {
   text?: string;
@@ -25,10 +31,12 @@ export interface EstimateInput {
   imageMediaType?: string;
 }
 
-export interface EstimateResult {
+export interface EstimateItem {
   label: string;
   kcal: number | null;
 }
+
+export type EstimateResult = EstimateItem[];
 
 function buildUserContent(input: EstimateInput): Anthropic.MessageParam["content"] {
   const content: Anthropic.MessageParam["content"] = [];
@@ -55,13 +63,27 @@ function buildUserContent(input: EstimateInput): Anthropic.MessageParam["content
 
 function parseEstimateResponse(raw: string): EstimateResult {
   const cleaned = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-  const parsed = JSON.parse(cleaned) as { label?: unknown; kcal?: unknown };
+  const parsed = JSON.parse(cleaned) as { items?: unknown };
 
-  const label = typeof parsed.label === "string" && parsed.label.trim() ? parsed.label.trim() : "Unlabelled meal";
-  const kcalNumber = typeof parsed.kcal === "number" ? parsed.kcal : Number(parsed.kcal);
-  const kcal = Number.isFinite(kcalNumber) ? Math.round(kcalNumber) : null;
+  const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
+  const items = rawItems.map((rawItem): EstimateItem => {
+    const candidate = rawItem as { label?: unknown; kcal?: unknown };
+    const label = typeof candidate.label === "string" && candidate.label.trim() ? candidate.label.trim() : "Unlabelled meal";
+    const kcalNumber = typeof candidate.kcal === "number" ? candidate.kcal : Number(candidate.kcal);
+    const kcal = Number.isFinite(kcalNumber) ? Math.round(kcalNumber) : null;
+    return { label, kcal };
+  });
 
-  return { label, kcal };
+  if (items.length === 0) {
+    throw new Error("Model response had no items");
+  }
+  return items;
+}
+
+const ESTIMATE_RETRY_DELAYS_MS = [500, 1500];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function estimateMeal(input: EstimateInput): Promise<EstimateResult> {
@@ -69,24 +91,38 @@ export async function estimateMeal(input: EstimateInput): Promise<EstimateResult
     throw new Error("estimateMeal requires text and/or an image");
   }
 
-  try {
-    const message = await client.messages.create({
-      model: config.ANTHROPIC_MODEL,
-      max_tokens: 200,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: buildUserContent(input) }],
-    });
+  const attempts = ESTIMATE_RETRY_DELAYS_MS.length + 1;
+  let lastError: unknown;
 
-    const textBlock = message.content.find((block) => block.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
-      throw new Error("No text in model response");
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const message = await client.messages.create({
+        model: config.ANTHROPIC_MODEL,
+        max_tokens: 300,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content: buildUserContent(input) }],
+      });
+
+      const textBlock = message.content.find((block) => block.type === "text");
+      if (!textBlock || textBlock.type !== "text") {
+        throw new Error("No text in model response");
+      }
+      return parseEstimateResponse(textBlock.text);
+    } catch (error) {
+      lastError = error;
+      console.error(`Estimate attempt ${attempt + 1}/${attempts} failed:`, error);
+      const delay = ESTIMATE_RETRY_DELAYS_MS[attempt];
+      if (delay !== undefined) {
+        await sleep(delay);
+      }
     }
-    return parseEstimateResponse(textBlock.text);
-  } catch (error) {
-    console.error("Estimate failed, falling back to a manual-entry placeholder:", error);
-    return {
+  }
+
+  console.error("Estimate failed after all retries, falling back to a manual-entry placeholder:", lastError);
+  return [
+    {
       label: input.text?.trim()?.slice(0, 60) || "Unestimated meal (tap to add kcal)",
       kcal: null,
-    };
-  }
+    },
+  ];
 }
