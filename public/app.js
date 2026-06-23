@@ -44,6 +44,17 @@ const dateFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short
 const dayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" });
 const timeFmt = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
+const MEAL_ORDER = ["breakfast", "lunch", "dinner", "snack"];
+const MEAL_LABELS = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner", snack: "Snacks" };
+
+function toDateInputValue(timestamp) {
+  const d = new Date(timestamp);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 photoInput.addEventListener("change", () => {
   photoStatus.textContent = photoInput.files?.[0] ? `📷 ${photoInput.files[0].name}` : "📷 Add a photo (optional)";
 });
@@ -70,25 +81,38 @@ function renderEntries(entries) {
     return;
   }
 
-  const groups = new Map();
+  const dayGroups = new Map();
   for (const entry of entries) {
     const d = new Date(entry.timestamp);
-    const key = d.toDateString();
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(entry);
+    const dayKey = d.toDateString();
+    if (!dayGroups.has(dayKey)) dayGroups.set(dayKey, { date: d, meals: new Map() });
+    const meals = dayGroups.get(dayKey).meals;
+    const mealType = entry.mealType ?? "snack";
+    if (!meals.has(mealType)) meals.set(mealType, []);
+    meals.get(mealType).push(entry);
   }
 
-  for (const [key, dayEntries] of groups) {
+  for (const { date, meals } of dayGroups.values()) {
     const group = document.createElement("div");
     group.className = "day-group";
 
     const heading = document.createElement("div");
     heading.className = "day-heading";
-    heading.textContent = dayFmt.format(new Date(key));
+    heading.textContent = dayFmt.format(date);
     group.appendChild(heading);
 
-    for (const entry of dayEntries) {
-      group.appendChild(renderEntryRow(entry));
+    for (const mealType of MEAL_ORDER) {
+      const mealEntries = meals.get(mealType);
+      if (!mealEntries) continue;
+
+      const mealHeading = document.createElement("div");
+      mealHeading.className = "meal-heading";
+      mealHeading.textContent = MEAL_LABELS[mealType];
+      group.appendChild(mealHeading);
+
+      for (const entry of mealEntries) {
+        group.appendChild(renderEntryRow(entry));
+      }
     }
 
     entryListEl.appendChild(group);
@@ -140,8 +164,20 @@ function enterEditMode(row, entry) {
   const kcalInput = document.createElement("input");
   kcalInput.type = "number";
   kcalInput.min = "0";
-  kcalInput.style.maxWidth = "80px";
   kcalInput.value = entry.kcal ?? "";
+
+  const dateInput = document.createElement("input");
+  dateInput.type = "date";
+  dateInput.value = toDateInputValue(entry.timestamp);
+
+  const mealSelect = document.createElement("select");
+  for (const mealType of MEAL_ORDER) {
+    const option = document.createElement("option");
+    option.value = mealType;
+    option.textContent = MEAL_LABELS[mealType];
+    if (mealType === entry.mealType) option.selected = true;
+    mealSelect.appendChild(option);
+  }
 
   const saveBtn = document.createElement("button");
   saveBtn.type = "button";
@@ -154,12 +190,14 @@ function enterEditMode(row, entry) {
       body: JSON.stringify({
         label: labelInput.value.trim(),
         kcal: kcalInput.value === "" ? null : Number(kcalInput.value),
+        mealType: mealSelect.value,
+        date: dateInput.value,
       }),
     });
     loadWeek();
   });
 
-  editRow.append(labelInput, kcalInput, saveBtn);
+  editRow.append(labelInput, kcalInput, dateInput, mealSelect, saveBtn);
   row.appendChild(editRow);
 }
 

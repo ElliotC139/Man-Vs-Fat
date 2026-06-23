@@ -4,7 +4,8 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { config } from "../config";
 import { estimateMeal } from "../estimate";
-import { findOrCreateMatchWeek } from "../matchWeek";
+import { findOrCreateMatchWeek, getLocalParts, zonedTimeToUtc } from "../matchWeek";
+import { MEAL_TYPES, inferMealType } from "../mealType";
 import { saveUploadedImage } from "../lib/storage";
 
 export const entriesRouter = Router();
@@ -44,6 +45,7 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
 
   const imageUrl = photo ? saveUploadedImage(photo.buffer, photo.mimetype) : null;
   const matchWeek = await findOrCreateMatchWeek(entryTimestamp, config.TIMEZONE);
+  const mealType = inferMealType(getLocalParts(entryTimestamp, config.TIMEZONE).hour);
 
   const entries = await prisma.$transaction(
     items.map((item) =>
@@ -54,6 +56,7 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
           label: item.label,
           kcal: item.kcal,
           imageUrl,
+          mealType,
           matchWeekId: matchWeek.id,
         },
       }),
@@ -66,6 +69,9 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
 const updateEntrySchema = z.object({
   label: z.string().trim().min(1).optional(),
   kcal: z.number().int().min(0).nullable().optional(),
+  mealType: z.enum(MEAL_TYPES).optional(),
+  // Local calendar day (YYYY-MM-DD) to move the entry to; time-of-day is kept as-is.
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 entriesRouter.patch("/:id", async (req, res) => {
@@ -76,15 +82,33 @@ entriesRouter.patch("/:id", async (req, res) => {
     return;
   }
   if (Object.keys(parsed.data).length === 0) {
-    res.status(400).json({ error: "Provide label and/or kcal to update." });
+    res.status(400).json({ error: "Provide label, kcal, mealType and/or date to update." });
     return;
   }
 
+  const { date, ...rest } = parsed.data;
+
   try {
-    const entry = await prisma.entry.update({
-      where: { id },
-      data: { ...parsed.data, edited: true },
-    });
+    const data: typeof rest & { edited: true; timestamp?: Date; matchWeekId?: number } = {
+      ...rest,
+      edited: true,
+    };
+
+    if (date) {
+      const existing = await prisma.entry.findUnique({ where: { id } });
+      if (!existing) {
+        res.status(404).json({ error: "Entry not found" });
+        return;
+      }
+      const [year, month, day] = date.split("-").map(Number) as [number, number, number];
+      const localTime = getLocalParts(existing.timestamp, config.TIMEZONE);
+      const newTimestamp = zonedTimeToUtc(year, month, day, localTime.hour, localTime.minute, config.TIMEZONE);
+      const matchWeek = await findOrCreateMatchWeek(newTimestamp, config.TIMEZONE);
+      data.timestamp = newTimestamp;
+      data.matchWeekId = matchWeek.id;
+    }
+
+    const entry = await prisma.entry.update({ where: { id }, data });
     res.json(entry);
   } catch {
     res.status(404).json({ error: "Entry not found" });

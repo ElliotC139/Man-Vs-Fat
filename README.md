@@ -185,6 +185,20 @@ placeholder label, rather than being dropped. The web form and report both
 render `null` as `—` and exclude it from totals (with a footnote on the PDF
 if it happens), and the inline edit UI lets you fill it in immediately.
 
+## Meal slots and editing day/meal
+
+Every entry gets a `mealType` — `breakfast` / `lunch` / `dinner` / `snack` —
+defaulted from local time-of-day at creation (`src/mealType.ts`'s
+`inferMealType`: 04:00–10:59 breakfast, 11:00–14:59 lunch, 17:00–21:59
+dinner, everything else snack). The "This week" list groups entries by day
+then by meal slot in that fixed order.
+
+Tap **Edit** on any entry to change its label, kcal, meal slot, or the day
+it's logged against. Changing the day keeps the original time-of-day and
+only swaps the calendar date, recomputing which `MatchWeek` the entry
+belongs to via `findOrCreateMatchWeek` — so moving an entry across a
+Monday-17:00 boundary correctly reassigns it to the other week's totals.
+
 ## What's out of scope (per the brief, intentionally)
 
 Macro/micronutrient tracking, multi-user accounts, exact calorie accuracy.

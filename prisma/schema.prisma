@@ -31,6 +31,9 @@ model Entry {
   // can fill the number in by hand.
   kcal        Int?
   imageUrl    String?
+  // Breakfast / lunch / dinner / snack — defaulted from local time-of-day at
+  // creation (see inferMealType), editable afterwards via PATCH.
+  mealType    String    @default("snack")
   edited      Boolean   @default(false)
   matchWeekId Int
   matchWeek   MatchWeek @relation(fields: [matchWeekId], references: [id])

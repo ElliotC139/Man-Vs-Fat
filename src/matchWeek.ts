@@ -12,7 +12,7 @@ interface LocalParts {
   weekday: string; // "Mon" .. "Sun"
 }
 
-function getLocalParts(date: Date, timeZone: string): LocalParts {
+export function getLocalParts(date: Date, timeZone: string): LocalParts {
   const dtf = new Intl.DateTimeFormat("en-US", {
     timeZone,
     hourCycle: "h23",
@@ -45,7 +45,7 @@ function getLocalParts(date: Date, timeZone: string): LocalParts {
  * UTC-naive guess in the target zone, then correct for it. Two passes is
  * enough to settle even across a DST transition.
  */
-function zonedTimeToUtc(
+export function zonedTimeToUtc(
   year: number,
   month: number,
   day: number,

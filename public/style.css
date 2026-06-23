@@ -171,6 +171,15 @@ h2 {
   margin: 0 6px 6px;
 }
 
+.meal-heading {
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 10px 6px 6px;
+}
+
 .entry-row {
   background: var(--card);
   border-radius: 12px;
@@ -212,12 +221,25 @@ h2 {
 
 .entry-edit-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   flex: 1;
 }
 
-.entry-edit-row input {
+.entry-edit-row input,
+.entry-edit-row select {
   margin-bottom: 0;
+}
+
+.entry-edit-row input[type="text"] {
+  flex: 1 1 100%;
+}
+
+.entry-edit-row input[type="number"],
+.entry-edit-row input[type="date"],
+.entry-edit-row select {
+  flex: 1;
+  min-width: 90px;
 }
 
 .empty-state {
