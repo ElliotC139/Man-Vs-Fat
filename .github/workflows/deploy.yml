@@ -16,23 +16,6 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      # One-off: the existing machine's SQLite volume got corrupted by
-      # repeated mid-write VM reboots (crash-loop on `prisma migrate deploy`,
-      # "Schema engine error"). No real data exists on it (the app has never
-      # booted successfully), so wipe both and let the next deploy recreate
-      # them clean. Remove this step once confirmed working.
-      - name: Reset corrupted machine + volume (one-off)
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: |
-          APP_NAME=$(grep '^app =' fly.toml | sed -E 's/app = "(.*)"/\1/')
-          flyctl machine list --app "$APP_NAME" --json | jq -r '.[].id' | while read -r id; do
-            flyctl machine destroy "$id" --app "$APP_NAME" --force || true
-          done
-          flyctl volumes list --app "$APP_NAME" --json | jq -r '.[] | select(.name=="food_diary_data") | .id' | while read -r vid; do
-            flyctl volumes destroy "$vid" --app "$APP_NAME" -y || true
-          done
-
       # apps/volumes create is not safe to repeat, so each is gated on a
       # check first — this workflow runs on every push to main, not just once.
       - name: Ensure app and volume exist
@@ -66,7 +49,10 @@ jobs:
       - name: Deploy
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: flyctl deploy --remote-only --app "$APP_NAME"
+        run: |
+          flyctl deploy --remote-only --app "$APP_NAME"
+          MACHINE_ID=$(flyctl machine list --app "$APP_NAME" --json | jq -r '.[0].id')
+          echo "MACHINE_ID=$MACHINE_ID" >> "$GITHUB_ENV"
 
       # Temporary debugging: deploy success only means flyctl could update the
       # machine config, not that the app inside it is actually serving HTTP.
@@ -78,18 +64,24 @@ jobs:
           flyctl status --app "$APP_NAME" || true
           flyctl machine list --app "$APP_NAME" --json || true
 
+      # Filtered to the machine this run deployed (-i) so output isn't
+      # dominated by replayed history from previous machines/boots.
       - name: App logs (debug)
         if: always()
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: sleep 30 && timeout 90 flyctl logs --app "$APP_NAME" --no-tail || true
+        run: timeout 60 flyctl logs --app "$APP_NAME" -i "$MACHINE_ID" --no-tail || true
 
+      # Fails the job if the app never comes up healthy, instead of always
+      # reporting green regardless of outcome.
       - name: Healthcheck (debug)
         if: always()
         run: |
-          for i in $(seq 1 10); do
-            code=$(curl -sS -o /dev/null -w "%{http_code}" "https://$APP_NAME.fly.dev/healthz" || echo "000")
+          for i in $(seq 1 18); do
+            code=$(curl -sS --max-time 10 -o /dev/null -w "%{http_code}" "https://$APP_NAME.fly.dev/healthz" || echo "000")
             echo "attempt $i: HTTP $code"
             [ "$code" = "200" ] && exit 0
             sleep 10
           done
+          echo "App never returned HTTP 200 on /healthz"
+          exit 1
