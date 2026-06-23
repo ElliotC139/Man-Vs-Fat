@@ -83,3 +83,13 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: sleep 30 && timeout 90 flyctl logs --app "$APP_NAME" --no-tail || true
+
+      - name: Healthcheck (debug)
+        if: always()
+        run: |
+          for i in $(seq 1 10); do
+            code=$(curl -sS -o /dev/null -w "%{http_code}" "https://$APP_NAME.fly.dev/healthz" || echo "000")
+            echo "attempt $i: HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
