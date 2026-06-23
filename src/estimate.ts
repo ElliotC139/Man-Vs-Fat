@@ -80,7 +80,10 @@ function parseEstimateResponse(raw: string): EstimateResult {
   return items;
 }
 
-const ESTIMATE_RETRY_DELAYS_MS = [500, 1500];
+// Anthropic occasionally returns transient 5xx/overload errors that clear up
+// within a few seconds; a longer, multi-attempt backoff rides those out
+// instead of giving up and falling back to a manual-entry placeholder.
+const ESTIMATE_RETRY_DELAYS_MS = [800, 2000, 4000];
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

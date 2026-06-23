@@ -11,7 +11,11 @@ function summarize(entries: { kcal: number | null; timestamp: Date }[]) {
   const totalKcal = entries.reduce((sum, e) => sum + (e.kcal ?? 0), 0);
   const daysLogged = new Set(entries.map((e) => localDayKey(e.timestamp, config.TIMEZONE))).size;
   const dailyAverage = daysLogged > 0 ? Math.round(totalKcal / daysLogged) : 0;
-  return { totalKcal, daysLogged, dailyAverage };
+  // Entries can land with kcal: null when the estimator couldn't get a guess
+  // (e.g. a transient upstream error) — surfaced so the total doesn't read as
+  // a silent, misleading zero.
+  const pendingEstimates = entries.filter((e) => e.kcal === null).length;
+  return { totalKcal, daysLogged, dailyAverage, pendingEstimates };
 }
 
 matchWeeksRouter.get("/current", async (_req, res) => {

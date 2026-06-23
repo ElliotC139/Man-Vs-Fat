@@ -70,7 +70,7 @@ describe("estimateMeal", () => {
 
     const result = await estimateMeal({ text: "mystery meal" });
 
-    expect(createMock).toHaveBeenCalledTimes(3);
+    expect(createMock).toHaveBeenCalledTimes(4);
     expect(result).toEqual([{ label: "mystery meal", kcal: null }]);
-  }, 10000);
+  }, 15000);
 });

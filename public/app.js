@@ -6,6 +6,7 @@ const submitBtn = document.getElementById("submit-btn");
 const formError = document.getElementById("form-error");
 
 const resultCard = document.getElementById("result-card");
+const resultWarning = document.getElementById("result-warning");
 const resultRows = document.getElementById("result-rows");
 const resultSave = document.getElementById("result-save");
 const resultDismiss = document.getElementById("result-dismiss");
@@ -15,6 +16,7 @@ const weekTotalEl = document.getElementById("week-total");
 const weekAvgEl = document.getElementById("week-avg");
 const daysLoggedEl = document.getElementById("days-logged");
 const entryListEl = document.getElementById("entry-list");
+const pendingNoteEl = document.getElementById("pending-note");
 
 function renderResultRows(entries) {
   resultRows.innerHTML = "";
@@ -33,6 +35,7 @@ function renderResultRows(entries) {
     kcalInput.min = "0";
     kcalInput.inputMode = "numeric";
     kcalInput.value = entry.kcal ?? "";
+    if (entry.kcal === null) kcalInput.placeholder = "kcal?";
     kcalInput.setAttribute("aria-label", "Kcal");
 
     row.append(labelInput, kcalInput);
@@ -75,6 +78,14 @@ async function loadWeek() {
   weekTotalEl.textContent = week.totalKcal;
   weekAvgEl.textContent = week.dailyAverage;
   daysLoggedEl.textContent = week.daysLogged;
+
+  if (week.pendingEstimates > 0) {
+    const plural = week.pendingEstimates > 1 ? "entries" : "entry";
+    pendingNoteEl.textContent = `${week.pendingEstimates} ${plural} couldn't be estimated and isn't counted yet — tap Edit to add kcal.`;
+    pendingNoteEl.hidden = false;
+  } else {
+    pendingNoteEl.hidden = true;
+  }
 
   renderEntries(week.entries);
 }
@@ -140,7 +151,7 @@ function renderEntryRow(entry) {
 
   const kcal = document.createElement("div");
   kcal.className = "entry-kcal";
-  kcal.textContent = entry.kcal === null ? "—" : `${entry.kcal} kcal`;
+  kcal.textContent = entry.kcal === null ? "Add kcal" : `${entry.kcal} kcal`;
 
   const actions = document.createElement("div");
   actions.className = "entry-actions";
@@ -262,6 +273,12 @@ form.addEventListener("submit", async (event) => {
     }
     const entries = await res.json();
     renderResultRows(entries);
+    if (entries.some((e) => e.kcal === null)) {
+      resultWarning.textContent = "Couldn't estimate kcal for this one (the AI service had a hiccup) — enter it below.";
+      resultWarning.hidden = false;
+    } else {
+      resultWarning.hidden = true;
+    }
     resultCard.hidden = false;
 
     form.reset();
