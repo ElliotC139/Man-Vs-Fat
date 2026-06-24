@@ -12,11 +12,18 @@ const resultSave = document.getElementById("result-save");
 const resultDismiss = document.getElementById("result-dismiss");
 
 const weekRangeEl = document.getElementById("week-range");
+const weekPrevBtn = document.getElementById("week-prev");
+const weekNextBtn = document.getElementById("week-next");
+const weekNoteEl = document.getElementById("week-note");
 const weekTotalEl = document.getElementById("week-total");
 const weekAvgEl = document.getElementById("week-avg");
 const daysLoggedEl = document.getElementById("days-logged");
+const dailyTotalsEl = document.getElementById("daily-totals");
 const entryListEl = document.getElementById("entry-list");
 const pendingNoteEl = document.getElementById("pending-note");
+const exportPdfEl = document.getElementById("export-pdf");
+
+let weeksAgo = 0;
 
 function renderResultRows(entries) {
   resultRows.innerHTML = "";
@@ -68,16 +75,34 @@ photoInput.addEventListener("change", () => {
   photoStatus.textContent = photoInput.files?.[0] ? `📷 ${photoInput.files[0].name}` : "📷 Add a photo (optional)";
 });
 
+weekPrevBtn.addEventListener("click", () => {
+  weeksAgo += 1;
+  resultCard.hidden = true;
+  loadWeek();
+});
+
+weekNextBtn.addEventListener("click", () => {
+  if (weeksAgo === 0) return;
+  weeksAgo -= 1;
+  resultCard.hidden = true;
+  loadWeek();
+});
+
 async function loadWeek() {
-  const res = await fetch("/api/match-weeks/current");
+  const res = await fetch(`/api/match-weeks/current?weeksAgo=${weeksAgo}`);
   const week = await res.json();
 
   weekRangeEl.textContent = `${dateFmt.format(new Date(week.startsAt))} – ${dateFmt.format(
     new Date(new Date(week.endsAt).getTime() - 1000),
   )}`;
+  weekNextBtn.disabled = weeksAgo === 0;
   weekTotalEl.textContent = week.totalKcal;
   weekAvgEl.textContent = week.dailyAverage;
   daysLoggedEl.textContent = week.daysLogged;
+  exportPdfEl.href = `/api/match-weeks/current/report.pdf?weeksAgo=${weeksAgo}`;
+
+  form.hidden = weeksAgo !== 0;
+  weekNoteEl.hidden = weeksAgo === 0;
 
   if (week.pendingEstimates > 0) {
     const plural = week.pendingEstimates > 1 ? "entries" : "entry";
@@ -87,7 +112,27 @@ async function loadWeek() {
     pendingNoteEl.hidden = true;
   }
 
+  renderDailyTotals(week.dailyTotals ?? []);
   renderEntries(week.entries);
+}
+
+function renderDailyTotals(days) {
+  dailyTotalsEl.innerHTML = "";
+  for (const day of days) {
+    const row = document.createElement("div");
+    row.className = "day-total-row";
+
+    const label = document.createElement("span");
+    label.className = "day-total-label";
+    label.textContent = day.label;
+
+    const kcal = document.createElement("span");
+    kcal.className = "day-total-kcal";
+    kcal.textContent = day.pending ? `${day.kcal} kcal + pending` : `${day.kcal} kcal`;
+
+    row.append(label, kcal);
+    dailyTotalsEl.appendChild(row);
+  }
 }
 
 function renderEntries(entries) {

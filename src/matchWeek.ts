@@ -122,6 +122,43 @@ export function getMatchWeekBoundaries(date: Date, timeZone: string): MatchWeekB
   return { start, end };
 }
 
+/**
+ * Boundaries for the match week `weeksAgo` weeks before the one containing
+ * `referenceDate` (0 = that week itself). Shifts by whole weeks on the
+ * calendar-date arithmetic already used above, so it's immune to the same
+ * DST edge cases as `getMatchWeekBoundaries`.
+ */
+export function getMatchWeekBoundariesForWeeksAgo(
+  referenceDate: Date,
+  weeksAgo: number,
+  timeZone: string,
+): MatchWeekBoundary {
+  const current = getMatchWeekBoundaries(referenceDate, timeZone);
+  if (weeksAgo <= 0) return current;
+
+  const startLocal = getLocalParts(current.start, timeZone);
+  const shiftedStart = addDaysToCalendarDate(startLocal.year, startLocal.month, startLocal.day, -weeksAgo * 7);
+  const start = zonedTimeToUtc(shiftedStart.year, shiftedStart.month, shiftedStart.day, 17, 0, timeZone);
+  const shiftedEnd = addDaysToCalendarDate(shiftedStart.year, shiftedStart.month, shiftedStart.day, 7);
+  const end = zonedTimeToUtc(shiftedEnd.year, shiftedEnd.month, shiftedEnd.day, 17, 0, timeZone);
+  return { start, end };
+}
+
+/**
+ * The (up to 8) local calendar dates a match week touches, in order: the
+ * Monday it opens on (from 17:00), the six full days after, and the
+ * following Monday (up to 17:00).
+ */
+export function matchWeekCalendarDays(start: Date, timeZone: string): string[] {
+  const startLocal = getLocalParts(start, timeZone);
+  const days: string[] = [];
+  for (let i = 0; i < 8; i++) {
+    const { year, month, day } = addDaysToCalendarDate(startLocal.year, startLocal.month, startLocal.day, i);
+    days.push(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+  }
+  return days;
+}
+
 /** Finds the MatchWeek row covering `date`, creating it if this is the first entry in it. */
 export async function findOrCreateMatchWeek(date: Date, timeZone: string) {
   const { start, end } = getMatchWeekBoundaries(date, timeZone);

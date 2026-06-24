@@ -9,10 +9,16 @@
   <body>
     <header class="banner">
       <h1>Match Week Food Diary</h1>
-      <p id="week-range" class="muted">Loading…</p>
+      <div class="week-nav">
+        <button id="week-prev" type="button" aria-label="Previous week">‹</button>
+        <p id="week-range" class="muted">Loading…</p>
+        <button id="week-next" type="button" aria-label="Next week" disabled>›</button>
+      </div>
     </header>
 
     <main>
+      <p id="week-note" class="muted" hidden>Viewing a past week — go to the current week to log new entries.</p>
+
       <form id="entry-form" class="card">
         <label for="text">What did you eat?</label>
         <textarea
@@ -44,6 +50,7 @@
       <section class="summary card">
         <div class="summary-total"><span id="week-total">0</span> kcal this week</div>
         <div class="muted"><span id="week-avg">0</span> kcal/day avg over <span id="days-logged">0</span> day(s) logged</div>
+        <div id="daily-totals" class="day-totals"></div>
         <p id="pending-note" class="error" hidden></p>
         <a id="export-pdf" class="button-link" href="/api/match-weeks/current/report.pdf">Export PDF</a>
       </section>

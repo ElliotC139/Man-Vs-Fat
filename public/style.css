@@ -36,6 +36,34 @@ body {
   margin: 0;
 }
 
+.week-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.week-nav #week-range {
+  min-width: 160px;
+}
+
+.week-nav button {
+  width: auto;
+  min-height: 30px;
+  padding: 2px 12px;
+  font-size: 1.1rem;
+  line-height: 1;
+  background: transparent;
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+}
+
+.week-nav button:disabled {
+  opacity: 0.3;
+}
+
 main {
   max-width: 480px;
   margin: 0 auto;
@@ -162,6 +190,31 @@ button.ghost {
 .summary-total {
   font-size: 1.4rem;
   font-weight: 700;
+}
+
+.day-totals {
+  margin-top: 12px;
+  text-align: left;
+}
+
+.day-total-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.day-total-row:last-child {
+  border-bottom: none;
+}
+
+.day-total-label {
+  color: var(--muted);
+}
+
+.day-total-kcal {
+  font-weight: 600;
 }
 
 .muted {

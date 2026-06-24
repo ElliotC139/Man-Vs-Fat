@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../db";
 import { config, driveConfigured } from "../config";
-import { getMatchWeekBoundaries, localDayKey } from "../matchWeek";
+import { getMatchWeekBoundariesForWeeksAgo, localDayKey, matchWeekCalendarDays } from "../matchWeek";
 import { generateMatchWeekReport } from "../pdf/generateReport";
 import { uploadReportToDrive } from "../drive/uploadToDrive";
 
@@ -18,8 +18,45 @@ function summarize(entries: { kcal: number | null; timestamp: Date }[]) {
   return { totalKcal, daysLogged, dailyAverage, pendingEstimates };
 }
 
-matchWeeksRouter.get("/current", async (_req, res) => {
-  const { start, end } = getMatchWeekBoundaries(new Date(), config.TIMEZONE);
+// Every calendar day the week touches, not just the ones with entries, so the
+// UI can show a full Mon-Mon shape rather than only days something was logged.
+function dailyTotals(start: Date, entries: { kcal: number | null; timestamp: Date }[]) {
+  const totals = new Map<string, { kcal: number; pending: boolean }>();
+  for (const entry of entries) {
+    const key = localDayKey(entry.timestamp, config.TIMEZONE);
+    const bucket = totals.get(key) ?? { kcal: 0, pending: false };
+    if (entry.kcal === null) bucket.pending = true;
+    else bucket.kcal += entry.kcal;
+    totals.set(key, bucket);
+  }
+
+  const labelFmt = new Intl.DateTimeFormat("en-GB", {
+    timeZone: config.TIMEZONE,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+
+  return matchWeekCalendarDays(start, config.TIMEZONE).map((date) => {
+    const bucket = totals.get(date) ?? { kcal: 0, pending: false };
+    const [year, month, day] = date.split("-").map(Number) as [number, number, number];
+    return {
+      date,
+      label: labelFmt.format(new Date(Date.UTC(year, month - 1, day, 12))),
+      kcal: bucket.kcal,
+      pending: bucket.pending,
+    };
+  });
+}
+
+function parseWeeksAgo(value: unknown): number {
+  const n = Number.parseInt(String(value ?? "0"), 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+matchWeeksRouter.get("/current", async (req, res) => {
+  const weeksAgo = parseWeeksAgo(req.query.weeksAgo);
+  const { start, end } = getMatchWeekBoundariesForWeeksAgo(new Date(), weeksAgo, config.TIMEZONE);
 
   const week = await prisma.matchWeek.findUnique({
     where: { startsAt_endsAt: { startsAt: start, endsAt: end } },
@@ -31,13 +68,16 @@ matchWeeksRouter.get("/current", async (_req, res) => {
     id: week?.id ?? null,
     startsAt: start,
     endsAt: end,
+    weeksAgo,
     entries,
+    dailyTotals: dailyTotals(start, entries),
     ...summarize(entries),
   });
 });
 
-matchWeeksRouter.get("/current/report.pdf", async (_req, res) => {
-  const { start, end } = getMatchWeekBoundaries(new Date(), config.TIMEZONE);
+matchWeeksRouter.get("/current/report.pdf", async (req, res) => {
+  const weeksAgo = parseWeeksAgo(req.query.weeksAgo);
+  const { start, end } = getMatchWeekBoundariesForWeeksAgo(new Date(), weeksAgo, config.TIMEZONE);
 
   const week = await prisma.matchWeek.findUnique({
     where: { startsAt_endsAt: { startsAt: start, endsAt: end } },

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getMatchWeekBoundaries, localDayKey } from "../src/matchWeek";
+import {
+  getMatchWeekBoundaries,
+  getMatchWeekBoundariesForWeeksAgo,
+  localDayKey,
+  matchWeekCalendarDays,
+} from "../src/matchWeek";
 
 const TZ = "Europe/London";
 
@@ -73,5 +78,58 @@ describe("localDayKey", () => {
   it("groups by the local calendar date, not the UTC one", () => {
     // 23:30 UTC on 21 June 2026 is past midnight (00:30) on 22 June in London (BST, +1h).
     expect(localDayKey(londonTime("2026-06-21T23:30:00Z"), TZ)).toBe("2026-06-22");
+  });
+});
+
+describe("getMatchWeekBoundariesForWeeksAgo", () => {
+  const reference = londonTime("2026-06-23T12:00:00Z"); // Tuesday, in the week starting 2026-06-22
+
+  it("returns the same boundaries as the current week when weeksAgo is 0", () => {
+    const current = getMatchWeekBoundaries(reference, TZ);
+    const result = getMatchWeekBoundariesForWeeksAgo(reference, 0, TZ);
+    expect(result.start.toISOString()).toBe(current.start.toISOString());
+    expect(result.end.toISOString()).toBe(current.end.toISOString());
+  });
+
+  it("steps back whole weeks", () => {
+    const oneWeekAgo = getMatchWeekBoundariesForWeeksAgo(reference, 1, TZ);
+    expect(oneWeekAgo.start.toISOString()).toBe(new Date("2026-06-15T17:00:00+01:00").toISOString());
+    expect(oneWeekAgo.end.toISOString()).toBe(new Date("2026-06-22T17:00:00+01:00").toISOString());
+
+    const twoWeeksAgo = getMatchWeekBoundariesForWeeksAgo(reference, 2, TZ);
+    expect(twoWeeksAgo.start.toISOString()).toBe(new Date("2026-06-08T17:00:00+01:00").toISOString());
+    expect(twoWeeksAgo.end.toISOString()).toBe(new Date("2026-06-15T17:00:00+01:00").toISOString());
+  });
+
+  it("treats negative weeksAgo the same as 0 (no peeking into the future)", () => {
+    const current = getMatchWeekBoundaries(reference, TZ);
+    const result = getMatchWeekBoundariesForWeeksAgo(reference, -3, TZ);
+    expect(result.start.toISOString()).toBe(current.start.toISOString());
+    expect(result.end.toISOString()).toBe(current.end.toISOString());
+  });
+
+  it("stays correct stepping back across the GMT/BST autumn transition", () => {
+    // Week of 2026-11-02 (GMT) stepped back one week lands on 2026-10-26, which
+    // opens under GMT too but the clocks went back inside the *prior* week.
+    const lateReference = londonTime("2026-11-04T12:00:00Z");
+    const oneWeekAgo = getMatchWeekBoundariesForWeeksAgo(lateReference, 1, TZ);
+    expect(oneWeekAgo.start.toISOString()).toBe(new Date("2026-10-26T17:00:00+00:00").toISOString());
+    expect(oneWeekAgo.end.toISOString()).toBe(new Date("2026-11-02T17:00:00+00:00").toISOString());
+  });
+});
+
+describe("matchWeekCalendarDays", () => {
+  it("lists the 8 calendar dates a Mon 17:00 -> Mon 17:00 week touches", () => {
+    const { start } = getMatchWeekBoundaries(londonTime("2026-06-23T12:00:00Z"), TZ);
+    expect(matchWeekCalendarDays(start, TZ)).toEqual([
+      "2026-06-22",
+      "2026-06-23",
+      "2026-06-24",
+      "2026-06-25",
+      "2026-06-26",
+      "2026-06-27",
+      "2026-06-28",
+      "2026-06-29",
+    ]);
   });
 });
