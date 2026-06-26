@@ -61,6 +61,11 @@ function buildUserContent(input: EstimateInput): Anthropic.MessageParam["content
   return content;
 }
 
+// Self-reported, casual food descriptions tend to skew low (portions rounded
+// down, sauces/oils/extras left unmentioned), so a fixed buffer is applied on
+// top of the model's raw guess rather than trusting it as a tight estimate.
+const KCAL_BUFFER_MULTIPLIER = 1.12;
+
 function parseEstimateResponse(raw: string): EstimateResult {
   const cleaned = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   const parsed = JSON.parse(cleaned) as { items?: unknown };
@@ -70,7 +75,7 @@ function parseEstimateResponse(raw: string): EstimateResult {
     const candidate = rawItem as { label?: unknown; kcal?: unknown };
     const label = typeof candidate.label === "string" && candidate.label.trim() ? candidate.label.trim() : "Unlabelled meal";
     const kcalNumber = typeof candidate.kcal === "number" ? candidate.kcal : Number(candidate.kcal);
-    const kcal = Number.isFinite(kcalNumber) ? Math.round(kcalNumber) : null;
+    const kcal = Number.isFinite(kcalNumber) ? Math.round(kcalNumber * KCAL_BUFFER_MULTIPLIER) : null;
     return { label, kcal };
   });
 
