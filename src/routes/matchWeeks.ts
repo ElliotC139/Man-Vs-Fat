@@ -1,15 +1,21 @@
 import { Router } from "express";
 import { prisma } from "../db";
 import { config, driveConfigured } from "../config";
-import { getMatchWeekBoundariesForWeeksAgo, localDayKey, matchWeekCalendarDays } from "../matchWeek";
+import {
+  getMatchWeekBoundariesForWeeksAgo,
+  localDayKey,
+  matchWeekCalendarDays,
+  weightedDaysLogged,
+} from "../matchWeek";
 import { generateMatchWeekReport } from "../pdf/generateReport";
 import { uploadReportToDrive } from "../drive/uploadToDrive";
 
 export const matchWeeksRouter = Router();
 
-function summarize(entries: { kcal: number | null; timestamp: Date }[]) {
+function summarize(start: Date, entries: { kcal: number | null; timestamp: Date }[]) {
   const totalKcal = entries.reduce((sum, e) => sum + (e.kcal ?? 0), 0);
-  const daysLogged = new Set(entries.map((e) => localDayKey(e.timestamp, config.TIMEZONE))).size;
+  const loggedDayKeys = new Set(entries.map((e) => localDayKey(e.timestamp, config.TIMEZONE)));
+  const daysLogged = weightedDaysLogged(loggedDayKeys, start, config.TIMEZONE);
   const dailyAverage = daysLogged > 0 ? Math.round(totalKcal / daysLogged) : 0;
   // Entries can land with kcal: null when the estimator couldn't get a guess
   // (e.g. a transient upstream error) — surfaced so the total doesn't read as
@@ -74,7 +80,7 @@ matchWeeksRouter.get("/current", async (req, res) => {
     weeksAgo,
     entries,
     dailyTotals: dailyTotals(start, entries),
-    ...summarize(entries),
+    ...summarize(start, entries),
   });
 });
 

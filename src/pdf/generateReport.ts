@@ -1,6 +1,6 @@
 import PDFDocument from "pdfkit";
 import type { Entry, MatchWeek } from "@prisma/client";
-import { localDayKey, localDayLabel, localTimeLabel } from "../matchWeek";
+import { localDayKey, localDayLabel, localTimeLabel, weightedDaysLogged } from "../matchWeek";
 
 const PITCH_GREEN = "#1f7a3f";
 const INK = "#1a1a1a";
@@ -153,7 +153,7 @@ export async function generateMatchWeekReport(
     doc.moveDown(1.1);
   }
 
-  const daysLogged = days.length;
+  const daysLogged = weightedDaysLogged(days.map((d) => d.dayKey), week.startsAt, timeZone);
   const dailyAverage = daysLogged > 0 ? Math.round(weekTotal / daysLogged) : 0;
 
   ensureSpace(doc, 110);

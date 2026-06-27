@@ -4,6 +4,7 @@ import {
   getMatchWeekBoundariesForWeeksAgo,
   localDayKey,
   matchWeekCalendarDays,
+  weightedDaysLogged,
 } from "../src/matchWeek";
 
 const TZ = "Europe/London";
@@ -131,5 +132,31 @@ describe("matchWeekCalendarDays", () => {
       "2026-06-28",
       "2026-06-29",
     ]);
+  });
+});
+
+describe("weightedDaysLogged", () => {
+  const { start } = getMatchWeekBoundaries(londonTime("2026-06-23T12:00:00Z"), TZ);
+  // matchWeekCalendarDays(start, TZ) = [2026-06-22 (opening Mon), ...06-23..06-28, 2026-06-29 (closing Mon)]
+
+  it("counts a full mid-week day as 1", () => {
+    expect(weightedDaysLogged(["2026-06-24"], start, TZ)).toBe(1);
+  });
+
+  it("counts the opening Monday as half a day", () => {
+    expect(weightedDaysLogged(["2026-06-22"], start, TZ)).toBe(0.5);
+  });
+
+  it("counts the closing Monday as half a day", () => {
+    expect(weightedDaysLogged(["2026-06-29"], start, TZ)).toBe(0.5);
+  });
+
+  it("sums the two Monday halves to a single day when both are logged", () => {
+    expect(weightedDaysLogged(["2026-06-22", "2026-06-29"], start, TZ)).toBe(1);
+  });
+
+  it("sums to 7 (not 8) when every day of the week is logged", () => {
+    const allDays = matchWeekCalendarDays(start, TZ);
+    expect(weightedDaysLogged(allDays, start, TZ)).toBe(7);
   });
 });

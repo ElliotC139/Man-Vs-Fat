@@ -169,6 +169,23 @@ export async function findOrCreateMatchWeek(date: Date, timeZone: string) {
   });
 }
 
+/**
+ * Number of days represented by a set of locally-logged calendar-day keys
+ * within a match week. The week's two edge dates — the opening Monday
+ * (from 17:00) and the closing Monday (until 17:00) — together span only
+ * one real day, so each counts as half a day rather than a full one; a
+ * fully-logged week then sums to 7 days, not 8.
+ */
+export function weightedDaysLogged(loggedDayKeys: Iterable<string>, weekStart: Date, timeZone: string): number {
+  const calendarDays = matchWeekCalendarDays(weekStart, timeZone);
+  const halfDayKeys = new Set([calendarDays[0], calendarDays[calendarDays.length - 1]]);
+  let total = 0;
+  for (const key of loggedDayKeys) {
+    total += halfDayKeys.has(key) ? 0.5 : 1;
+  }
+  return total;
+}
+
 /** Local calendar-day key (YYYY-MM-DD) for grouping entries in a timezone-correct way. */
 export function localDayKey(date: Date, timeZone: string): string {
   const { year, month, day } = getLocalParts(date, timeZone);
