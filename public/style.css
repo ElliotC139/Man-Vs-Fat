@@ -249,10 +249,21 @@ h2 {
 }
 
 .day-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
   font-weight: 700;
   font-size: 0.85rem;
   color: var(--pitch-dark);
   margin: 0 6px 6px;
+}
+
+.day-heading--today {
+  background: rgba(31, 122, 63, 0.1);
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin: 0 0 6px;
 }
 
 .meal-heading {

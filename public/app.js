@@ -143,6 +143,8 @@ function renderEntries(entries) {
     return;
   }
 
+  const todayKey = new Date().toDateString();
+
   const dayGroups = new Map();
   for (const entry of entries) {
     const d = new Date(entry.timestamp);
@@ -154,13 +156,25 @@ function renderEntries(entries) {
     meals.get(mealType).push(entry);
   }
 
-  for (const { date, meals } of dayGroups.values()) {
+  for (const [dayKey, { date, meals }] of dayGroups.entries()) {
     const group = document.createElement("div");
     group.className = "day-group";
 
+    const isToday = dayKey === todayKey;
+    const dayEntries = [...meals.values()].flat();
+    const dayKcal = dayEntries.reduce((sum, e) => sum + (e.kcal ?? 0), 0);
+    const dayPending = dayEntries.some((e) => e.kcal === null);
+
     const heading = document.createElement("div");
-    heading.className = "day-heading";
-    heading.textContent = dayFmt.format(date);
+    heading.className = isToday ? "day-heading day-heading--today" : "day-heading";
+
+    const headingLabel = document.createElement("span");
+    headingLabel.textContent = isToday ? `Today · ${dayFmt.format(date)}` : dayFmt.format(date);
+
+    const headingKcal = document.createElement("span");
+    headingKcal.textContent = dayPending ? `${dayKcal} kcal + pending` : `${dayKcal} kcal`;
+
+    heading.append(headingLabel, headingKcal);
     group.appendChild(heading);
 
     for (const mealType of MEAL_ORDER) {
