@@ -37,6 +37,8 @@ function dailyTotals(start: Date, entries: { kcal: number | null; timestamp: Dat
     month: "short",
   });
 
+  const todayKey = localDayKey(new Date(), config.TIMEZONE);
+
   return matchWeekCalendarDays(start, config.TIMEZONE).map((date) => {
     const bucket = totals.get(date) ?? { kcal: 0, pending: false };
     const [year, month, day] = date.split("-").map(Number) as [number, number, number];
@@ -45,6 +47,7 @@ function dailyTotals(start: Date, entries: { kcal: number | null; timestamp: Dat
       label: labelFmt.format(new Date(Date.UTC(year, month - 1, day, 12))),
       kcal: bucket.kcal,
       pending: bucket.pending,
+      isToday: date === todayKey,
     };
   });
 }

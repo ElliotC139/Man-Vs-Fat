@@ -120,11 +120,11 @@ function renderDailyTotals(days) {
   dailyTotalsEl.innerHTML = "";
   for (const day of days) {
     const row = document.createElement("div");
-    row.className = "day-total-row";
+    row.className = day.isToday ? "day-total-row day-total-row--today" : "day-total-row";
 
     const label = document.createElement("span");
     label.className = "day-total-label";
-    label.textContent = day.label;
+    label.textContent = day.isToday ? `Today · ${day.label}` : day.label;
 
     const kcal = document.createElement("span");
     kcal.className = "day-total-kcal";

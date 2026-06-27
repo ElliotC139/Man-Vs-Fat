@@ -209,8 +209,22 @@ button.ghost {
   border-bottom: none;
 }
 
+.day-total-row--today {
+  background: rgba(31, 122, 63, 0.1);
+  border-bottom: none;
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin: 2px 0;
+}
+
 .day-total-label {
   color: var(--muted);
+}
+
+.day-total-row--today .day-total-label,
+.day-total-row--today .day-total-kcal {
+  color: var(--pitch-dark);
+  font-weight: 700;
 }
 
 .day-total-kcal {
