@@ -392,6 +392,32 @@ h2 {
   margin-top: 4px;
 }
 
+.google-signin-btn {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0 0 14px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.auth-divider span {
+  padding: 0 10px;
+}
+
 .link-btn {
   width: auto;
   min-height: auto;

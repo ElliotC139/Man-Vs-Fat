@@ -7,6 +7,8 @@ const authSubmit = document.getElementById("auth-submit");
 const authError = document.getElementById("auth-error");
 const authToggleText = document.getElementById("auth-toggle-text");
 const authToggleBtn = document.getElementById("auth-toggle-btn");
+const googleSigninBtn = document.getElementById("google-signin-btn");
+const authDivider = document.getElementById("auth-divider");
 
 const settingsToggle = document.getElementById("settings-toggle");
 const settingsCard = document.getElementById("settings-card");
@@ -18,6 +20,8 @@ const settingsError = document.getElementById("settings-error");
 const logoutBtn = document.getElementById("logout-btn");
 
 let authMode = "login";
+let googleClientId = null;
+let gsiLoaded = false;
 
 const form = document.getElementById("entry-form");
 const textInput = document.getElementById("text");
@@ -436,6 +440,49 @@ authForm.addEventListener("submit", async (event) => {
   }
 });
 
+window.__onGsiLoad = () => {
+  gsiLoaded = true;
+  tryInitGoogleSignIn();
+};
+
+function tryInitGoogleSignIn() {
+  if (!googleClientId || !gsiLoaded || !window.google) return;
+  window.google.accounts.id.initialize({ client_id: googleClientId, callback: handleGoogleCredential });
+  window.google.accounts.id.renderButton(googleSigninBtn, { theme: "outline", size: "large", width: 300 });
+  googleSigninBtn.hidden = false;
+  authDivider.hidden = false;
+}
+
+async function loadGoogleConfig() {
+  try {
+    const res = await fetch("/api/auth/google/config");
+    const body = await res.json();
+    googleClientId = body.clientId ?? null;
+    tryInitGoogleSignIn();
+  } catch {
+    // Sign-in still works via username/password if this fails.
+  }
+}
+
+async function handleGoogleCredential(response) {
+  authError.hidden = true;
+  try {
+    const res = await fetch("/api/auth/google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential: response.credential }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(typeof body.error === "string" ? body.error : "Google sign-in failed.");
+    }
+    showApp(body);
+  } catch (error) {
+    authError.textContent = error.message;
+    authError.hidden = false;
+  }
+}
+
 settingsToggle.addEventListener("click", () => {
   settingsCard.hidden = !settingsCard.hidden;
 });
@@ -506,3 +553,4 @@ async function checkAuth() {
 }
 
 checkAuth();
+loadGoogleConfig();

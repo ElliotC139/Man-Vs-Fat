@@ -11,6 +11,10 @@ const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REFRESH_TOKEN: z.string().optional(),
   GOOGLE_DRIVE_FOLDER_ID: z.string().optional(),
+  // Separate "Web application" OAuth client used for the "Sign in with
+  // Google" button — distinct from GOOGLE_CLIENT_ID above, which is a "TVs
+  // and Limited Input devices" client only usable for the Drive device flow.
+  GOOGLE_SIGNIN_CLIENT_ID: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

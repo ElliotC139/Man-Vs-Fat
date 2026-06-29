@@ -8,10 +8,23 @@ const state = vi.hoisted(() => ({
   nextId: 1,
 }));
 
+const { verifyIdTokenMock } = vi.hoisted(() => ({ verifyIdTokenMock: vi.fn() }));
+
+vi.mock("../src/config", () => ({
+  config: { GOOGLE_SIGNIN_CLIENT_ID: "test-google-client-id" },
+}));
+
+vi.mock("google-auth-library", () => ({
+  OAuth2Client: class {
+    verifyIdToken = verifyIdTokenMock;
+  },
+}));
+
 vi.mock("../src/db", () => {
   function findUser(where: any) {
     if (where.id !== undefined) return state.users.find((u) => u.id === where.id) ?? null;
     if (where.username !== undefined) return state.users.find((u) => u.username === where.username) ?? null;
+    if (where.googleId !== undefined) return state.users.find((u) => u.googleId === where.googleId) ?? null;
     return null;
   }
 
@@ -64,6 +77,7 @@ beforeEach(async () => {
   state.users.length = 0;
   state.nextId = 1;
   vi.clearAllMocks();
+  verifyIdTokenMock.mockReset();
 
   const app = express();
   app.use(express.json());
@@ -186,6 +200,105 @@ describe("POST /api/auth/login", () => {
     expect(res.status).toBe(401);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("Incorrect username or password.");
+  });
+});
+
+describe("GET /api/auth/google/config", () => {
+  it("reports the configured client id", async () => {
+    const res = await fetch(`${baseUrl}/api/auth/google/config`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ clientId: "test-google-client-id" });
+  });
+});
+
+describe("POST /api/auth/google", () => {
+  it("creates a new account from a verified credential and claims legacy match weeks for the first user", async () => {
+    verifyIdTokenMock.mockResolvedValueOnce({
+      getPayload: () => ({ sub: "google-1", email: "newuser@example.com", email_verified: true }),
+    });
+
+    const res = await fetch(`${baseUrl}/api/auth/google`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential: "fake-id-token" }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { username: string };
+    expect(body.username).toBe("newuser");
+    expect(sessionCookieFrom(res)).toMatch(/^session=/);
+    expect(prisma.matchWeek.updateMany).toHaveBeenCalledWith({ where: { userId: null }, data: { userId: 1 } });
+  });
+
+  it("de-duplicates the generated username against existing accounts", async () => {
+    await fetch(`${baseUrl}/api/auth/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "newuser", password: "password123" }),
+    });
+
+    verifyIdTokenMock.mockResolvedValueOnce({
+      getPayload: () => ({ sub: "google-2", email: "newuser@example.com", email_verified: true }),
+    });
+
+    const res = await fetch(`${baseUrl}/api/auth/google`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential: "fake-id-token" }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { username: string };
+    expect(body.username).toBe("newuser2");
+  });
+
+  it("logs in an existing Google-linked account without creating a duplicate", async () => {
+    verifyIdTokenMock.mockResolvedValue({
+      getPayload: () => ({ sub: "google-3", email: "returning@example.com", email_verified: true }),
+    });
+
+    await fetch(`${baseUrl}/api/auth/google`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential: "fake-id-token" }),
+    });
+
+    const res = await fetch(`${baseUrl}/api/auth/google`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential: "fake-id-token" }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { id: number };
+    expect(body.id).toBe(1);
+    expect(prisma.user.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a credential with an unverified email", async () => {
+    verifyIdTokenMock.mockResolvedValueOnce({
+      getPayload: () => ({ sub: "google-4", email: "unverified@example.com", email_verified: false }),
+    });
+
+    const res = await fetch(`${baseUrl}/api/auth/google`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential: "fake-id-token" }),
+    });
+
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects a credential that fails verification", async () => {
+    verifyIdTokenMock.mockRejectedValueOnce(new Error("invalid token"));
+
+    const res = await fetch(`${baseUrl}/api/auth/google`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential: "fake-id-token" }),
+    });
+
+    expect(res.status).toBe(401);
   });
 });
 

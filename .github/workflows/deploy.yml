@@ -44,6 +44,7 @@ jobs:
             GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}" \
             GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}" \
             GOOGLE_REFRESH_TOKEN="${{ secrets.GOOGLE_REFRESH_TOKEN }}" \
+            GOOGLE_SIGNIN_CLIENT_ID="${{ secrets.GOOGLE_SIGNIN_CLIENT_ID }}" \
             --app "$APP_NAME"
 
       - name: Deploy

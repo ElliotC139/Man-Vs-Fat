@@ -13,7 +13,11 @@ datasource db {
 model User {
   id               Int      @id @default(autoincrement())
   username         String   @unique
-  passwordHash     String
+  // Null for accounts created via "Sign in with Google" that never set a password.
+  passwordHash     String?
+  // Set once an account is created or signed into via Google.
+  googleId         String?  @unique
+  email            String?  @unique
   // 0 = Monday .. 6 = Sunday, matching WEEKDAYS_MON_FIRST in matchWeek.ts.
   weekStartWeekday Int      @default(0)
   weekStartHour    Int      @default(17)

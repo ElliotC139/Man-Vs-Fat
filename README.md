@@ -11,10 +11,10 @@ No macros, no ranges, no guilt — single numbers, edit anything that looks
 wrong.
 
 Multiple people can use the same deployment: each person creates their own
-account (sign up with a username/password on first visit), sees only their
-own entries, and sets their own weekly rollover day/time under the ⚙ settings
-icon — useful since e.g. one person's week might run Monday 17:00 and
-another's Wednesday 09:00.
+account (sign up with a username/password, or "Sign in with Google" if
+that's configured — see below), sees only their own entries, and sets their
+own weekly rollover day/time under the ⚙ settings icon — useful since e.g.
+one person's week might run Monday 17:00 and another's Wednesday 09:00.
 
 ## Stack
 
@@ -66,6 +66,7 @@ See `.env.example` for the full list with comments. The essentials:
 | `DATABASE_URL` | SQLite file path. **Relative paths resolve against `prisma/schema.prisma`'s directory, not the repo root** — that's why the default is `file:../data/dev.db` rather than `file:./data/dev.db`. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` | Drive upload. Leave unset to run without Drive (reports generate but stay local + log a warning). |
 | `GOOGLE_DRIVE_FOLDER_ID` | Optional. If unset, the app finds-or-creates a "Food Diary" folder once and caches its id in the DB. |
+| `GOOGLE_SIGNIN_CLIENT_ID` | Optional, separate from the Drive client above. Enables the "Sign in with Google" button. Leave unset to keep username/password as the only sign-in method. |
 
 ## Google Drive one-time setup
 
@@ -87,6 +88,31 @@ See `.env.example` for the full list with comments. The essentials:
    silently break uploads a week after setup. "In production" + unverified
    does not have that expiry for the scope used here (`drive.file`, which
    only grants access to files this app creates — not your whole Drive).
+
+## "Sign in with Google" one-time setup (optional)
+
+This is a separate OAuth client from the Drive one above — Drive's is a
+"TVs and Limited Input devices" client (device-code flow, no browser
+origin), which can't be used for a browser sign-in button. Skip this section
+entirely to keep username/password as the only sign-in method; nothing else
+in the app depends on it.
+
+1. In the same (or a different) Google Cloud project, under **APIs &
+   Services → Credentials**, create an OAuth client of type **Web
+   application**.
+2. Add this app's URL (e.g. `https://match-week-food-diary.fly.dev`, and
+   `http://localhost:3000` for local dev) under **Authorized JavaScript
+   origins**. No redirect URI is needed — the button flow doesn't use one.
+3. Put the client ID in `.env` as `GOOGLE_SIGNIN_CLIENT_ID` (no secret needed;
+   the server only verifies ID tokens, it doesn't exchange a code). For the
+   GitHub Actions deploy path, add it as a repo secret of the same name
+   instead.
+4. The first time someone uses the button, an account is created
+   automatically from their Google profile (no separate signup step, no
+   password) — a username is derived from their email and de-duplicated
+   against existing accounts. Signing in with Google again later matches the
+   same Google account, not the email, so it's unrelated to any
+   username/password account that happens to share that email.
 
 ## Hosting
 
@@ -119,17 +145,20 @@ keep the equivalent "always on" setting wherever you deploy.
 ```bash
 fly launch --no-deploy        # creates the app from fly.toml, skip the wizard's deploy
 fly volumes create food_diary_data --size 1
-fly secrets set ANTHROPIC_API_KEY=... GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... GOOGLE_REFRESH_TOKEN=...
+fly secrets set ANTHROPIC_API_KEY=... GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... GOOGLE_REFRESH_TOKEN=... GOOGLE_SIGNIN_CLIENT_ID=...
 fly deploy
 ```
+
+(`GOOGLE_SIGNIN_CLIENT_ID` is optional — omit it to leave "Sign in with
+Google" disabled.)
 
 Alternatively, `.github/workflows/deploy.yml` does all four of the above on
 every push to `main` (and on manual trigger), using `flyctl` on GitHub's
 runners instead of a local machine — useful if you'd rather not install
-`flyctl` anywhere yourself. It needs five repo secrets set once under
-**Settings → Secrets and variables → Actions**: `FLY_API_TOKEN` (from Fly's
-dashboard under Account → Access Tokens) plus the four secrets already
-listed above.
+`flyctl` anywhere yourself. It needs `FLY_API_TOKEN` (from Fly's dashboard
+under Account → Access Tokens) plus the five secrets already listed above
+set once under **Settings → Secrets and variables → Actions** (leave
+`GOOGLE_SIGNIN_CLIENT_ID` unset there too if you don't want the button).
 
 ## Input method
 
