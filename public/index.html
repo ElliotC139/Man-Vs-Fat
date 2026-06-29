@@ -103,7 +103,19 @@
       </main>
     </div>
 
-    <script src="https://accounts.google.com/gsi/client" async defer onload="window.__onGsiLoad && window.__onGsiLoad()"></script>
+    <script>
+      // Defined here (not in app.js) so it exists no matter which of the two
+      // scripts below finishes loading first — app.js is same-origin and
+      // usually wins the race, but on a slow connection to this app's own
+      // server the external Google script can finish first, and onload
+      // can only fire once: if app.js hadn't defined this callback yet at
+      // that moment, the signal would be silently lost.
+      window.__gsiReady = false;
+      window.__onGsiLoad = function () {
+        window.__gsiReady = true;
+      };
+    </script>
+    <script src="https://accounts.google.com/gsi/client" async defer onload="window.__onGsiLoad()"></script>
     <script src="/app.js"></script>
   </body>
 </html>

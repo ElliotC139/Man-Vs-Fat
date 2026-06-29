@@ -440,10 +440,18 @@ authForm.addEventListener("submit", async (event) => {
   }
 });
 
-window.__onGsiLoad = () => {
+function markGsiLoaded() {
   gsiLoaded = true;
   tryInitGoogleSignIn();
-};
+}
+
+// The Google script's onload may have already fired (and set this flag)
+// before this same-origin script finished loading and got here.
+if (window.__gsiReady) {
+  markGsiLoaded();
+} else {
+  window.__onGsiLoad = markGsiLoaded;
+}
 
 function tryInitGoogleSignIn() {
   if (!googleClientId || !gsiLoaded || !window.google) return;
