@@ -7,10 +7,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// A single Monday 17:00 -> following Monday 17:00 boundary. First-class so
-// reports, averages and the PDF all key off the same definition of "week".
+// One account per person using the diary. Each has their own week-start
+// (weekday + time) so e.g. one user's week can run Mon 17:00 -> Mon 17:00
+// while another's runs Wed 09:00 -> Wed 09:00.
+model User {
+  id               Int      @id @default(autoincrement())
+  username         String   @unique
+  passwordHash     String
+  // 0 = Monday .. 6 = Sunday, matching WEEKDAYS_MON_FIRST in matchWeek.ts.
+  weekStartWeekday Int      @default(0)
+  weekStartHour    Int      @default(17)
+  weekStartMinute  Int      @default(0)
+  createdAt        DateTime @default(now())
+  matchWeeks       MatchWeek[]
+}
+
+// A single week-start -> following week-start boundary, per user. First-class
+// so reports, averages and the PDF all key off the same definition of "week".
+// userId is nullable only to let pre-multi-user rows exist; the first-ever
+// signup claims them (see routes/auth.ts).
 model MatchWeek {
   id                Int       @id @default(autoincrement())
+  userId            Int?
+  user              User?     @relation(fields: [userId], references: [id])
   startsAt          DateTime
   endsAt            DateTime
   reportGeneratedAt DateTime?
@@ -18,7 +37,7 @@ model MatchWeek {
   reportDriveUrl    String?
   entries           Entry[]
 
-  @@unique([startsAt, endsAt])
+  @@unique([userId, startsAt, endsAt])
 }
 
 model Entry {

@@ -2,12 +2,19 @@
 
 A deliberately rough food log for a Man v Fat Football habit. Log a meal by
 text and/or photo, Claude turns it into a short label + one best-guess kcal
-number, entries are grouped into Monday 17:00 → Monday 17:00 "match weeks,"
-and every Monday at 17:00 a clean PDF report is generated and uploaded to
-Google Drive automatically.
+number, entries are grouped into "match weeks" running from a configurable
+weekly rollover (Monday 17:00 by default) to the next, and a clean PDF report
+is generated and uploaded to Google Drive automatically once each week's
+rollover passes.
 
 No macros, no ranges, no guilt — single numbers, edit anything that looks
 wrong.
+
+Multiple people can use the same deployment: each person creates their own
+account (sign up with a username/password on first visit), sees only their
+own entries, and sets their own weekly rollover day/time under the ⚙ settings
+icon — useful since e.g. one person's week might run Monday 17:00 and
+another's Wednesday 09:00.
 
 ## Stack
 
@@ -22,9 +29,9 @@ database service, no build step in production (runs straight off `tsx`).
 - **`googleapis`** — uploads the PDF to Drive
 
 Why one process instead of e.g. a serverless function + external cron +
-hosted DB: a personal, single-user tool doesn't need that surface area, and
-an in-process cron only works at all if the process is guaranteed to be
-alive at the boundary — see "Hosting" below.
+hosted DB: a small personal tool for a couple of people doesn't need that
+surface area, and an in-process cron only works at all if the process is
+guaranteed to be alive at the boundary — see "Hosting" below.
 
 ## Quick start (local dev)
 
@@ -35,8 +42,11 @@ npm run db:migrate          # creates data/dev.db and applies the schema
 npm run dev                 # http://localhost:3000
 ```
 
-Open the URL on your phone (same network, or via a tunnel) — the form is the
-whole UI. Without Google credentials set, reports still generate locally;
+Open the URL on your phone (same network, or via a tunnel) — sign up with a
+username/password on first visit (anyone can create an account; there's no
+invite step). The very first account ever created on a deployment claims any
+match weeks logged before accounts existed, so pre-multi-user history isn't
+orphaned. Without Google credentials set, reports still generate locally;
 they just won't upload (see logs).
 
 To preview a report without waiting for Monday:
@@ -87,8 +97,7 @@ asked about Fly.io / a tiny VPS / scheduled GitHub Actions — reasoning:
   every week. A scheduled GitHub Action is the obvious-looking choice but
   it has no persistent disk of its own, so it would need an external DB
   (Turso/Neon/etc) and an external place to run the web form anyway — at
-  that point you have *more* moving parts, not fewer, for a single-user
-  tool.
+  that point you have *more* moving parts, not fewer, for a tool this small.
 - A serverless function (Vercel/Lambda-style) solves hosting the form but
   cron-on-a-timer there is itself just another scheduled trigger pointed
   back at the function, and you still need an external DB since serverless
@@ -96,14 +105,14 @@ asked about Fly.io / a tiny VPS / scheduled GitHub Actions — reasoning:
 - One small always-on instance with a persistent volume lets SQLite,
   uploaded photos, and an in-process `node-cron` all just live in one place.
   It's the smallest number of accounts/services/secrets to maintain for a
-  tool only one person uses.
+  tool a handful of people use.
 
 `Dockerfile` + `fly.toml` are included as a concrete instance of this
 (Render or Railway work the same way — single service, one volume). The one
 setting that actually matters wherever you deploy: **the instance must not
 auto-suspend on idle.** If the platform spins the process down between
 requests (Fly's default autostop, Render's free-tier sleep), the in-process
-cron simply never fires at 17:00. `fly.toml` sets
+cron simply never fires at each user's rollover time. `fly.toml` sets
 `auto_stop_machines = false` / `min_machines_running = 1` for this reason —
 keep the equivalent "always on" setting wherever you deploy.
 
@@ -148,21 +157,27 @@ belong to" all key off it — so it's covered by `tests/matchWeek.test.ts`,
 including the BST/GMT transition weeks (a Monday where the UK's UTC offset
 itself changes is the actual edge case that breaks naive implementations).
 
-The rule: a week is `[Monday 17:00, following Monday 17:00)` in `TIMEZONE`.
-An entry timestamped Monday 16:59 belongs to the closing week; Monday 17:00
-exactly starts the new one. Every entry gets assigned a `MatchWeek` row
-(created on first use) via `findOrCreateMatchWeek`, so weeks are first-class
-rows in the DB, not a display-time calculation.
+The rule: a week is `[rollover, following rollover)` in `TIMEZONE`, where the
+rollover weekday + time is configurable per user (`weekStartWeekday` /
+`weekStartHour` / `weekStartMinute` on `User`, defaulting to Monday 17:00 —
+`DEFAULT_WEEK_START`). An entry timestamped one minute before the rollover
+belongs to the closing week; the rollover instant exactly starts the new one.
+Every entry gets assigned a `MatchWeek` row (created on first use, scoped to
+that user) via `findOrCreateMatchWeek`, so weeks are first-class rows in the
+DB, not a display-time calculation.
 
 ## Weekly report job
 
-`src/jobs/scheduler.ts` fires `closeMatchWeeksNeedingReport()` every Monday
-17:00, and once more 5s after process startup to catch up anything missed
-while the process was down (deploy, crash, restart). It queries for any
-`MatchWeek` whose `endsAt` has passed but has no report yet — processing
-more than one if several were missed — generates the PDF, uploads it to
-Drive as `Food Diary/<week-start-date>.pdf`, and stamps the row so it's
-never regenerated automatically. A failure on one week doesn't block
+`src/jobs/scheduler.ts` fires `closeMatchWeeksNeedingReport()` every hour, and
+once more 5s after process startup to catch up anything missed while the
+process was down (deploy, crash, restart). It's hourly rather than a single
+weekly tick because each user has their own rollover weekday/time now —
+running more often keeps every user's report within an hour of their own
+boundary instead of only being timed for one user. It queries for any
+`MatchWeek` whose `endsAt` has passed but has no report yet — across all
+users, processing more than one if several were missed — generates the PDF,
+uploads it to Drive as `Food Diary/<week-start-date>.pdf`, and stamps the row
+so it's never regenerated automatically. A failure on one week doesn't block
 others, and leaves that week's `reportGeneratedAt` null so the next tick
 retries it.
 

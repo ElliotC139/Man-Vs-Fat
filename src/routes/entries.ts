@@ -3,12 +3,14 @@ import multer from "multer";
 import { z } from "zod";
 import { prisma } from "../db";
 import { config } from "../config";
+import { requireAuth } from "../auth";
 import { estimateMeal } from "../estimate";
-import { findOrCreateMatchWeek, getLocalParts, zonedTimeToUtc } from "../matchWeek";
+import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart, zonedTimeToUtc } from "../matchWeek";
 import { MEAL_TYPES, MEAL_TYPE_DEFAULT_HOUR, inferMealType, type MealType } from "../mealType";
 import { saveUploadedImage } from "../lib/storage";
 
 export const entriesRouter = Router();
+entriesRouter.use(requireAuth);
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -44,7 +46,8 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
   });
 
   const imageUrl = photo ? saveUploadedImage(photo.buffer, photo.mimetype) : null;
-  const matchWeek = await findOrCreateMatchWeek(entryTimestamp, config.TIMEZONE);
+  const weekStart = await getUserWeekStart(req.userId!);
+  const matchWeek = await findOrCreateMatchWeek(entryTimestamp, config.TIMEZONE, req.userId!, weekStart);
   const mealType = inferMealType(getLocalParts(entryTimestamp, config.TIMEZONE).hour);
 
   const entries = await prisma.$transaction(
@@ -90,6 +93,15 @@ entriesRouter.patch("/:id", async (req, res) => {
     return;
   }
 
+  // Ownership is checked up front (via the entry's match week) so one user
+  // can't read or mutate another's entry by guessing its id — a 404 here
+  // (rather than 403) also avoids confirming the entry exists at all.
+  const existing = await prisma.entry.findUnique({ where: { id }, include: { matchWeek: true } });
+  if (!existing || existing.matchWeek.userId !== req.userId) {
+    res.status(404).json({ error: "Entry not found" });
+    return;
+  }
+
   const { date, hour, ...rest } = parsed.data;
 
   try {
@@ -99,11 +111,6 @@ entriesRouter.patch("/:id", async (req, res) => {
     };
 
     if (date !== undefined || hour !== undefined) {
-      const existing = await prisma.entry.findUnique({ where: { id } });
-      if (!existing) {
-        res.status(404).json({ error: "Entry not found" });
-        return;
-      }
       const localTime = getLocalParts(existing.timestamp, config.TIMEZONE);
       const [year, month, day] = date
         ? (date.split("-").map(Number) as [number, number, number])
@@ -111,7 +118,8 @@ entriesRouter.patch("/:id", async (req, res) => {
       const effectiveMealType = (rest.mealType ?? existing.mealType) as MealType;
       const resolvedHour = hour ?? MEAL_TYPE_DEFAULT_HOUR[effectiveMealType];
       const newTimestamp = zonedTimeToUtc(year, month, day, resolvedHour, localTime.minute, config.TIMEZONE);
-      const matchWeek = await findOrCreateMatchWeek(newTimestamp, config.TIMEZONE);
+      const weekStart = await getUserWeekStart(req.userId!);
+      const matchWeek = await findOrCreateMatchWeek(newTimestamp, config.TIMEZONE, req.userId!, weekStart);
       data.timestamp = newTimestamp;
       data.matchWeekId = matchWeek.id;
     }
@@ -126,6 +134,11 @@ entriesRouter.patch("/:id", async (req, res) => {
 entriesRouter.delete("/:id", async (req, res) => {
   const id = Number(req.params.id);
   try {
+    const existing = await prisma.entry.findUnique({ where: { id }, include: { matchWeek: true } });
+    if (!existing || existing.matchWeek.userId !== req.userId) {
+      res.status(404).json({ error: "Entry not found" });
+      return;
+    }
     await prisma.entry.delete({ where: { id } });
     res.status(204).end();
   } catch {

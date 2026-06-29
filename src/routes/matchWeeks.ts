@@ -1,8 +1,10 @@
 import { Router } from "express";
 import { prisma } from "../db";
 import { config, driveConfigured } from "../config";
+import { requireAuth } from "../auth";
 import {
   getMatchWeekBoundariesForWeeksAgo,
+  getUserWeekStart,
   localDayKey,
   matchWeekCalendarDays,
   weightedDaysLogged,
@@ -12,6 +14,7 @@ import { generateWeekInsights } from "../insights";
 import { uploadReportToDrive } from "../drive/uploadToDrive";
 
 export const matchWeeksRouter = Router();
+matchWeeksRouter.use(requireAuth);
 
 function summarize(start: Date, entries: { kcal: number | null; timestamp: Date }[]) {
   const totalKcal = entries.reduce((sum, e) => sum + (e.kcal ?? 0), 0);
@@ -66,10 +69,11 @@ function parseWeeksAgo(value: unknown): number {
 
 matchWeeksRouter.get("/current", async (req, res) => {
   const weeksAgo = parseWeeksAgo(req.query.weeksAgo);
-  const { start, end } = getMatchWeekBoundariesForWeeksAgo(new Date(), weeksAgo, config.TIMEZONE);
+  const weekStart = await getUserWeekStart(req.userId!);
+  const { start, end } = getMatchWeekBoundariesForWeeksAgo(new Date(), weeksAgo, config.TIMEZONE, weekStart);
 
   const week = await prisma.matchWeek.findUnique({
-    where: { startsAt_endsAt: { startsAt: start, endsAt: end } },
+    where: { userId_startsAt_endsAt: { userId: req.userId!, startsAt: start, endsAt: end } },
     include: { entries: { orderBy: { timestamp: "asc" } } },
   });
 
@@ -87,10 +91,11 @@ matchWeeksRouter.get("/current", async (req, res) => {
 
 matchWeeksRouter.get("/current/report.pdf", async (req, res) => {
   const weeksAgo = parseWeeksAgo(req.query.weeksAgo);
-  const { start, end } = getMatchWeekBoundariesForWeeksAgo(new Date(), weeksAgo, config.TIMEZONE);
+  const weekStart = await getUserWeekStart(req.userId!);
+  const { start, end } = getMatchWeekBoundariesForWeeksAgo(new Date(), weeksAgo, config.TIMEZONE, weekStart);
 
   const week = await prisma.matchWeek.findUnique({
-    where: { startsAt_endsAt: { startsAt: start, endsAt: end } },
+    where: { userId_startsAt_endsAt: { userId: req.userId!, startsAt: start, endsAt: end } },
     include: { entries: { orderBy: { timestamp: "asc" } } },
   });
 
@@ -99,6 +104,7 @@ matchWeeksRouter.get("/current/report.pdf", async (req, res) => {
   // a valid "nothing logged this week" report instead of erroring.
   const weekForPdf = week ?? {
     id: 0,
+    userId: req.userId!,
     startsAt: start,
     endsAt: end,
     reportGeneratedAt: null,
@@ -130,7 +136,7 @@ matchWeeksRouter.get("/current/report.pdf", async (req, res) => {
 matchWeeksRouter.post("/:id/generate-report", async (req, res) => {
   const id = Number(req.params.id);
   const week = await prisma.matchWeek.findUnique({ where: { id }, include: { entries: true } });
-  if (!week) {
+  if (!week || week.userId !== req.userId) {
     res.status(404).json({ error: "Match week not found" });
     return;
   }

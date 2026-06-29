@@ -7,59 +7,99 @@
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <header class="banner">
-      <h1>Match Week Food Diary</h1>
-      <div class="week-nav">
-        <button id="week-prev" type="button" aria-label="Previous week">‹</button>
-        <p id="week-range" class="muted">Loading…</p>
-        <button id="week-next" type="button" aria-label="Next week" disabled>›</button>
+    <div id="auth-screen" class="auth-screen" hidden>
+      <div class="card auth-card">
+        <h1 class="auth-title">Match Week Food Diary</h1>
+        <form id="auth-form">
+          <label for="auth-username">Username</label>
+          <input type="text" id="auth-username" autocomplete="username" required />
+          <label for="auth-password">Password</label>
+          <input type="password" id="auth-password" autocomplete="current-password" required />
+          <button type="submit" id="auth-submit">Log in</button>
+          <p id="auth-error" class="error" hidden></p>
+        </form>
+        <p class="muted auth-toggle">
+          <span id="auth-toggle-text">Don't have an account?</span>
+          <button type="button" id="auth-toggle-btn" class="link-btn">Sign up</button>
+        </p>
       </div>
-    </header>
+    </div>
 
-    <main>
-      <p id="week-note" class="muted" hidden>Viewing a past week — go to the current week to log new entries.</p>
-
-      <form id="entry-form" class="card">
-        <label for="text">What did you eat?</label>
-        <textarea
-          id="text"
-          name="text"
-          rows="2"
-          placeholder="e.g. chicken stir fry with rice, small handful of crisps"
-        ></textarea>
-
-        <label for="photo" class="photo-label">
-          <span id="photo-status">📷 Add a photo (optional)</span>
-          <input type="file" id="photo" name="photo" accept="image/*" capture="environment" />
-        </label>
-
-        <button type="submit" id="submit-btn">Log it</button>
-        <p id="form-error" class="error" hidden></p>
-      </form>
-
-      <section id="result-card" class="card result" hidden>
-        <p class="muted">Got it — looks right?</p>
-        <p id="result-warning" class="error" hidden></p>
-        <div id="result-rows"></div>
-        <div class="result-actions">
-          <button id="result-save" type="button">Save corrections</button>
-          <button id="result-dismiss" type="button" class="ghost">Looks good</button>
+    <div id="app-shell" hidden>
+      <header class="banner">
+        <h1>Match Week Food Diary</h1>
+        <div class="week-nav">
+          <button id="week-prev" type="button" aria-label="Previous week">‹</button>
+          <p id="week-range" class="muted">Loading…</p>
+          <button id="week-next" type="button" aria-label="Next week" disabled>›</button>
         </div>
-      </section>
+        <button id="settings-toggle" type="button" class="settings-toggle" aria-label="Settings">⚙</button>
+      </header>
 
-      <section class="summary card">
-        <div class="summary-total"><span id="week-total">0</span> kcal this week</div>
-        <div class="muted"><span id="week-avg">0</span> kcal/day avg over <span id="days-logged">0</span> day(s) logged</div>
-        <div id="daily-totals" class="day-totals"></div>
-        <p id="pending-note" class="error" hidden></p>
-        <a id="export-pdf" class="button-link" href="/api/match-weeks/current/report.pdf">Export PDF</a>
-      </section>
+      <main>
+        <section id="settings-card" class="card" hidden>
+          <p class="muted">Signed in as <strong id="settings-username"></strong></p>
+          <label for="settings-weekday">Week starts on</label>
+          <select id="settings-weekday">
+            <option value="0">Monday</option>
+            <option value="1">Tuesday</option>
+            <option value="2">Wednesday</option>
+            <option value="3">Thursday</option>
+            <option value="4">Friday</option>
+            <option value="5">Saturday</option>
+            <option value="6">Sunday</option>
+          </select>
+          <label for="settings-time">at</label>
+          <input type="time" id="settings-time" />
+          <button id="settings-save" type="button">Save</button>
+          <p id="settings-error" class="error" hidden></p>
+          <button id="logout-btn" type="button" class="ghost">Log out</button>
+        </section>
 
-      <section>
-        <h2>This week</h2>
-        <div id="entry-list"></div>
-      </section>
-    </main>
+        <p id="week-note" class="muted" hidden>Viewing a past week — go to the current week to log new entries.</p>
+
+        <form id="entry-form" class="card">
+          <label for="text">What did you eat?</label>
+          <textarea
+            id="text"
+            name="text"
+            rows="2"
+            placeholder="e.g. chicken stir fry with rice, small handful of crisps"
+          ></textarea>
+
+          <label for="photo" class="photo-label">
+            <span id="photo-status">📷 Add a photo (optional)</span>
+            <input type="file" id="photo" name="photo" accept="image/*" capture="environment" />
+          </label>
+
+          <button type="submit" id="submit-btn">Log it</button>
+          <p id="form-error" class="error" hidden></p>
+        </form>
+
+        <section id="result-card" class="card result" hidden>
+          <p class="muted">Got it — looks right?</p>
+          <p id="result-warning" class="error" hidden></p>
+          <div id="result-rows"></div>
+          <div class="result-actions">
+            <button id="result-save" type="button">Save corrections</button>
+            <button id="result-dismiss" type="button" class="ghost">Looks good</button>
+          </div>
+        </section>
+
+        <section class="summary card">
+          <div class="summary-total"><span id="week-total">0</span> kcal this week</div>
+          <div class="muted"><span id="week-avg">0</span> kcal/day avg over <span id="days-logged">0</span> day(s) logged</div>
+          <div id="daily-totals" class="day-totals"></div>
+          <p id="pending-note" class="error" hidden></p>
+          <a id="export-pdf" class="button-link" href="/api/match-weeks/current/report.pdf">Export PDF</a>
+        </section>
+
+        <section>
+          <h2>This week</h2>
+          <div id="entry-list"></div>
+        </section>
+      </main>
+    </div>
 
     <script src="/app.js"></script>
   </body>

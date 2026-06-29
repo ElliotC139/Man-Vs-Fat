@@ -20,10 +20,29 @@ body {
 }
 
 .banner {
+  position: relative;
   background: linear-gradient(135deg, var(--pitch), var(--pitch-dark));
   color: white;
   padding: 28px 20px 22px;
   text-align: center;
+}
+
+.settings-toggle {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: white;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .banner h1 {
@@ -87,7 +106,10 @@ label {
 
 textarea,
 input[type="text"],
-input[type="number"] {
+input[type="number"],
+input[type="password"],
+input[type="time"],
+select {
   width: 100%;
   font-size: 1rem;
   padding: 10px 12px;
@@ -96,6 +118,8 @@ input[type="number"] {
   font-family: inherit;
   margin-bottom: 12px;
   resize: vertical;
+  background: var(--card);
+  color: var(--ink);
 }
 
 .photo-label {
@@ -341,4 +365,45 @@ h2 {
   text-align: center;
   color: var(--muted);
   padding: 20px;
+}
+
+.auth-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 360px;
+}
+
+.auth-title {
+  text-align: center;
+  color: var(--pitch-dark);
+  margin: 0 0 16px;
+  font-size: 1.3rem;
+}
+
+.auth-toggle {
+  text-align: center;
+  margin-top: 4px;
+}
+
+.link-btn {
+  width: auto;
+  min-height: auto;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--pitch);
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-decoration: underline;
+}
+
+#settings-card .muted {
+  margin-bottom: 12px;
 }

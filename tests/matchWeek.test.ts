@@ -75,6 +75,43 @@ describe("getMatchWeekBoundaries", () => {
   });
 });
 
+describe("getMatchWeekBoundaries with a custom week start", () => {
+  // weekday 2 = Wednesday (0 = Monday), 09:00.
+  const WED_9AM = { weekday: 2, hour: 9, minute: 0 };
+
+  it("keeps a Thursday entry in the week that started the prior Wednesday", () => {
+    // 2026-06-25 is a Thursday.
+    const { start, end } = getMatchWeekBoundaries(londonTime("2026-06-25T12:00:00Z"), TZ, WED_9AM);
+    expect(start.toISOString()).toBe(new Date("2026-06-24T09:00:00+01:00").toISOString());
+    expect(end.toISOString()).toBe(new Date("2026-07-01T09:00:00+01:00").toISOString());
+  });
+
+  it("puts a Wednesday 08:59 entry in the closing week, not the new one", () => {
+    const { start, end } = getMatchWeekBoundaries(londonTime("2026-06-24T07:59:00Z"), TZ, WED_9AM); // 08:59 BST
+    expect(start.toISOString()).toBe(new Date("2026-06-17T09:00:00+01:00").toISOString());
+    expect(end.toISOString()).toBe(new Date("2026-06-24T09:00:00+01:00").toISOString());
+  });
+
+  it("puts a Wednesday 09:00 entry in the new week", () => {
+    const { start, end } = getMatchWeekBoundaries(londonTime("2026-06-24T08:00:00Z"), TZ, WED_9AM); // 09:00 BST exactly
+    expect(start.toISOString()).toBe(new Date("2026-06-24T09:00:00+01:00").toISOString());
+    expect(end.toISOString()).toBe(new Date("2026-07-01T09:00:00+01:00").toISOString());
+  });
+
+  it("doesn't affect the default Monday 17:00 boundaries for a different user", () => {
+    const customResult = getMatchWeekBoundaries(londonTime("2026-06-23T12:00:00Z"), TZ, WED_9AM);
+    const defaultResult = getMatchWeekBoundaries(londonTime("2026-06-23T12:00:00Z"), TZ);
+    expect(customResult.start.toISOString()).not.toBe(defaultResult.start.toISOString());
+  });
+
+  it("steps back whole weeks for getMatchWeekBoundariesForWeeksAgo too", () => {
+    const reference = londonTime("2026-06-25T12:00:00Z"); // Thursday, in the week starting 2026-06-24
+    const oneWeekAgo = getMatchWeekBoundariesForWeeksAgo(reference, 1, TZ, WED_9AM);
+    expect(oneWeekAgo.start.toISOString()).toBe(new Date("2026-06-17T09:00:00+01:00").toISOString());
+    expect(oneWeekAgo.end.toISOString()).toBe(new Date("2026-06-24T09:00:00+01:00").toISOString());
+  });
+});
+
 describe("localDayKey", () => {
   it("groups by the local calendar date, not the UTC one", () => {
     // 23:30 UTC on 21 June 2026 is past midnight (00:30) on 22 June in London (BST, +1h).

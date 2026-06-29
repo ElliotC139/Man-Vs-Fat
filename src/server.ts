@@ -1,7 +1,10 @@
 import path from "node:path";
 import express from "express";
+import cookieParser from "cookie-parser";
 import { config } from "./config";
 import { ensureUploadsDir, UPLOADS_DIR } from "./lib/storage";
+import { ensureSessionSecret } from "./auth";
+import { authRouter } from "./routes/auth";
 import { entriesRouter } from "./routes/entries";
 import { matchWeeksRouter } from "./routes/matchWeeks";
 import { startScheduler } from "./jobs/scheduler";
@@ -12,15 +15,24 @@ const app = express();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 app.use("/uploads", express.static(UPLOADS_DIR));
 app.use(express.static(path.join(process.cwd(), "public")));
 
+app.use("/api/auth", authRouter);
 app.use("/api/entries", entriesRouter);
 app.use("/api/match-weeks", matchWeeksRouter);
 
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
 
-app.listen(config.PORT, () => {
-  console.log(`Match week food diary listening on :${config.PORT} (timezone ${config.TIMEZONE})`);
-  startScheduler();
-});
+ensureSessionSecret()
+  .then(() => {
+    app.listen(config.PORT, () => {
+      console.log(`Match week food diary listening on :${config.PORT} (timezone ${config.TIMEZONE})`);
+      startScheduler();
+    });
+  })
+  .catch((error) => {
+    console.error("Failed to bootstrap session secret:", error);
+    process.exit(1);
+  });

@@ -1,3 +1,24 @@
+const authScreen = document.getElementById("auth-screen");
+const appShell = document.getElementById("app-shell");
+const authForm = document.getElementById("auth-form");
+const authUsername = document.getElementById("auth-username");
+const authPassword = document.getElementById("auth-password");
+const authSubmit = document.getElementById("auth-submit");
+const authError = document.getElementById("auth-error");
+const authToggleText = document.getElementById("auth-toggle-text");
+const authToggleBtn = document.getElementById("auth-toggle-btn");
+
+const settingsToggle = document.getElementById("settings-toggle");
+const settingsCard = document.getElementById("settings-card");
+const settingsUsername = document.getElementById("settings-username");
+const settingsWeekday = document.getElementById("settings-weekday");
+const settingsTime = document.getElementById("settings-time");
+const settingsSave = document.getElementById("settings-save");
+const settingsError = document.getElementById("settings-error");
+const logoutBtn = document.getElementById("logout-btn");
+
+let authMode = "login";
+
 const form = document.getElementById("entry-form");
 const textInput = document.getElementById("text");
 const photoInput = document.getElementById("photo");
@@ -375,4 +396,113 @@ resultDismiss.addEventListener("click", () => {
   resultCard.hidden = true;
 });
 
-loadWeek();
+function setAuthMode(mode) {
+  authMode = mode;
+  authSubmit.textContent = mode === "login" ? "Log in" : "Sign up";
+  authToggleText.textContent = mode === "login" ? "Don't have an account?" : "Already have an account?";
+  authToggleBtn.textContent = mode === "login" ? "Sign up" : "Log in";
+  authError.hidden = true;
+}
+
+authToggleBtn.addEventListener("click", () => {
+  setAuthMode(authMode === "login" ? "signup" : "login");
+});
+
+authForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  authError.hidden = true;
+
+  const username = authUsername.value.trim();
+  const password = authPassword.value;
+
+  authSubmit.disabled = true;
+  try {
+    const res = await fetch(`/api/auth/${authMode === "login" ? "login" : "signup"}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(typeof body.error === "string" ? body.error : "Something went wrong. Try again.");
+    }
+    authForm.reset();
+    showApp(body);
+  } catch (error) {
+    authError.textContent = error.message;
+    authError.hidden = false;
+  } finally {
+    authSubmit.disabled = false;
+  }
+});
+
+settingsToggle.addEventListener("click", () => {
+  settingsCard.hidden = !settingsCard.hidden;
+});
+
+logoutBtn.addEventListener("click", async () => {
+  await fetch("/api/auth/logout", { method: "POST" });
+  showAuthScreen();
+});
+
+settingsSave.addEventListener("click", async () => {
+  settingsError.hidden = true;
+  const [hour, minute] = settingsTime.value.split(":").map(Number);
+
+  settingsSave.disabled = true;
+  try {
+    const res = await fetch("/api/auth/me", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        weekStartWeekday: Number(settingsWeekday.value),
+        weekStartHour: hour,
+        weekStartMinute: minute,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(typeof body.error === "string" ? body.error : "Couldn't save settings.");
+    }
+    settingsCard.hidden = true;
+    weeksAgo = 0;
+    loadWeek();
+  } catch (error) {
+    settingsError.textContent = error.message;
+    settingsError.hidden = false;
+  } finally {
+    settingsSave.disabled = false;
+  }
+});
+
+function populateSettings(user) {
+  settingsUsername.textContent = user.username;
+  settingsWeekday.value = String(user.weekStartWeekday);
+  settingsTime.value = `${String(user.weekStartHour).padStart(2, "0")}:${String(user.weekStartMinute).padStart(2, "0")}`;
+}
+
+function showApp(user) {
+  populateSettings(user);
+  settingsCard.hidden = true;
+  authScreen.hidden = true;
+  appShell.hidden = false;
+  loadWeek();
+}
+
+function showAuthScreen() {
+  appShell.hidden = true;
+  authScreen.hidden = false;
+  setAuthMode("login");
+  authForm.reset();
+}
+
+async function checkAuth() {
+  const res = await fetch("/api/auth/me");
+  if (res.ok) {
+    showApp(await res.json());
+  } else {
+    showAuthScreen();
+  }
+}
+
+checkAuth();
