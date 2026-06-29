@@ -367,7 +367,7 @@ h2 {
   padding: 20px;
 }
 
-.auth-screen {
+.auth-screen:not([hidden]) {
   min-height: 100vh;
   display: flex;
   align-items: center;
