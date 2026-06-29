@@ -8,6 +8,7 @@ import {
   weightedDaysLogged,
 } from "../matchWeek";
 import { generateMatchWeekReport } from "../pdf/generateReport";
+import { generateWeekInsights } from "../insights";
 import { uploadReportToDrive } from "../drive/uploadToDrive";
 
 export const matchWeeksRouter = Router();
@@ -107,7 +108,15 @@ matchWeeksRouter.get("/current/report.pdf", async (req, res) => {
   };
 
   try {
-    const pdfBuffer = await generateMatchWeekReport(weekForPdf, config.TIMEZONE);
+    const { totalKcal, daysLogged, dailyAverage } = summarize(start, weekForPdf.entries);
+    const insights = await generateWeekInsights({
+      entries: weekForPdf.entries,
+      totalKcal,
+      dailyAverage,
+      daysLogged,
+      timeZone: config.TIMEZONE,
+    });
+    const pdfBuffer = await generateMatchWeekReport(weekForPdf, config.TIMEZONE, insights);
     const fileName = `${localDayKey(start, config.TIMEZONE)}.pdf`;
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
@@ -127,7 +136,15 @@ matchWeeksRouter.post("/:id/generate-report", async (req, res) => {
   }
 
   try {
-    const pdfBuffer = await generateMatchWeekReport(week, config.TIMEZONE);
+    const { totalKcal, daysLogged, dailyAverage } = summarize(week.startsAt, week.entries);
+    const insights = await generateWeekInsights({
+      entries: week.entries,
+      totalKcal,
+      dailyAverage,
+      daysLogged,
+      timeZone: config.TIMEZONE,
+    });
+    const pdfBuffer = await generateMatchWeekReport(week, config.TIMEZONE, insights);
     const fileName = `${localDayKey(week.startsAt, config.TIMEZONE)}.pdf`;
 
     let driveFileId: string | undefined;
