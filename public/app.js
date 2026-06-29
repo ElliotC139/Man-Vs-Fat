@@ -474,12 +474,13 @@ async function handleGoogleCredential(response) {
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(typeof body.error === "string" ? body.error : "Google sign-in failed.");
+      throw new Error(`${res.status}: ${typeof body.error === "string" ? body.error : "Google sign-in failed."}`);
     }
     showApp(body);
   } catch (error) {
     authError.textContent = error.message;
     authError.hidden = false;
+    alert(`Google sign-in debug: ${error.message}`);
   }
 }
 
