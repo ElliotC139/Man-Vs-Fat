@@ -49,6 +49,32 @@ const pendingNoteEl = document.getElementById("pending-note");
 const exportPdfEl = document.getElementById("export-pdf");
 
 let weeksAgo = 0;
+let userWeekStartWeekday = 0; // 0=Mon … 6=Sun (same encoding as settings select)
+let userWeekStartHour = 17;
+
+const logWeekRow = document.getElementById("log-week-row");
+const logWeekCurrentBtn = document.getElementById("log-week-current");
+const logWeekLastBtn = document.getElementById("log-week-last");
+let logToLastWeek = false;
+
+logWeekCurrentBtn.addEventListener("click", () => {
+  logToLastWeek = false;
+  logWeekCurrentBtn.classList.add("log-week-btn--active");
+  logWeekLastBtn.classList.remove("log-week-btn--active");
+});
+logWeekLastBtn.addEventListener("click", () => {
+  logToLastWeek = true;
+  logWeekLastBtn.classList.add("log-week-btn--active");
+  logWeekCurrentBtn.classList.remove("log-week-btn--active");
+});
+
+function isRolloverDay(dateInputValue) {
+  if (!dateInputValue) return false;
+  const [year, month, day] = dateInputValue.split("-").map(Number);
+  // App weekday: 0=Mon…6=Sun → JS getDay(): Mon=1…Sun=0, so JS day = (appWeekday+1)%7
+  const rolloverJsDay = (userWeekStartWeekday + 1) % 7;
+  return new Date(year, month - 1, day).getDay() === rolloverJsDay;
+}
 
 function renderResultRows(entries) {
   resultRows.innerHTML = "";
@@ -79,21 +105,12 @@ const dateFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short
 const dayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" });
 const timeFmt = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
-const MEAL_ORDER = ["breakfast", "lunch", "dinner", "snack"];
-const MEAL_LABELS = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner", snack: "Snacks" };
-
 function toDateInputValue(timestamp) {
   const d = new Date(timestamp);
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-function isMonday(dateInputValue) {
-  if (!dateInputValue) return false;
-  const [year, month, day] = dateInputValue.split("-").map(Number);
-  return new Date(year, month - 1, day).getDay() === 1;
 }
 
 photoInput.addEventListener("change", () => {
@@ -128,6 +145,8 @@ async function loadWeek() {
 
   form.hidden = weeksAgo !== 0;
   weekNoteEl.hidden = weeksAgo === 0;
+  const todayJsDay = new Date().getDay();
+  logWeekRow.hidden = weeksAgo !== 0 || todayJsDay !== (userWeekStartWeekday + 1) % 7;
 
   if (week.pendingEstimates > 0) {
     const plural = week.pendingEstimates > 1 ? "entries" : "entry";
@@ -174,19 +193,15 @@ function renderEntries(entries) {
   for (const entry of entries) {
     const d = new Date(entry.timestamp);
     const dayKey = d.toDateString();
-    if (!dayGroups.has(dayKey)) dayGroups.set(dayKey, { date: d, meals: new Map() });
-    const meals = dayGroups.get(dayKey).meals;
-    const mealType = entry.mealType ?? "snack";
-    if (!meals.has(mealType)) meals.set(mealType, []);
-    meals.get(mealType).push(entry);
+    if (!dayGroups.has(dayKey)) dayGroups.set(dayKey, { date: d, entries: [] });
+    dayGroups.get(dayKey).entries.push(entry);
   }
 
-  for (const [dayKey, { date, meals }] of dayGroups.entries()) {
+  for (const [dayKey, { date, entries: dayEntries }] of dayGroups.entries()) {
     const group = document.createElement("div");
     group.className = "day-group";
 
     const isToday = dayKey === todayKey;
-    const dayEntries = [...meals.values()].flat();
     const dayKcal = dayEntries.reduce((sum, e) => sum + (e.kcal ?? 0), 0);
     const dayPending = dayEntries.some((e) => e.kcal === null);
 
@@ -202,18 +217,8 @@ function renderEntries(entries) {
     heading.append(headingLabel, headingKcal);
     group.appendChild(heading);
 
-    for (const mealType of MEAL_ORDER) {
-      const mealEntries = meals.get(mealType);
-      if (!mealEntries) continue;
-
-      const mealHeading = document.createElement("div");
-      mealHeading.className = "meal-heading";
-      mealHeading.textContent = MEAL_LABELS[mealType];
-      group.appendChild(mealHeading);
-
-      for (const entry of mealEntries) {
-        group.appendChild(renderEntryRow(entry));
-      }
+    for (const entry of dayEntries) {
+      group.appendChild(renderEntryRow(entry));
     }
 
     entryListEl.appendChild(group);
@@ -271,33 +276,28 @@ function enterEditMode(row, entry) {
   dateInput.type = "date";
   dateInput.value = toDateInputValue(entry.timestamp);
 
-  const mealSelect = document.createElement("select");
-  for (const mealType of MEAL_ORDER) {
-    const option = document.createElement("option");
-    option.value = mealType;
-    option.textContent = MEAL_LABELS[mealType];
-    if (mealType === entry.mealType) option.selected = true;
-    mealSelect.appendChild(option);
-  }
+  // On the rollover day an entry's timestamp determines which week it falls in
+  // (before the rollover hour → last week; at/after → this week). Show a plain
+  // selector so the user can move it without having to know what time to pick.
+  const weekSelect = document.createElement("select");
+  weekSelect.className = "week-select";
+  const lastWeekOpt = document.createElement("option");
+  lastWeekOpt.value = "last";
+  lastWeekOpt.textContent = "Last week";
+  const thisWeekOpt = document.createElement("option");
+  thisWeekOpt.value = "current";
+  thisWeekOpt.textContent = "This week";
+  weekSelect.append(lastWeekOpt, thisWeekOpt);
 
-  // Monday snacks straddle the 17:00 match-week boundary, so a meal type alone
-  // can't say which week they belong to — this lets the user disambiguate.
-  const snackTimeSelect = document.createElement("select");
-  const daySnackOption = document.createElement("option");
-  daySnackOption.value = "day";
-  daySnackOption.textContent = "Snack (day)";
-  const eveningSnackOption = document.createElement("option");
-  eveningSnackOption.value = "evening";
-  eveningSnackOption.textContent = "Snack (evening)";
-  snackTimeSelect.append(daySnackOption, eveningSnackOption);
-  snackTimeSelect.value = new Date(entry.timestamp).getHours() < 17 ? "day" : "evening";
-
-  function updateSnackTimeVisibility() {
-    snackTimeSelect.hidden = !(mealSelect.value === "snack" && isMonday(dateInput.value));
+  function updateWeekSelectVisibility() {
+    weekSelect.hidden = !isRolloverDay(dateInput.value);
+    if (!weekSelect.hidden) {
+      const entryHour = new Date(entry.timestamp).getHours();
+      weekSelect.value = entryHour < userWeekStartHour ? "last" : "current";
+    }
   }
-  updateSnackTimeVisibility();
-  dateInput.addEventListener("input", updateSnackTimeVisibility);
-  mealSelect.addEventListener("change", updateSnackTimeVisibility);
+  updateWeekSelectVisibility();
+  dateInput.addEventListener("input", updateWeekSelectVisibility);
 
   const saveBtn = document.createElement("button");
   saveBtn.type = "button";
@@ -307,11 +307,12 @@ function enterEditMode(row, entry) {
     const body = {
       label: labelInput.value.trim(),
       kcal: kcalInput.value === "" ? null : Number(kcalInput.value),
-      mealType: mealSelect.value,
       date: dateInput.value,
     };
-    if (mealSelect.value === "snack" && isMonday(dateInput.value)) {
-      body.hour = snackTimeSelect.value === "day" ? 14 : 20;
+    if (isRolloverDay(dateInput.value)) {
+      body.hour = weekSelect.value === "last"
+        ? Math.max(0, userWeekStartHour - 1)
+        : userWeekStartHour;
     }
     await fetch(`/api/entries/${entry.id}`, {
       method: "PATCH",
@@ -321,7 +322,7 @@ function enterEditMode(row, entry) {
     loadWeek();
   });
 
-  editRow.append(labelInput, kcalInput, dateInput, mealSelect, snackTimeSelect, saveBtn);
+  editRow.append(labelInput, kcalInput, dateInput, weekSelect, saveBtn);
   row.appendChild(editRow);
 }
 
@@ -345,6 +346,7 @@ form.addEventListener("submit", async (event) => {
   const data = new FormData();
   if (text) data.append("text", text);
   if (photo) data.append("photo", photo);
+  if (logToLastWeek) data.append("lastWeek", "true");
 
   submitBtn.disabled = true;
   submitBtn.textContent = "Estimating…";
@@ -367,6 +369,9 @@ form.addEventListener("submit", async (event) => {
 
     form.reset();
     photoStatus.textContent = "📷 Add a photo (optional)";
+    logToLastWeek = false;
+    logWeekCurrentBtn.classList.add("log-week-btn--active");
+    logWeekLastBtn.classList.remove("log-week-btn--active");
     await loadWeek();
   } catch (error) {
     formError.textContent = error.message;
@@ -534,6 +539,8 @@ function populateSettings(user) {
   settingsUsername.textContent = user.username;
   settingsWeekday.value = String(user.weekStartWeekday);
   settingsTime.value = `${String(user.weekStartHour).padStart(2, "0")}:${String(user.weekStartMinute).padStart(2, "0")}`;
+  userWeekStartWeekday = user.weekStartWeekday;
+  userWeekStartHour = user.weekStartHour;
 }
 
 function showApp(user) {

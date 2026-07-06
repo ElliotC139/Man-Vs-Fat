@@ -290,13 +290,40 @@ h2 {
   margin: 0 0 6px;
 }
 
-.meal-heading {
-  font-weight: 600;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.log-week-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.log-week-btns {
+  display: flex;
+  gap: 6px;
+}
+
+.log-week-btn {
+  width: auto;
+  min-height: 36px;
+  padding: 4px 14px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  background: transparent;
   color: var(--muted);
-  margin: 10px 6px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+}
+
+.log-week-btn--active {
+  background: var(--pitch);
+  color: white;
+  border-color: var(--pitch);
+}
+
+.week-select {
+  flex: 1;
+  min-width: 120px;
+  margin-bottom: 0;
 }
 
 .entry-row {

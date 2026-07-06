@@ -74,6 +74,13 @@
             <input type="file" id="photo" name="photo" accept="image/*" capture="environment" />
           </label>
 
+          <div id="log-week-row" class="log-week-row" hidden>
+            <span class="muted">Count toward</span>
+            <div class="log-week-btns">
+              <button type="button" id="log-week-current" class="log-week-btn log-week-btn--active">This week</button>
+              <button type="button" id="log-week-last" class="log-week-btn">Last week</button>
+            </div>
+          </div>
           <button type="submit" id="submit-btn">Log it</button>
           <p id="form-error" class="error" hidden></p>
         </form>

@@ -20,6 +20,7 @@ const upload = multer({
 const createEntrySchema = z.object({
   text: z.string().trim().optional(),
   timestamp: z.string().datetime().optional(),
+  lastWeek: z.string().optional(),
 });
 
 entriesRouter.post("/", upload.single("photo"), async (req, res) => {
@@ -29,7 +30,7 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
     return;
   }
 
-  const { text, timestamp } = parsed.data;
+  const { text, timestamp, lastWeek } = parsed.data;
   const photo = req.file;
 
   if (!text?.trim() && !photo) {
@@ -37,7 +38,16 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
     return;
   }
 
-  const entryTimestamp = timestamp ? new Date(timestamp) : new Date();
+  const weekStart = await getUserWeekStart(req.userId!);
+
+  let entryTimestamp = timestamp ? new Date(timestamp) : new Date();
+  if (lastWeek === "true") {
+    // Place the entry 1 minute before the user's rollover boundary so it lands
+    // in the closing week regardless of when it was actually logged.
+    const now = getLocalParts(entryTimestamp, config.TIMEZONE);
+    const rolloverToday = zonedTimeToUtc(now.year, now.month, now.day, weekStart.hour, weekStart.minute, config.TIMEZONE);
+    entryTimestamp = new Date(rolloverToday.getTime() - 60_000);
+  }
 
   const items = await estimateMeal({
     text,
@@ -46,7 +56,6 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
   });
 
   const imageUrl = photo ? saveUploadedImage(photo.buffer, photo.mimetype) : null;
-  const weekStart = await getUserWeekStart(req.userId!);
   const matchWeek = await findOrCreateMatchWeek(entryTimestamp, config.TIMEZONE, req.userId!, weekStart);
   const mealType = inferMealType(getLocalParts(entryTimestamp, config.TIMEZONE).hour);
 
