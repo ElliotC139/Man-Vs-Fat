@@ -140,6 +140,34 @@ entriesRouter.patch("/:id", async (req, res) => {
   }
 });
 
+entriesRouter.post("/:id/repeat", async (req, res) => {
+  const id = Number(req.params.id);
+  const existing = await prisma.entry.findUnique({ where: { id }, include: { matchWeek: true } });
+  if (!existing || existing.matchWeek.userId !== req.userId) {
+    res.status(404).json({ error: "Entry not found" });
+    return;
+  }
+
+  const entryTimestamp = new Date();
+  const weekStart = await getUserWeekStart(req.userId!);
+  const matchWeek = await findOrCreateMatchWeek(entryTimestamp, config.TIMEZONE, req.userId!, weekStart);
+  const mealType = inferMealType(getLocalParts(entryTimestamp, config.TIMEZONE).hour);
+
+  const entry = await prisma.entry.create({
+    data: {
+      timestamp: entryTimestamp,
+      rawInput: null,
+      label: existing.label,
+      kcal: existing.kcal,
+      imageUrl: existing.imageUrl,
+      mealType,
+      matchWeekId: matchWeek.id,
+    },
+  });
+
+  res.status(201).json(entry);
+});
+
 entriesRouter.delete("/:id", async (req, res) => {
   const id = Number(req.params.id);
   try {

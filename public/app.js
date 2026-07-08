@@ -248,11 +248,16 @@ function renderEntryRow(entry) {
   editBtn.textContent = "Edit";
   editBtn.type = "button";
   editBtn.addEventListener("click", () => enterEditMode(row, entry));
+  const repeatBtn = document.createElement("button");
+  repeatBtn.textContent = "+Today";
+  repeatBtn.type = "button";
+  repeatBtn.setAttribute("aria-label", "Add to today");
+  repeatBtn.addEventListener("click", () => repeatEntry(entry.id));
   const delBtn = document.createElement("button");
   delBtn.textContent = "✕";
   delBtn.type = "button";
   delBtn.addEventListener("click", () => deleteEntry(entry.id));
-  actions.append(editBtn, delBtn);
+  actions.append(editBtn, repeatBtn, delBtn);
 
   row.append(time, label, kcal, actions);
   return row;
@@ -328,6 +333,12 @@ function enterEditMode(row, entry) {
 
 async function deleteEntry(id) {
   await fetch(`/api/entries/${id}`, { method: "DELETE" });
+  loadWeek();
+}
+
+async function repeatEntry(id) {
+  await fetch(`/api/entries/${id}/repeat`, { method: "POST" });
+  weeksAgo = 0;
   loadWeek();
 }
 
