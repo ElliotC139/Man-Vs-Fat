@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config";
-import { localDayLabel, localTimeLabel } from "./matchWeek";
+import { localDayLabel } from "./matchWeek";
 
 const client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
 
@@ -12,13 +12,15 @@ that could apply to anyone.
 Write four short sections:
 - wentWell: what they did well this week
 - couldImprove: specific things that could have gone better
-- noticed: patterns about their own week they likely weren't consciously aware of (timing, repetition, portion drift, gaps, etc.)
+- noticed: patterns about their own week they likely weren't consciously aware of (repetition, portion drift, calorie spread across days, food choices, etc.)
 - easyWins: small, concrete changes that would compound into a bigger impact over time
 
 Rules:
 - Each section: 2-3 bullet points, each a single plain sentence, specific and \
-  concrete (reference actual foods/days/times where it helps). Never preachy, \
+  concrete (reference actual foods and days where it helps). Never preachy, \
   never guilt-tripping, no macro breakdowns, no calorie-counting-app tone.
+- The diary timestamps are when entries were LOGGED, not when the food was eaten. \
+  Never comment on meal timing, eating times, or time of day.
 - If a week is too sparse to say something specific and genuine for a section, \
   it's fine for that section to have fewer points, or even none, rather than \
   inventing detail.
@@ -50,9 +52,8 @@ export interface InsightsInput {
 function buildPrompt(input: InsightsInput): string {
   const lines = input.entries.map((entry) => {
     const day = localDayLabel(entry.timestamp, input.timeZone);
-    const time = localTimeLabel(entry.timestamp, input.timeZone);
     const kcal = entry.kcal === null ? "kcal unknown" : `${entry.kcal} kcal`;
-    return `- ${day} ${time} (${entry.mealType}): ${entry.label} — ${kcal}`;
+    return `- ${day}: ${entry.label} — ${kcal}`;
   });
 
   return [
