@@ -16,16 +16,18 @@ import { uploadReportToDrive } from "../drive/uploadToDrive";
 export const matchWeeksRouter = Router();
 matchWeeksRouter.use(requireAuth);
 
-function summarize(start: Date, entries: { kcal: number | null; timestamp: Date }[]) {
+function summarize(
+  start: Date,
+  entries: { kcal: number | null; timestamp: Date }[],
+  exercises: { kcalBurned: number | null }[],
+) {
   const totalKcal = entries.reduce((sum, e) => sum + (e.kcal ?? 0), 0);
+  const exerciseTotalKcal = exercises.reduce((sum, ex) => sum + (ex.kcalBurned ?? 0), 0);
   const loggedDayKeys = new Set(entries.map((e) => localDayKey(e.timestamp, config.TIMEZONE)));
   const daysLogged = weightedDaysLogged(loggedDayKeys, start, config.TIMEZONE);
   const dailyAverage = daysLogged > 0 ? Math.round(totalKcal / daysLogged) : 0;
-  // Entries can land with kcal: null when the estimator couldn't get a guess
-  // (e.g. a transient upstream error) — surfaced so the total doesn't read as
-  // a silent, misleading zero.
   const pendingEstimates = entries.filter((e) => e.kcal === null).length;
-  return { totalKcal, daysLogged, dailyAverage, pendingEstimates };
+  return { totalKcal, exerciseTotalKcal, daysLogged, dailyAverage, pendingEstimates };
 }
 
 // Every calendar day the week touches, not just the ones with entries, so the
@@ -74,18 +76,23 @@ matchWeeksRouter.get("/current", async (req, res) => {
 
   const week = await prisma.matchWeek.findUnique({
     where: { userId_startsAt_endsAt: { userId: req.userId!, startsAt: start, endsAt: end } },
-    include: { entries: { orderBy: { timestamp: "asc" } } },
+    include: {
+      entries: { orderBy: { timestamp: "asc" } },
+      exercises: { orderBy: { timestamp: "asc" } },
+    },
   });
 
   const entries = week?.entries ?? [];
+  const exercises = week?.exercises ?? [];
   res.json({
     id: week?.id ?? null,
     startsAt: start,
     endsAt: end,
     weeksAgo,
     entries,
+    exercises,
     dailyTotals: dailyTotals(start, entries),
-    ...summarize(start, entries),
+    ...summarize(start, entries, exercises),
   });
 });
 
@@ -114,7 +121,7 @@ matchWeeksRouter.get("/current/report.pdf", async (req, res) => {
   };
 
   try {
-    const { totalKcal, daysLogged, dailyAverage } = summarize(start, weekForPdf.entries);
+    const { totalKcal, daysLogged, dailyAverage } = summarize(start, weekForPdf.entries, []);
     const insights = await generateWeekInsights({
       entries: weekForPdf.entries,
       totalKcal,
@@ -135,14 +142,14 @@ matchWeeksRouter.get("/current/report.pdf", async (req, res) => {
 
 matchWeeksRouter.post("/:id/generate-report", async (req, res) => {
   const id = Number(req.params.id);
-  const week = await prisma.matchWeek.findUnique({ where: { id }, include: { entries: true } });
+  const week = await prisma.matchWeek.findUnique({ where: { id }, include: { entries: true, exercises: true } });
   if (!week || week.userId !== req.userId) {
     res.status(404).json({ error: "Match week not found" });
     return;
   }
 
   try {
-    const { totalKcal, daysLogged, dailyAverage } = summarize(week.startsAt, week.entries);
+    const { totalKcal, daysLogged, dailyAverage } = summarize(week.startsAt, week.entries, week.exercises ?? []);
     const insights = await generateWeekInsights({
       entries: week.entries,
       totalKcal,

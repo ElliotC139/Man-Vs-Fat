@@ -15,9 +15,31 @@ const settingsCard = document.getElementById("settings-card");
 const settingsUsername = document.getElementById("settings-username");
 const settingsWeekday = document.getElementById("settings-weekday");
 const settingsTime = document.getElementById("settings-time");
+const settingsWeight = document.getElementById("settings-weight");
+const settingsHeight = document.getElementById("settings-height");
+const settingsAge = document.getElementById("settings-age");
+const settingsActivity = document.getElementById("settings-activity");
+const settingsGoal = document.getElementById("settings-goal");
 const settingsSave = document.getElementById("settings-save");
 const settingsError = document.getElementById("settings-error");
 const logoutBtn = document.getElementById("logout-btn");
+
+const budgetWidget = document.getElementById("budget-widget");
+const budgetWeeklyLabel = document.getElementById("budget-weekly-label");
+const budgetTodayTarget = document.getElementById("budget-today-target");
+const budgetBarFill = document.getElementById("budget-bar-fill");
+const budgetTodayConsumed = document.getElementById("budget-today-consumed");
+const budgetTodayRemaining = document.getElementById("budget-today-remaining");
+const budgetWeekDetail = document.getElementById("budget-week-detail");
+
+const exerciseToggle = document.getElementById("exercise-toggle");
+const exerciseForm = document.getElementById("exercise-form");
+const exerciseText = document.getElementById("exercise-text");
+const exercisePhotoInput = document.getElementById("exercise-photo");
+const exercisePhotoStatus = document.getElementById("exercise-photo-status");
+const exerciseSubmit = document.getElementById("exercise-submit");
+const exerciseError = document.getElementById("exercise-error");
+const exerciseListEl = document.getElementById("exercise-list");
 
 let authMode = "login";
 let googleClientId = null;
@@ -51,6 +73,7 @@ const exportPdfEl = document.getElementById("export-pdf");
 let weeksAgo = 0;
 let userWeekStartWeekday = 0; // 0=Mon … 6=Sun (same encoding as settings select)
 let userWeekStartHour = 17;
+let currentUser = null;
 
 const logWeekRow = document.getElementById("log-week-row");
 const logWeekCurrentBtn = document.getElementById("log-week-current");
@@ -145,6 +168,8 @@ async function loadWeek() {
 
   form.hidden = weeksAgo !== 0;
   weekNoteEl.hidden = weeksAgo === 0;
+  exerciseToggle.hidden = weeksAgo !== 0;
+  if (weeksAgo !== 0) { exerciseForm.hidden = true; exerciseToggle.textContent = "+ Log exercise"; }
   const todayJsDay = new Date().getDay();
   logWeekRow.hidden = weeksAgo !== 0 || todayJsDay !== (userWeekStartWeekday + 1) % 7;
 
@@ -158,6 +183,8 @@ async function loadWeek() {
 
   renderDailyTotals(week.dailyTotals ?? []);
   renderEntries(week.entries);
+  renderExercises(week.exercises ?? []);
+  renderBudgetWidget(week);
 }
 
 function renderDailyTotals(days) {
@@ -522,6 +549,11 @@ settingsSave.addEventListener("click", async () => {
 
   settingsSave.disabled = true;
   try {
+    const weightVal = settingsWeight.value ? Number(settingsWeight.value) : null;
+    const heightVal = settingsHeight.value ? Number(settingsHeight.value) : null;
+    const ageVal = settingsAge.value ? Number(settingsAge.value) : null;
+    const activityVal = settingsActivity.value || null;
+    const goalVal = settingsGoal.value ? Number(settingsGoal.value) : null;
     const res = await fetch("/api/auth/me", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -529,12 +561,18 @@ settingsSave.addEventListener("click", async () => {
         weekStartWeekday: Number(settingsWeekday.value),
         weekStartHour: hour,
         weekStartMinute: minute,
+        weightKg: weightVal,
+        heightCm: heightVal,
+        ageYears: ageVal,
+        activityLevel: activityVal,
+        weeklyGoalKg: goalVal,
       }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(typeof body.error === "string" ? body.error : "Couldn't save settings.");
     }
+    populateSettings(body);
     settingsCard.hidden = true;
     weeksAgo = 0;
     loadWeek();
@@ -547,11 +585,17 @@ settingsSave.addEventListener("click", async () => {
 });
 
 function populateSettings(user) {
+  currentUser = user;
   settingsUsername.textContent = user.username;
   settingsWeekday.value = String(user.weekStartWeekday);
   settingsTime.value = `${String(user.weekStartHour).padStart(2, "0")}:${String(user.weekStartMinute).padStart(2, "0")}`;
   userWeekStartWeekday = user.weekStartWeekday;
   userWeekStartHour = user.weekStartHour;
+  if (user.weightKg) settingsWeight.value = user.weightKg;
+  if (user.heightCm) settingsHeight.value = user.heightCm;
+  if (user.ageYears) settingsAge.value = user.ageYears;
+  settingsActivity.value = user.activityLevel ?? "";
+  settingsGoal.value = user.weeklyGoalKg ? String(user.weeklyGoalKg) : "";
 }
 
 function showApp(user) {
@@ -580,3 +624,155 @@ async function checkAuth() {
 
 checkAuth();
 loadGoogleConfig();
+
+// ── Exercise photo status ──────────────────────────────────────────────────
+exercisePhotoInput.addEventListener("change", () => {
+  exercisePhotoStatus.textContent = exercisePhotoInput.files[0]
+    ? `📷 ${exercisePhotoInput.files[0].name}`
+    : "📷 Add a screenshot (optional)";
+});
+
+// ── Exercise form toggle ───────────────────────────────────────────────────
+exerciseToggle.addEventListener("click", () => {
+  const hidden = exerciseForm.hidden;
+  exerciseForm.hidden = !hidden;
+  exerciseToggle.textContent = hidden ? "✕ Cancel" : "+ Log exercise";
+});
+
+// ── Exercise form submit ───────────────────────────────────────────────────
+exerciseForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  exerciseError.hidden = true;
+
+  const formData = new FormData();
+  const text = exerciseText.value.trim();
+  if (text) formData.append("text", text);
+  if (exercisePhotoInput.files[0]) formData.append("photo", exercisePhotoInput.files[0]);
+
+  if (!text && !exercisePhotoInput.files[0]) {
+    exerciseError.textContent = "Describe the exercise or add a screenshot.";
+    exerciseError.hidden = false;
+    return;
+  }
+
+  exerciseSubmit.disabled = true;
+  exerciseSubmit.textContent = "Estimating…";
+  try {
+    const res = await fetch("/api/exercises", { method: "POST", body: formData });
+    if (!res.ok) throw new Error("Failed to log exercise.");
+    exerciseForm.reset();
+    exercisePhotoStatus.textContent = "📷 Add a screenshot (optional)";
+    exerciseForm.hidden = true;
+    exerciseToggle.textContent = "+ Log exercise";
+    loadWeek();
+  } catch (error) {
+    exerciseError.textContent = error.message;
+    exerciseError.hidden = false;
+  } finally {
+    exerciseSubmit.disabled = false;
+    exerciseSubmit.textContent = "Log exercise";
+  }
+});
+
+// ── Render exercises ───────────────────────────────────────────────────────
+function renderExercises(exercises) {
+  exerciseListEl.innerHTML = "";
+  for (const ex of exercises) {
+    const row = document.createElement("div");
+    row.className = "exercise-entry";
+
+    const icon = document.createElement("span");
+    icon.className = "exercise-icon";
+    icon.textContent = "🏃";
+
+    const label = document.createElement("span");
+    label.className = "exercise-label";
+    label.textContent = ex.description;
+
+    const kcal = document.createElement("span");
+    kcal.className = "exercise-kcal";
+    kcal.textContent = ex.kcalBurned !== null ? `−${ex.kcalBurned} kcal` : "kcal unknown";
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "exercise-del";
+    delBtn.textContent = "✕";
+    delBtn.type = "button";
+    delBtn.addEventListener("click", () => deleteExercise(ex.id));
+
+    row.append(icon, label, kcal, delBtn);
+    exerciseListEl.appendChild(row);
+  }
+}
+
+async function deleteExercise(id) {
+  await fetch(`/api/exercises/${id}`, { method: "DELETE" });
+  loadWeek();
+}
+
+// ── Calorie budget widget ──────────────────────────────────────────────────
+function calculateDailyTarget(user) {
+  const { weightKg, heightCm, ageYears, activityLevel, weeklyGoalKg } = user ?? {};
+  if (!weightKg || !heightCm || !ageYears || !activityLevel || !weeklyGoalKg) return null;
+  // Mifflin-St Jeor (male formula — MAN v FAT is specifically for men)
+  const bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageYears + 5;
+  const multipliers = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725 };
+  const tdee = bmr * (multipliers[activityLevel] ?? 1.2);
+  const dailyDeficit = (weeklyGoalKg * 7700) / 7;
+  return Math.round(tdee - dailyDeficit);
+}
+
+function renderBudgetWidget(week) {
+  const dailyTarget = calculateDailyTarget(currentUser);
+  if (!dailyTarget || dailyTarget <= 0) {
+    budgetWidget.hidden = true;
+    return;
+  }
+  budgetWidget.hidden = false;
+
+  const weeklyBudget = dailyTarget * 7;
+  const foodConsumed = week.totalKcal ?? 0;
+  const exerciseBurned = week.exerciseTotalKcal ?? 0;
+  const netConsumed = foodConsumed - exerciseBurned;
+  const weekRemaining = weeklyBudget - netConsumed;
+
+  // Work out how many days remain in this week including today
+  const dailyTots = week.dailyTotals ?? [];
+  const todayIdx = dailyTots.findIndex((d) => d.isToday);
+  const daysRemaining = todayIdx >= 0 ? dailyTots.length - todayIdx : 1;
+  const adjustedDailyTarget = Math.round(weekRemaining / daysRemaining);
+
+  // Today's food consumed from dailyTotals
+  const todayKcal = todayIdx >= 0 ? (dailyTots[todayIdx]?.kcal ?? 0) : 0;
+
+  // Determine bar state
+  const pct = adjustedDailyTarget > 0 ? Math.min(todayKcal / adjustedDailyTarget, 1) : 1;
+  const overBudget = todayKcal > adjustedDailyTarget;
+  const approaching = !overBudget && pct >= 0.85;
+
+  budgetWeeklyLabel.textContent = `${weeklyBudget.toLocaleString()} kcal/week`;
+  budgetTodayTarget.textContent = `${adjustedDailyTarget.toLocaleString()} kcal`;
+
+  budgetBarFill.style.width = `${Math.round(pct * 100)}%`;
+  budgetBarFill.className = "budget-bar-fill";
+  if (overBudget) budgetBarFill.classList.add("budget-bar-fill--over");
+  else if (approaching) budgetBarFill.classList.add("budget-bar-fill--warn");
+
+  budgetTodayConsumed.textContent = `Eaten today: ${todayKcal.toLocaleString()} kcal`;
+
+  if (overBudget) {
+    const over = todayKcal - adjustedDailyTarget;
+    budgetTodayRemaining.className = "over";
+    budgetTodayRemaining.textContent = `${over.toLocaleString()} kcal over`;
+  } else {
+    budgetTodayRemaining.className = "";
+    budgetTodayRemaining.textContent = `${(adjustedDailyTarget - todayKcal).toLocaleString()} kcal left`;
+  }
+
+  const lines = [
+    `Week budget: ${weeklyBudget.toLocaleString()} kcal total`,
+    `Eaten so far: ${foodConsumed.toLocaleString()} kcal`,
+  ];
+  if (exerciseBurned > 0) lines.push(`Exercise burned: ${exerciseBurned.toLocaleString()} kcal`);
+  lines.push(`Remaining: ${weekRemaining.toLocaleString()} kcal over ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}`);
+  budgetWeekDetail.innerHTML = lines.join("<br>");
+}

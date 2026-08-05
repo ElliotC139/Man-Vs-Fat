@@ -6,6 +6,7 @@ import { ensureUploadsDir, UPLOADS_DIR } from "./lib/storage";
 import { ensureSessionSecret } from "./auth";
 import { authRouter } from "./routes/auth";
 import { entriesRouter } from "./routes/entries";
+import { exercisesRouter } from "./routes/exercises";
 import { matchWeeksRouter } from "./routes/matchWeeks";
 import { startScheduler } from "./jobs/scheduler";
 
@@ -21,6 +22,7 @@ app.use(express.static(path.join(process.cwd(), "public")));
 
 app.use("/api/auth", authRouter);
 app.use("/api/entries", entriesRouter);
+app.use("/api/exercises", exercisesRouter);
 app.use("/api/match-weeks", matchWeeksRouter);
 
 app.get("/healthz", (_req, res) => res.json({ ok: true }));

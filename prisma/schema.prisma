@@ -22,6 +22,12 @@ model User {
   weekStartWeekday Int      @default(0)
   weekStartHour    Int      @default(17)
   weekStartMinute  Int      @default(0)
+  // Body stats and goal for calorie budget calculation.
+  weightKg         Float?
+  heightCm         Float?
+  ageYears         Int?
+  activityLevel    String?
+  weeklyGoalKg     Float?
   createdAt        DateTime @default(now())
   matchWeeks       MatchWeek[]
 }
@@ -40,8 +46,22 @@ model MatchWeek {
   reportDriveFileId String?
   reportDriveUrl    String?
   entries           Entry[]
+  exercises         Exercise[]
 
   @@unique([userId, startsAt, endsAt])
+}
+
+model Exercise {
+  id          Int       @id @default(autoincrement())
+  timestamp   DateTime  @default(now())
+  description String
+  kcalBurned  Int?
+  imageUrl    String?
+  matchWeekId Int
+  matchWeek   MatchWeek @relation(fields: [matchWeekId], references: [id])
+  createdAt   DateTime  @default(now())
+
+  @@index([matchWeekId])
 }
 
 model Entry {

@@ -21,6 +21,11 @@ const settingsSchema = z.object({
   weekStartWeekday: z.number().int().min(0).max(6).optional(),
   weekStartHour: z.number().int().min(0).max(23).optional(),
   weekStartMinute: z.number().int().min(0).max(59).optional(),
+  weightKg: z.number().positive().nullable().optional(),
+  heightCm: z.number().positive().nullable().optional(),
+  ageYears: z.number().int().min(10).max(120).nullable().optional(),
+  activityLevel: z.enum(["sedentary", "light", "moderate", "active"]).nullable().optional(),
+  weeklyGoalKg: z.number().min(0.1).max(1.5).nullable().optional(),
 });
 
 const googleSchema = z.object({
@@ -37,6 +42,11 @@ function toPublicUser(user: {
   weekStartWeekday: number;
   weekStartHour: number;
   weekStartMinute: number;
+  weightKg?: number | null;
+  heightCm?: number | null;
+  ageYears?: number | null;
+  activityLevel?: string | null;
+  weeklyGoalKg?: number | null;
 }) {
   return {
     id: user.id,
@@ -44,6 +54,11 @@ function toPublicUser(user: {
     weekStartWeekday: user.weekStartWeekday,
     weekStartHour: user.weekStartHour,
     weekStartMinute: user.weekStartMinute,
+    weightKg: user.weightKg ?? null,
+    heightCm: user.heightCm ?? null,
+    ageYears: user.ageYears ?? null,
+    activityLevel: user.activityLevel ?? null,
+    weeklyGoalKg: user.weeklyGoalKg ?? null,
   };
 }
 
@@ -194,7 +209,7 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
     return;
   }
   if (Object.keys(parsed.data).length === 0) {
-    res.status(400).json({ error: "Provide weekStartWeekday, weekStartHour and/or weekStartMinute to update." });
+    res.status(400).json({ error: "No settings fields provided." });
     return;
   }
 
