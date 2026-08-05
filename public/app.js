@@ -760,6 +760,17 @@ function calculateDailyTarget(user) {
   return Math.round(tdee - dailyDeficit);
 }
 
+// Round fractional days to nearest 0.5 and express as "3 days", "3½ days", etc.
+// Boundary days (e.g. the rollover Monday at 17:00) naturally land near 0.5
+// and are shown as "half days" rather than a precise decimal.
+function formatDays(fractional) {
+  const rounded = Math.round(fractional * 2) / 2;
+  const whole = Math.floor(rounded);
+  const half = rounded % 1 !== 0;
+  if (whole === 0) return "half a day";
+  return half ? `${whole}½ days` : `${whole} day${whole === 1 ? "" : "s"}`;
+}
+
 function renderBudgetWidget(week) {
   const dailyTarget = calculateDailyTarget(currentUser);
   if (!dailyTarget || dailyTarget <= 0) {
@@ -819,7 +830,7 @@ function renderBudgetWidget(week) {
     `Eaten so far: ${foodConsumed.toLocaleString()} kcal`,
   ];
   if (exerciseBurned > 0) lines.push(`Exercise burned: ${exerciseBurned.toLocaleString()} kcal`);
-  lines.push(`Remaining: ${weekRemaining.toLocaleString()} kcal over ${fractionalDaysRemaining.toFixed(1)} days`);
+  lines.push(`Remaining: ${weekRemaining.toLocaleString()} kcal over ${formatDays(fractionalDaysRemaining)}`);
   budgetWeekDetail.innerHTML = lines.join("<br>");
 }
 
