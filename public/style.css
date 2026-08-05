@@ -600,3 +600,35 @@ h2 {
   padding: 16px;
   font-size: 0.9rem;
 }
+
+/* ── Units toggle ── */
+.units-toggle {
+  display: flex;
+  gap: 4px;
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 3px;
+}
+.units-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 500;
+  min-height: 32px;
+  width: auto;
+  cursor: pointer;
+}
+.units-btn--active {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.ft-in-row {
+  display: flex;
+  gap: 5px;
+}
+.ft-in-row input { flex: 1; margin: 0; }

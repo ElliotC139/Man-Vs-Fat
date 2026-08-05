@@ -17,9 +17,17 @@ const settingsWeekday = document.getElementById("settings-weekday");
 const settingsTime = document.getElementById("settings-time");
 const settingsWeight = document.getElementById("settings-weight");
 const settingsHeight = document.getElementById("settings-height");
+const settingsHeightFt = document.getElementById("settings-height-ft");
+const settingsHeightIn = document.getElementById("settings-height-in");
+const heightCmWrap = document.getElementById("height-cm-wrap");
+const heightFtWrap = document.getElementById("height-ft-wrap");
+const weightLabel = document.getElementById("weight-label");
+const goalLabel = document.getElementById("goal-label");
 const settingsAge = document.getElementById("settings-age");
 const settingsActivity = document.getElementById("settings-activity");
 const settingsGoal = document.getElementById("settings-goal");
+const unitsMetricBtn = document.getElementById("units-metric");
+const unitsImperialBtn = document.getElementById("units-imperial");
 const settingsSave = document.getElementById("settings-save");
 const settingsError = document.getElementById("settings-error");
 const logoutBtn = document.getElementById("logout-btn");
@@ -74,6 +82,7 @@ let weeksAgo = 0;
 let userWeekStartWeekday = 0; // 0=Mon … 6=Sun (same encoding as settings select)
 let userWeekStartHour = 17;
 let currentUser = null;
+let useImperial = localStorage.getItem("units") === "imperial";
 
 const logWeekRow = document.getElementById("log-week-row");
 const logWeekCurrentBtn = document.getElementById("log-week-current");
@@ -549,11 +558,20 @@ settingsSave.addEventListener("click", async () => {
 
   settingsSave.disabled = true;
   try {
-    const weightVal = settingsWeight.value ? Number(settingsWeight.value) : null;
-    const heightVal = settingsHeight.value ? Number(settingsHeight.value) : null;
+    const rawWeight = settingsWeight.value ? Number(settingsWeight.value) : null;
+    const weightVal = rawWeight === null ? null : useImperial ? +(rawWeight / 2.20462).toFixed(2) : rawWeight;
+    let heightVal = null;
+    if (useImperial) {
+      const ft = Number(settingsHeightFt.value) || 0;
+      const inches = Number(settingsHeightIn.value) || 0;
+      if (ft || inches) heightVal = +((ft * 12 + inches) * 2.54).toFixed(1);
+    } else {
+      heightVal = settingsHeight.value ? Number(settingsHeight.value) : null;
+    }
     const ageVal = settingsAge.value ? Number(settingsAge.value) : null;
     const activityVal = settingsActivity.value || null;
-    const goalVal = settingsGoal.value ? Number(settingsGoal.value) : null;
+    const rawGoal = settingsGoal.value ? Number(settingsGoal.value) : null;
+    const goalVal = rawGoal === null ? null : useImperial ? +(rawGoal / 2.20462).toFixed(3) : rawGoal;
     const res = await fetch("/api/auth/me", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -591,11 +609,32 @@ function populateSettings(user) {
   settingsTime.value = `${String(user.weekStartHour).padStart(2, "0")}:${String(user.weekStartMinute).padStart(2, "0")}`;
   userWeekStartWeekday = user.weekStartWeekday;
   userWeekStartHour = user.weekStartHour;
-  if (user.weightKg) settingsWeight.value = user.weightKg;
-  if (user.heightCm) settingsHeight.value = user.heightCm;
+  applyUnitPreference();
+  if (user.weightKg) {
+    settingsWeight.value = useImperial ? +(user.weightKg * 2.20462).toFixed(1) : user.weightKg;
+  } else {
+    settingsWeight.value = "";
+  }
+  if (user.heightCm) {
+    if (useImperial) {
+      const totalIn = user.heightCm / 2.54;
+      settingsHeightFt.value = Math.floor(totalIn / 12);
+      settingsHeightIn.value = Math.round(totalIn % 12);
+    } else {
+      settingsHeight.value = user.heightCm;
+    }
+  } else {
+    settingsHeight.value = "";
+    settingsHeightFt.value = "";
+    settingsHeightIn.value = "";
+  }
   if (user.ageYears) settingsAge.value = user.ageYears;
   settingsActivity.value = user.activityLevel ?? "";
-  settingsGoal.value = user.weeklyGoalKg ? String(user.weeklyGoalKg) : "";
+  if (user.weeklyGoalKg) {
+    settingsGoal.value = useImperial ? +(user.weeklyGoalKg * 2.20462).toFixed(2) : user.weeklyGoalKg;
+  } else {
+    settingsGoal.value = "";
+  }
 }
 
 function showApp(user) {
@@ -735,13 +774,20 @@ function renderBudgetWidget(week) {
   const netConsumed = foodConsumed - exerciseBurned;
   const weekRemaining = weeklyBudget - netConsumed;
 
-  // Work out how many days remain in this week including today
-  const dailyTots = week.dailyTotals ?? [];
-  const todayIdx = dailyTots.findIndex((d) => d.isToday);
-  const daysRemaining = todayIdx >= 0 ? dailyTots.length - todayIdx : 1;
-  const adjustedDailyTarget = Math.round(weekRemaining / daysRemaining);
+  // Use actual elapsed hours for accurate partial-day handling at week boundaries
+  // (e.g. Mon 17:00 rollover means the first/last Monday are only partial days)
+  const weekStart = new Date(week.startsAt);
+  const weekEnd = new Date(week.endsAt);
+  const now = new Date();
+  const weekMs = weekEnd - weekStart;
+  const elapsedMs = Math.max(0, Math.min(weekMs, now - weekStart));
+  const remainingHours = (weekMs - elapsedMs) / (1000 * 3600);
+  const fractionalDaysRemaining = Math.max(remainingHours / 24, 1 / 24);
+  const adjustedDailyTarget = Math.round(weekRemaining / fractionalDaysRemaining);
 
   // Today's food consumed from dailyTotals
+  const dailyTots = week.dailyTotals ?? [];
+  const todayIdx = dailyTots.findIndex((d) => d.isToday);
   const todayKcal = todayIdx >= 0 ? (dailyTots[todayIdx]?.kcal ?? 0) : 0;
 
   // Determine bar state
@@ -773,6 +819,74 @@ function renderBudgetWidget(week) {
     `Eaten so far: ${foodConsumed.toLocaleString()} kcal`,
   ];
   if (exerciseBurned > 0) lines.push(`Exercise burned: ${exerciseBurned.toLocaleString()} kcal`);
-  lines.push(`Remaining: ${weekRemaining.toLocaleString()} kcal over ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}`);
+  lines.push(`Remaining: ${weekRemaining.toLocaleString()} kcal over ${fractionalDaysRemaining.toFixed(1)} days`);
   budgetWeekDetail.innerHTML = lines.join("<br>");
 }
+
+// ── Unit preference ────────────────────────────────────────────────────────
+function applyUnitPreference() {
+  if (useImperial) {
+    unitsImperialBtn.classList.add("units-btn--active");
+    unitsMetricBtn.classList.remove("units-btn--active");
+    weightLabel.textContent = "Weight (lbs)";
+    settingsWeight.placeholder = "e.g. 210";
+    settingsWeight.min = "66";
+    settingsWeight.max = "660";
+    goalLabel.textContent = "Target loss (lbs/week)";
+    settingsGoal.placeholder = "e.g. 1.0";
+    settingsGoal.max = "6";
+    heightCmWrap.hidden = true;
+    heightFtWrap.hidden = false;
+  } else {
+    unitsMetricBtn.classList.add("units-btn--active");
+    unitsImperialBtn.classList.remove("units-btn--active");
+    weightLabel.textContent = "Weight (kg)";
+    settingsWeight.placeholder = "e.g. 95";
+    settingsWeight.min = "30";
+    settingsWeight.max = "300";
+    goalLabel.textContent = "Target loss (kg/week)";
+    settingsGoal.placeholder = "e.g. 0.5";
+    settingsGoal.max = "3";
+    heightCmWrap.hidden = false;
+    heightFtWrap.hidden = true;
+  }
+}
+
+function switchUnits(imperial) {
+  // Read current field values and convert them before switching display
+  if (currentUser) {
+    const oldWeightKg = currentUser.weightKg;
+    const oldHeightCm = currentUser.heightCm;
+    const oldGoalKg = currentUser.weeklyGoalKg;
+
+    useImperial = imperial;
+    localStorage.setItem("units", imperial ? "imperial" : "metric");
+    applyUnitPreference();
+
+    if (oldWeightKg) {
+      settingsWeight.value = imperial ? +(oldWeightKg * 2.20462).toFixed(1) : oldWeightKg;
+    }
+    if (oldHeightCm) {
+      if (imperial) {
+        const totalIn = oldHeightCm / 2.54;
+        settingsHeightFt.value = Math.floor(totalIn / 12);
+        settingsHeightIn.value = Math.round(totalIn % 12);
+      } else {
+        settingsHeight.value = oldHeightCm;
+      }
+    }
+    if (oldGoalKg) {
+      settingsGoal.value = imperial ? +(oldGoalKg * 2.20462).toFixed(2) : oldGoalKg;
+    }
+  } else {
+    useImperial = imperial;
+    localStorage.setItem("units", imperial ? "imperial" : "metric");
+    applyUnitPreference();
+  }
+}
+
+unitsMetricBtn.addEventListener("click", () => switchUnits(false));
+unitsImperialBtn.addEventListener("click", () => switchUnits(true));
+
+// Apply on page load
+applyUnitPreference();
