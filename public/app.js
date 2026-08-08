@@ -785,20 +785,32 @@ function renderBudgetWidget(week) {
   const netConsumed = foodConsumed - exerciseBurned;
   const weekRemaining = weeklyBudget - netConsumed;
 
-  // Use actual elapsed hours for accurate partial-day handling at week boundaries
-  // (e.g. Mon 17:00 rollover means the first/last Monday are only partial days)
+  // Weighted remaining days: first and last entry in the week are half-days
+  // (the rollover Monday is cut mid-afternoon on both ends). Using calendar-day
+  // weights rather than live hours means today's allowance stays fixed all day.
+  const dailyTots = week.dailyTotals ?? [];
+  const todayIdx = dailyTots.findIndex((d) => d.isToday);
+  let weightedDaysRemaining = 0;
+  if (todayIdx >= 0) {
+    for (let i = todayIdx; i < dailyTots.length; i++) {
+      const isHalfDay = i === 0 || i === dailyTots.length - 1;
+      weightedDaysRemaining += isHalfDay ? 0.5 : 1.0;
+    }
+  } else {
+    weightedDaysRemaining = 0.5; // past end of week
+  }
+  const adjustedDailyTarget = Math.round(weekRemaining / Math.max(weightedDaysRemaining, 0.5));
+
+  // Hours remaining used only for the detail-text display
   const weekStart = new Date(week.startsAt);
   const weekEnd = new Date(week.endsAt);
   const now = new Date();
   const weekMs = weekEnd - weekStart;
   const elapsedMs = Math.max(0, Math.min(weekMs, now - weekStart));
   const remainingHours = (weekMs - elapsedMs) / (1000 * 3600);
-  const fractionalDaysRemaining = Math.max(remainingHours / 24, 1 / 24);
-  const adjustedDailyTarget = Math.round(weekRemaining / fractionalDaysRemaining);
+  const fractionalDaysRemaining = Math.max(remainingHours / 24, 0.5);
 
   // Today's food consumed from dailyTotals
-  const dailyTots = week.dailyTotals ?? [];
-  const todayIdx = dailyTots.findIndex((d) => d.isToday);
   const todayKcal = todayIdx >= 0 ? (dailyTots[todayIdx]?.kcal ?? 0) : 0;
 
   // Determine bar state
