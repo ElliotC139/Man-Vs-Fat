@@ -790,16 +790,17 @@ function renderBudgetWidget(week) {
   // weights rather than live hours means today's allowance stays fixed all day.
   const dailyTots = week.dailyTotals ?? [];
   const todayIdx = dailyTots.findIndex((d) => d.isToday);
+  let totalWeightedDays = 0;
   let weightedDaysRemaining = 0;
-  if (todayIdx >= 0) {
-    for (let i = todayIdx; i < dailyTots.length; i++) {
-      const isHalfDay = i === 0 || i === dailyTots.length - 1;
-      weightedDaysRemaining += isHalfDay ? 0.5 : 1.0;
-    }
-  } else {
-    weightedDaysRemaining = 0.5; // past end of week
+  for (let i = 0; i < dailyTots.length; i++) {
+    const w = (i === 0 || i === dailyTots.length - 1) ? 0.5 : 1.0;
+    totalWeightedDays += w;
+    if (todayIdx >= 0 && i >= todayIdx) weightedDaysRemaining += w;
   }
+  if (todayIdx < 0) weightedDaysRemaining = 0.5;
   const adjustedDailyTarget = Math.round(weekRemaining / Math.max(weightedDaysRemaining, 0.5));
+  // Positive = more budget left than needed for remaining days; negative = running behind
+  const surplusVsTarget = weekRemaining - dailyTarget * weightedDaysRemaining;
 
   // Hours remaining used only for the detail-text display
   const weekStart = new Date(week.startsAt);
@@ -843,6 +844,46 @@ function renderBudgetWidget(week) {
   ];
   if (exerciseBurned > 0) lines.push(`Exercise burned: ${exerciseBurned.toLocaleString()} kcal`);
   lines.push(`Remaining: ${weekRemaining.toLocaleString()} kcal over ${formatDays(fractionalDaysRemaining)}`);
+
+  if (todayIdx >= 0) {
+    const surplusAbs = Math.round(Math.abs(surplusVsTarget));
+    let posLabel, posStyle;
+    if (surplusAbs <= 50) {
+      posLabel = "On track for the week";
+      posStyle = "";
+    } else if (surplusVsTarget > 0) {
+      posLabel = `${surplusAbs.toLocaleString()} kcal ahead this week`;
+      posStyle = "color:var(--pitch-dark);font-weight:600";
+    } else {
+      posLabel = `${surplusAbs.toLocaleString()} kcal behind this week`;
+      posStyle = "color:#dc2626;font-weight:600";
+    }
+    lines.push(`<span${posStyle ? ` style="${posStyle}"` : ""}>${posLabel}</span>`);
+
+    if (netConsumed > 0) {
+      const todayWeight = (todayIdx === 0 || todayIdx === dailyTots.length - 1) ? 0.5 : 1.0;
+      const elapsedDays = Math.max(totalWeightedDays - weightedDaysRemaining + todayWeight, 0.5);
+      const dailyNetAvg = netConsumed / elapsedDays;
+      const daysAfterToday = Math.max(weightedDaysRemaining - todayWeight, 0);
+      const projectedTotal = netConsumed + dailyNetAvg * daysAfterToday;
+      const projectedVsBudget = weeklyBudget - projectedTotal;
+      const goalKg = currentUser?.weeklyGoalKg;
+      let predLine;
+      if (goalKg) {
+        const predicted = goalKg + projectedVsBudget / 7700;
+        predLine = predicted >= 0
+          ? `Predicted: ~${predicted.toFixed(1)} kg loss this week`
+          : `Predicted: ~${Math.abs(predicted).toFixed(1)} kg gain this week`;
+      } else {
+        const kcalDiff = Math.round(Math.abs(projectedVsBudget));
+        predLine = projectedVsBudget >= 0
+          ? `Predicted: ~${kcalDiff.toLocaleString()} kcal under budget`
+          : `Predicted: ~${kcalDiff.toLocaleString()} kcal over budget`;
+      }
+      lines.push(predLine);
+    }
+  }
+
   budgetWeekDetail.innerHTML = lines.join("<br>");
 }
 
