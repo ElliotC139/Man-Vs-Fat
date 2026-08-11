@@ -21,6 +21,7 @@ const createEntrySchema = z.object({
   text: z.string().trim().optional(),
   timestamp: z.string().datetime().optional(),
   lastWeek: z.string().optional(),
+  directKcal: z.coerce.number().int().positive().optional(),
 });
 
 entriesRouter.post("/", upload.single("photo"), async (req, res) => {
@@ -30,7 +31,7 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
     return;
   }
 
-  const { text, timestamp, lastWeek } = parsed.data;
+  const { text, timestamp, lastWeek, directKcal } = parsed.data;
   const photo = req.file;
 
   if (!text?.trim() && !photo) {
@@ -49,11 +50,15 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
     entryTimestamp = new Date(rolloverToday.getTime() - 60_000);
   }
 
-  const items = await estimateMeal({
-    text,
-    imageBase64: photo?.buffer.toString("base64"),
-    imageMediaType: photo?.mimetype,
-  });
+  // directKcal is supplied by the barcode scanner when Open Food Facts has
+  // nutrition data — skip AI estimation and use the known value directly.
+  const items = directKcal
+    ? [{ label: text?.trim() || "Scanned item", kcal: directKcal }]
+    : await estimateMeal({
+        text,
+        imageBase64: photo?.buffer.toString("base64"),
+        imageMediaType: photo?.mimetype,
+      });
 
   const imageUrl = photo ? saveUploadedImage(photo.buffer, photo.mimetype) : null;
   const matchWeek = await findOrCreateMatchWeek(entryTimestamp, config.TIMEZONE, req.userId!, weekStart);

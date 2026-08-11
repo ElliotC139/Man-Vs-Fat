@@ -632,3 +632,101 @@ h2 {
   gap: 5px;
 }
 .ft-in-row input { flex: 1; margin: 0; }
+
+/* ── Barcode scanner ── */
+.scan-barcode-btn {
+  width: 100%;
+  background: transparent;
+  border: 2px dashed var(--hairline);
+  color: var(--pitch-dark);
+  font-size: 0.9rem;
+  padding: 10px;
+  border-radius: 10px;
+  min-height: 42px;
+}
+.scan-barcode-btn:hover {
+  border-color: var(--pitch);
+  background: rgba(31, 122, 63, 0.04);
+}
+
+.scan-modal {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+}
+.scan-modal[hidden] { display: none; }
+
+.scan-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.scan-close-btn {
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: #fff;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.scan-viewport {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+#scan-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.scan-reticle {
+  position: absolute;
+  inset: 25% 10%;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 9999px rgba(0, 0, 0, 0.45);
+}
+
+.scan-status {
+  flex-shrink: 0;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.9rem;
+  padding: 14px 20px;
+}
+
+/* ── Product card ── */
+.product-card-eyebrow { font-size: 0.8rem; margin: 0 0 4px; }
+.product-name { font-size: 1.05rem; font-weight: 700; margin: 0 0 2px; }
+.product-brand { font-size: 0.85rem; margin: 0 0 14px; }
+.product-serving-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.product-serving-row label { flex-shrink: 0; margin: 0; font-size: 0.9rem; }
+.product-serving-row input { width: 80px; margin: 0; }
+.product-kcal-badge {
+  font-weight: 700;
+  color: var(--pitch-dark);
+  font-size: 1rem;
+  margin-left: auto;
+}

@@ -60,6 +60,22 @@ const photoStatus = document.getElementById("photo-status");
 const submitBtn = document.getElementById("submit-btn");
 const formError = document.getElementById("form-error");
 
+const scanBarcodeBtn = document.getElementById("scan-barcode-btn");
+const scanModal = document.getElementById("scan-modal");
+const scanCloseBtn = document.getElementById("scan-close-btn");
+const scanVideo = document.getElementById("scan-video");
+const scanStatusEl = document.getElementById("scan-status-el");
+
+const productCard = document.getElementById("product-card");
+const productNameEl = document.getElementById("product-name-el");
+const productBrandEl = document.getElementById("product-brand-el");
+const productServingInput = document.getElementById("product-serving-input");
+const productKcalEl = document.getElementById("product-kcal-el");
+const productNodataEl = document.getElementById("product-nodata-el");
+const productLogBtn = document.getElementById("product-log-btn");
+const productRescanBtn = document.getElementById("product-rescan-btn");
+const productErrEl = document.getElementById("product-err-el");
+
 const resultCard = document.getElementById("result-card");
 const resultWarning = document.getElementById("result-warning");
 const resultRows = document.getElementById("result-rows");
@@ -956,3 +972,238 @@ unitsImperialBtn.addEventListener("click", () => switchUnits(true));
 
 // Apply on page load
 applyUnitPreference();
+
+// ── Barcode scanner ────────────────────────────────────────────────────────
+
+let scanStream = null;
+let scanRafId = null;
+let quaggaLoopActive = false;
+let currentProduct = null; // { name, brand, kcalPer100g, defaultServing }
+
+function openScanner() {
+  productCard.hidden = true;
+  scanModal.hidden = false;
+  scanStatusEl.textContent = "Searching for barcode…";
+
+  navigator.mediaDevices
+    .getUserMedia({ video: { facingMode: "environment" } })
+    .then((stream) => {
+      scanStream = stream;
+      scanVideo.srcObject = stream;
+      scanVideo.play();
+      if (typeof BarcodeDetector !== "undefined") {
+        runBarcodeDetectorLoop();
+      } else {
+        loadQuagga2().then(runQuaggaLoop);
+      }
+    })
+    .catch(() => {
+      scanStatusEl.textContent = "Camera access denied — please allow camera use and try again.";
+    });
+}
+
+function stopScanner() {
+  if (scanStream) {
+    scanStream.getTracks().forEach((t) => t.stop());
+    scanStream = null;
+  }
+  if (scanRafId) {
+    cancelAnimationFrame(scanRafId);
+    scanRafId = null;
+  }
+  quaggaLoopActive = false;
+  scanVideo.srcObject = null;
+  scanModal.hidden = true;
+}
+
+// Native BarcodeDetector (Chrome, Edge, Android WebView)
+function runBarcodeDetectorLoop() {
+  const detector = new BarcodeDetector({
+    formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf", "qr_code"],
+  });
+
+  async function tick() {
+    if (!scanStream) return;
+    try {
+      const results = await detector.detect(scanVideo);
+      if (results.length > 0) {
+        handleBarcode(results[0].rawValue);
+        return;
+      }
+    } catch {
+      // video not ready yet — keep looping
+    }
+    scanRafId = requestAnimationFrame(tick);
+  }
+
+  scanRafId = requestAnimationFrame(tick);
+}
+
+// Quagga2 fallback (Firefox, iOS Safari)
+let quagga2Promise = null;
+function loadQuagga2() {
+  if (quagga2Promise) return quagga2Promise;
+  quagga2Promise = new Promise((resolve, reject) => {
+    if (window.Quagga) { resolve(); return; }
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.7.4/dist/quagga.min.js";
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  return quagga2Promise;
+}
+
+function runQuaggaLoop() {
+  quaggaLoopActive = true;
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+
+  function tick() {
+    if (!quaggaLoopActive || !scanStream) return;
+    if (scanVideo.readyState < 2) { requestAnimationFrame(tick); return; }
+    canvas.width = scanVideo.videoWidth;
+    canvas.height = scanVideo.videoHeight;
+    ctx.drawImage(scanVideo, 0, 0);
+    const dataUrl = canvas.toDataURL("image/png");
+
+    window.Quagga.decodeSingle(
+      {
+        src: dataUrl,
+        numOfWorkers: 0,
+        inputStream: { size: 640 },
+        decoder: { readers: ["ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader", "code_128_reader"] },
+      },
+      (result) => {
+        if (!quaggaLoopActive) return;
+        if (result?.codeResult?.code) {
+          handleBarcode(result.codeResult.code);
+        } else {
+          requestAnimationFrame(tick);
+        }
+      },
+    );
+  }
+
+  requestAnimationFrame(tick);
+}
+
+async function handleBarcode(code) {
+  stopScanner();
+  scanStatusEl.textContent = "Looking up product…";
+  productCard.hidden = false;
+  productNameEl.textContent = "Looking up…";
+  productBrandEl.textContent = "";
+  productKcalEl.textContent = "";
+  productNodataEl.hidden = true;
+  productErrEl.hidden = true;
+
+  const product = await lookupOpenFoodFacts(code);
+  currentProduct = product;
+  showProductCard(product, code);
+}
+
+async function lookupOpenFoodFacts(barcode) {
+  try {
+    const url =
+      `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}` +
+      `?fields=product_name,brands,nutriments,serving_size,serving_quantity`;
+    const res = await fetch(url);
+    if (!res.ok) return { barcode, name: null, brand: null, kcalPer100g: null, defaultServing: null };
+    const data = await res.json();
+    if (data.status !== 1) return { barcode, name: null, brand: null, kcalPer100g: null, defaultServing: null };
+    const p = data.product;
+    const kcalPer100g =
+      p.nutriments?.["energy-kcal_100g"] ??
+      p.nutriments?.["energy-kcal"] ??
+      null;
+    const defaultServing = p.serving_quantity ? Math.round(Number(p.serving_quantity)) : null;
+    return {
+      barcode,
+      name: p.product_name || null,
+      brand: p.brands || null,
+      kcalPer100g: kcalPer100g !== null ? Number(kcalPer100g) : null,
+      defaultServing,
+    };
+  } catch {
+    return { barcode, name: null, brand: null, kcalPer100g: null, defaultServing: null };
+  }
+}
+
+function showProductCard(product, barcode) {
+  productCard.hidden = false;
+  productNameEl.textContent = product.name || `Barcode: ${barcode}`;
+  productBrandEl.textContent = product.brand || "";
+  productBrandEl.hidden = !product.brand;
+
+  const hasKcal = product.kcalPer100g !== null;
+  productNodataEl.hidden = hasKcal;
+
+  if (hasKcal) {
+    productServingInput.value = product.defaultServing ?? 100;
+    productServingInput.hidden = false;
+    updateKcalDisplay();
+  } else {
+    productServingInput.value = "";
+    productServingInput.hidden = true;
+    productKcalEl.textContent = "";
+  }
+
+  currentProduct = product;
+}
+
+function updateKcalDisplay() {
+  if (!currentProduct?.kcalPer100g) { productKcalEl.textContent = ""; return; }
+  const g = Number(productServingInput.value) || 0;
+  const kcal = Math.round((currentProduct.kcalPer100g * g) / 100);
+  productKcalEl.textContent = g > 0 ? `${kcal} kcal` : "";
+}
+
+productServingInput.addEventListener("input", updateKcalDisplay);
+
+productLogBtn.addEventListener("click", async () => {
+  if (!currentProduct) return;
+
+  const g = Number(productServingInput.value) || 0;
+  let directKcal = null;
+  if (currentProduct.kcalPer100g && g > 0) {
+    directKcal = Math.round((currentProduct.kcalPer100g * g) / 100);
+  }
+  const label = [currentProduct.name, currentProduct.brand].filter(Boolean).join(" – ") || `Barcode: ${currentProduct.barcode}`;
+
+  productLogBtn.disabled = true;
+  productErrEl.hidden = true;
+
+  try {
+    const body = new FormData();
+    body.append("text", label);
+    if (directKcal) body.append("directKcal", String(directKcal));
+
+    const res = await fetch("/api/entries", { method: "POST", body });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      productErrEl.textContent = err.error || "Failed to log entry.";
+      productErrEl.hidden = false;
+      return;
+    }
+
+    productCard.hidden = true;
+    currentProduct = null;
+    textInput.value = "";
+    await loadWeek();
+  } catch {
+    productErrEl.textContent = "Network error — please try again.";
+    productErrEl.hidden = false;
+  } finally {
+    productLogBtn.disabled = false;
+  }
+});
+
+productRescanBtn.addEventListener("click", () => {
+  productCard.hidden = true;
+  currentProduct = null;
+  openScanner();
+});
+
+scanBarcodeBtn.addEventListener("click", openScanner);
+scanCloseBtn.addEventListener("click", stopScanner);

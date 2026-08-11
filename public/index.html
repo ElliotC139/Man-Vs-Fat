@@ -122,6 +122,8 @@
             <input type="file" id="photo" name="photo" accept="image/*" />
           </label>
 
+          <button type="button" id="scan-barcode-btn" class="scan-barcode-btn">📦 Scan barcode</button>
+
           <div id="log-week-row" class="log-week-row" hidden>
             <span class="muted">Count toward</span>
             <div class="log-week-btns">
@@ -132,6 +134,23 @@
           <button type="submit" id="submit-btn">Log it</button>
           <p id="form-error" class="error" hidden></p>
         </form>
+
+        <section id="product-card" class="card product-card" hidden>
+          <p class="muted product-card-eyebrow">Found product</p>
+          <p id="product-name-el" class="product-name"></p>
+          <p id="product-brand-el" class="muted product-brand"></p>
+          <div class="product-serving-row">
+            <label for="product-serving-input">Serving (g)</label>
+            <input type="number" id="product-serving-input" min="1" step="1" />
+            <span id="product-kcal-el" class="product-kcal-badge"></span>
+          </div>
+          <p id="product-nodata-el" class="muted" hidden>No calorie data found — AI will estimate from the name.</p>
+          <div class="result-actions">
+            <button type="button" id="product-log-btn">Log it</button>
+            <button type="button" id="product-rescan-btn" class="ghost">Scan again</button>
+          </div>
+          <p id="product-err-el" class="error" hidden></p>
+        </section>
 
         <section id="result-card" class="card result" hidden>
           <p class="muted">Got it — looks right?</p>
@@ -200,6 +219,18 @@
           <div id="entry-list"></div>
         </section>
       </main>
+    </div>
+
+    <div id="scan-modal" class="scan-modal" hidden>
+      <div class="scan-header">
+        <span>Scan barcode</span>
+        <button type="button" id="scan-close-btn" class="scan-close-btn">✕</button>
+      </div>
+      <div class="scan-viewport">
+        <video id="scan-video" autoplay playsinline muted></video>
+        <div class="scan-reticle"></div>
+      </div>
+      <p id="scan-status-el" class="scan-status">Searching for barcode…</p>
     </div>
 
     <script>
