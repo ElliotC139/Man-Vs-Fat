@@ -100,7 +100,10 @@ whoopRouter.post("/sync", requireAuth, async (req, res) => {
     res.status(204).end();
   } catch (e) {
     console.error("Manual WHOOP sync failed:", e);
-    res.status(502).json({ error: "Couldn't sync with WHOOP right now." });
+    // Temporary: surfaces the real failure reason so it can be diagnosed
+    // without Fly log access, rather than a generic message.
+    const message = e instanceof Error ? e.message : String(e);
+    res.status(502).json({ error: `Couldn't sync with WHOOP: ${message}` });
   }
 });
 

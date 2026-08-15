@@ -768,11 +768,14 @@ whoopSyncBtn.addEventListener("click", async () => {
   whoopSyncBtn.textContent = "Syncing…";
   try {
     const res = await fetch("/api/whoop/sync", { method: "POST" });
-    if (!res.ok) throw new Error();
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(typeof body.error === "string" ? body.error : "Sync failed — please try again.");
+    }
     await loadWhoopStatus();
     await loadWeek();
-  } catch {
-    whoopStatusText.textContent = "Sync failed — please try again.";
+  } catch (error) {
+    whoopStatusText.textContent = error.message;
   } finally {
     whoopSyncBtn.disabled = false;
     whoopSyncBtn.textContent = "Sync now";

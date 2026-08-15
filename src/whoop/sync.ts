@@ -65,8 +65,25 @@ async function syncUserWorkouts(userId: number, accessToken: string): Promise<vo
   }
 }
 
+// WHOOP rotates refresh tokens on use — two syncs for the same user
+// overlapping (periodic cron, webhook, manual button, startup catch-up all
+// call this) could both read the same stored refresh token and race to
+// redeem it, leaving one of them holding an already-invalidated token. This
+// serializes syncs per user so that can't happen; a sync already in flight
+// is simply reused instead of started twice.
+const inFlightSyncs = new Map<number, Promise<void>>();
+
+export function syncUser(userId: number): Promise<void> {
+  const existing = inFlightSyncs.get(userId);
+  if (existing) return existing;
+
+  const promise = syncUserUnguarded(userId).finally(() => inFlightSyncs.delete(userId));
+  inFlightSyncs.set(userId, promise);
+  return promise;
+}
+
 /** Pulls recent cycles and workouts from WHOOP; called after connect and on webhook pings. */
-export async function syncUser(userId: number): Promise<void> {
+async function syncUserUnguarded(userId: number): Promise<void> {
   const accessToken = await getValidAccessToken(userId);
   if (!accessToken) return;
 
