@@ -704,13 +704,15 @@ function populateSettings(user) {
   }
 }
 
-function showApp(user) {
+async function showApp(user) {
   populateSettings(user);
   settingsCard.hidden = true;
   authScreen.hidden = true;
   appShell.hidden = false;
   loadWeek();
-  loadWhoopStatus();
+  // Awaited so a redirect error set below isn't silently overwritten by the
+  // status fetch's own (less specific) message resolving afterward.
+  await loadWhoopStatus();
   handleWhoopRedirect();
 }
 
@@ -725,11 +727,13 @@ function handleWhoopRedirect() {
     settingsCard.hidden = false;
   } else if (whoopResult === "error") {
     settingsCard.hidden = false;
-    whoopStatusText.textContent = "Couldn't connect WHOOP — please try again.";
+    const reason = params.get("reason");
+    whoopStatusText.textContent = reason ? `Couldn't connect WHOOP: ${reason}` : "Couldn't connect WHOOP — please try again.";
   }
 
   const url = new URL(window.location.href);
   url.searchParams.delete("whoop");
+  url.searchParams.delete("reason");
   window.history.replaceState({}, "", url.pathname + url.search);
 }
 

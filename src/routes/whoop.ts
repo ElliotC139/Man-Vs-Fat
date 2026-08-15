@@ -31,9 +31,16 @@ whoopRouter.get("/callback", requireAuth, async (req, res) => {
   const expectedState = req.cookies?.[STATE_COOKIE];
   res.clearCookie(STATE_COOKIE);
 
-  const { code, state, error } = req.query;
-  if (error || typeof code !== "string" || typeof state !== "string" || state !== expectedState) {
-    res.redirect("/?whoop=error");
+  const { code, state, error, error_description } = req.query;
+  if (error) {
+    // Temporary: surfaces WHOOP's real rejection reason (e.g. a scope the
+    // developer app hasn't been granted) instead of a generic message.
+    const reason = typeof error_description === "string" ? error_description : String(error);
+    res.redirect(`/?whoop=error&reason=${encodeURIComponent(reason)}`);
+    return;
+  }
+  if (typeof code !== "string" || typeof state !== "string" || state !== expectedState) {
+    res.redirect("/?whoop=error&reason=" + encodeURIComponent("State mismatch or missing code — please try again."));
     return;
   }
 
@@ -57,7 +64,8 @@ whoopRouter.get("/callback", requireAuth, async (req, res) => {
     res.redirect("/?whoop=connected");
   } catch (e) {
     console.error("WHOOP token exchange failed:", e);
-    res.redirect("/?whoop=error");
+    const reason = e instanceof Error ? e.message : String(e);
+    res.redirect(`/?whoop=error&reason=${encodeURIComponent(reason)}`);
   }
 });
 
