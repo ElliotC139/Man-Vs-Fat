@@ -230,10 +230,10 @@ function renderDailyTotals(days, whoopDailyBurn) {
     label.textContent = day.isToday ? `Today · ${day.label}` : day.label;
 
     const burn = burnByDate.get(day.date);
-    // kcalWeighted halves the boundary Mondays the same way the food side is
-    // naturally split by the 17:00 rollover — WHOOP has no sub-day breakdown,
-    // so this is an approximation of "burn since/until 17:00", not exact.
-    if (burn?.kcalWeighted != null) {
+    // Future days only carry a trailing-average projection (folded into the
+    // weekly total), not a real measurement — showing it here would read as
+    // "this already happened," so it's hidden until the day arrives.
+    if (!burn?.future && burn?.kcalWeighted != null) {
       const whoopLine = document.createElement("span");
       whoopLine.className = "day-total-whoop";
       whoopLine.textContent = `🔥 ${burn.kcalWeighted.toLocaleString()} kcal${burn.estimated ? " (est.)" : ""} WHOOP`;

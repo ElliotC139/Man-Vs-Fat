@@ -106,13 +106,20 @@ export interface WhoopDailyBurn {
   date: string;
   // Full physiological-day value, unweighted.
   kcal: number | null;
-  // Same value but half-weighted on the two boundary Mondays, matching how
-  // the food side is naturally split by the 17:00 rollover — WHOOP has no
-  // sub-day breakdown, so this is an approximation, not an actual "burn
-  // since 17:00" figure.
+  // This calendar day's contribution to *this* match week. Equal to `kcal`
+  // for interior days; for the two boundary Mondays, WHOOP's cycle for that
+  // day is split at the actual 17:00 rollover instant using the cycle's real
+  // start/end times (not just a flat half), with any logged activity on that
+  // day added back in exactly (workouts are already attributed to the
+  // correct side of 17:00 by their own timestamp when synced — see
+  // syncUserWorkouts) rather than proportionally.
   kcalWeighted: number | null;
   estimated: boolean;
   scoreState: string | null;
+  // True for days after today — no cycle exists for them yet, so callers
+  // should not display a per-day figure even though the trailing-average
+  // fallback still folds into weeklyBudget for projection purposes.
+  future: boolean;
 }
 
 export interface WhoopWeekBudget {
@@ -123,22 +130,38 @@ export interface WhoopWeekBudget {
 }
 
 /**
- * Sums this match week's WHOOP calorie burn, calendar-day weighted the same
- * way as the food side (boundary Mondays count as half a day). Days with no
- * scored cycle yet (most often "today", which WHOOP hasn't finalized) fall
+ * Sums this match week's WHOOP calorie burn. Interior days use their cycle's
+ * full total; the two boundary Mondays are split at the real 17:00 rollover
+ * instant (see WhoopDailyBurn above). Days with no scored cycle yet fall
  * back to the trailing average of the last week's scored days so the widget
- * never just goes blank for missing data.
+ * never just goes blank for missing data — including future days, whose
+ * contribution is a projection rather than a measurement (dailyBurn flags
+ * them via `future` so callers can hide the per-day figure).
  */
 export async function getWhoopWeekBudget(userId: number, start: Date, end: Date): Promise<WhoopWeekBudget | null> {
   const conn = await prisma.whoopConnection.findUnique({ where: { userId } });
   if (!conn) return null;
 
-  const [weekCycles, trailing] = await Promise.all([
+  const now = new Date();
+
+  const [weekCycles, trailing, nearbyWorkouts] = await Promise.all([
     prisma.whoopCycle.findMany({ where: { userId, start: { gte: start, lt: end } }, orderBy: { start: "asc" } }),
     prisma.whoopCycle.findMany({
       where: { userId, kcalBurned: { not: null }, start: { lt: start } },
       orderBy: { start: "desc" },
       take: TRAILING_AVERAGE_SAMPLE,
+    }),
+    // A day either side of the match week, wide enough to cover any workout
+    // whose cycle straddles the 17:00 boundary. Activity doesn't need
+    // proportional splitting like the non-activity burn does — each workout
+    // is already pinned to the correct week by its own exact timestamp.
+    prisma.exercise.findMany({
+      where: {
+        whoopWorkoutId: { not: null },
+        matchWeek: { userId },
+        timestamp: { gte: new Date(start.getTime() - 86_400_000), lt: new Date(end.getTime() + 86_400_000) },
+      },
+      select: { timestamp: true, kcalBurned: true },
     }),
   ]);
 
@@ -146,31 +169,61 @@ export async function getWhoopWeekBudget(userId: number, start: Date, end: Date)
     ? Math.round(trailing.reduce((sum, c) => sum + (c.kcalBurned ?? 0), 0) / trailing.length)
     : null;
 
-  const byDay = new Map<string, { kcal: number | null; scoreState: string }>();
+  const byDay = new Map<string, (typeof weekCycles)[number]>();
   for (const cycle of weekCycles) {
-    byDay.set(localDayKey(cycle.start, config.TIMEZONE), { kcal: cycle.kcalBurned, scoreState: cycle.scoreState });
+    byDay.set(localDayKey(cycle.start, config.TIMEZONE), cycle);
   }
 
   const calendarDays = matchWeekCalendarDays(start, config.TIMEZONE);
-  const halfDayKeys = new Set([calendarDays[0], calendarDays[calendarDays.length - 1]]);
+  const openingDay = calendarDays[0];
+  const closingDay = calendarDays[calendarDays.length - 1];
+  const todayKey = localDayKey(now, config.TIMEZONE);
+
+  function boundaryKcalWeighted(cycle: (typeof weekCycles)[number], date: string): number {
+    const dayWorkouts = nearbyWorkouts.filter((w) => localDayKey(w.timestamp, config.TIMEZONE) === date);
+    const activityAll = dayWorkouts.reduce((sum, w) => sum + (w.kcalBurned ?? 0), 0);
+    const activityInWeek = dayWorkouts
+      .filter((w) => w.timestamp >= start && w.timestamp < end)
+      .reduce((sum, w) => sum + (w.kcalBurned ?? 0), 0);
+    // Whatever's left after subtracting logged activity is the resting/BMR-ish
+    // burn, which we assume is roughly steady across the cycle's real
+    // duration — so its share of "this week" is just the actual time overlap.
+    const nonActivity = Math.max((cycle.kcalBurned ?? 0) - activityAll, 0);
+
+    const cycleStartMs = cycle.start.getTime();
+    const cycleEndMs = (cycle.end ?? now).getTime();
+    const overlapMs = Math.max(0, Math.min(cycleEndMs, end.getTime()) - Math.max(cycleStartMs, start.getTime()));
+    const fraction = Math.min(overlapMs / Math.max(cycleEndMs - cycleStartMs, 1), 1);
+
+    return Math.round(nonActivity * fraction) + activityInWeek;
+  }
 
   let weeklyBudget = 0;
   let hasAnyData = false;
   const dailyBurn: WhoopDailyBurn[] = calendarDays.map((date) => {
-    const weight = halfDayKeys.has(date) ? 0.5 : 1;
-    const entry = byDay.get(date);
-    let kcal = entry?.kcal ?? null;
+    const isBoundary = date === openingDay || date === closingDay;
+    const cycle = byDay.get(date);
+    const future = date > todayKey;
+
+    let kcal: number | null = null;
+    let kcalWeighted: number | null = null;
     let estimated = false;
-    if (kcal === null && trailingAvg !== null) {
+
+    if (cycle?.kcalBurned != null) {
+      kcal = cycle.kcalBurned;
+      kcalWeighted = isBoundary ? boundaryKcalWeighted(cycle, date) : cycle.kcalBurned;
+    } else if (trailingAvg !== null) {
       kcal = trailingAvg;
+      kcalWeighted = isBoundary ? Math.round(trailingAvg * 0.5) : trailingAvg;
       estimated = true;
     }
-    const kcalWeighted = kcal !== null ? Math.round(kcal * weight) : null;
+
     if (kcalWeighted !== null) {
       weeklyBudget += kcalWeighted;
       hasAnyData = true;
     }
-    return { date, kcal, kcalWeighted, estimated, scoreState: entry?.scoreState ?? null };
+
+    return { date, kcal, kcalWeighted, estimated, scoreState: cycle?.scoreState ?? null, future };
   });
 
   return {
