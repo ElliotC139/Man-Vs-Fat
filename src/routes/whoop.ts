@@ -1,8 +1,9 @@
 import crypto from "node:crypto";
 import { Router } from "express";
 import { prisma } from "../db";
-import { whoopConfigured } from "../config";
+import { config, whoopConfigured } from "../config";
 import { requireAuth } from "../auth";
+import { localDayKey } from "../matchWeek";
 import { buildAuthorizeUrl, exchangeCodeForTokens } from "../whoop/client";
 import { syncUser } from "../whoop/sync";
 
@@ -69,6 +70,28 @@ whoopRouter.post("/disconnect", requireAuth, async (req, res) => {
   await prisma.whoopCycle.deleteMany({ where: { userId: req.userId! } });
   await prisma.whoopConnection.deleteMany({ where: { userId: req.userId! } });
   res.status(204).end();
+});
+
+// Temporary diagnostic — shows the raw cycle data WHOOP actually returned,
+// so a "day X is still showing an estimate" report can be told apart from
+// "WHOOP hasn't scored that cycle yet" (score_state stays PENDING_SCORE,
+// often because that night's sleep wasn't recorded) vs a real sync bug.
+whoopRouter.get("/debug/cycles", requireAuth, async (req, res) => {
+  const cycles = await prisma.whoopCycle.findMany({
+    where: { userId: req.userId! },
+    orderBy: { start: "desc" },
+    take: 14,
+  });
+  res.json(
+    cycles.map((c) => ({
+      date: localDayKey(c.start, config.TIMEZONE),
+      start: c.start,
+      end: c.end,
+      scoreState: c.scoreState,
+      kcalBurned: c.kcalBurned,
+      updatedAt: c.updatedAt,
+    })),
+  );
 });
 
 whoopRouter.post("/sync", requireAuth, async (req, res) => {
