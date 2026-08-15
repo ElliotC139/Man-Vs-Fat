@@ -245,6 +245,14 @@ button.ghost {
   color: var(--muted);
 }
 
+.day-total-whoop {
+  display: inline-block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 2px;
+}
+
 .day-total-row--today .day-total-label,
 .day-total-row--today .day-total-kcal {
   color: var(--pitch-dark);

@@ -211,13 +211,15 @@ async function loadWeek() {
     pendingNoteEl.hidden = true;
   }
 
-  renderDailyTotals(week.dailyTotals ?? []);
+  renderDailyTotals(week.dailyTotals ?? [], week.whoop?.dailyBurn ?? []);
   renderEntries(week.entries);
   renderExercises(week.exercises ?? []);
   renderBudgetWidget(week);
 }
 
-function renderDailyTotals(days) {
+function renderDailyTotals(days, whoopDailyBurn) {
+  const burnByDate = new Map((whoopDailyBurn ?? []).map((b) => [b.date, b]));
+
   dailyTotalsEl.innerHTML = "";
   for (const day of days) {
     const row = document.createElement("div");
@@ -226,6 +228,18 @@ function renderDailyTotals(days) {
     const label = document.createElement("span");
     label.className = "day-total-label";
     label.textContent = day.isToday ? `Today · ${day.label}` : day.label;
+
+    const burn = burnByDate.get(day.date);
+    // kcalWeighted halves the boundary Mondays the same way the food side is
+    // naturally split by the 17:00 rollover — WHOOP has no sub-day breakdown,
+    // so this is an approximation of "burn since/until 17:00", not exact.
+    if (burn?.kcalWeighted != null) {
+      const whoopLine = document.createElement("span");
+      whoopLine.className = "day-total-whoop";
+      whoopLine.textContent = `🔥 ${burn.kcalWeighted.toLocaleString()} kcal${burn.estimated ? " (est.)" : ""} WHOOP`;
+      label.appendChild(document.createElement("br"));
+      label.appendChild(whoopLine);
+    }
 
     const kcal = document.createElement("span");
     kcal.className = "day-total-kcal";
@@ -804,7 +818,7 @@ function renderExercises(exercises) {
 
     const icon = document.createElement("span");
     icon.className = "exercise-icon";
-    icon.textContent = "🏃";
+    icon.textContent = ex.fromWhoop ? "⌚" : "🏃";
 
     const label = document.createElement("span");
     label.className = "exercise-label";
@@ -818,6 +832,9 @@ function renderExercises(exercises) {
     delBtn.className = "exercise-del";
     delBtn.textContent = "✕";
     delBtn.type = "button";
+    // Auto-imported entries reappear on the next WHOOP sync since they're
+    // matched by the workout's own id, not tracked as user-deleted.
+    if (ex.fromWhoop) delBtn.title = "Auto-imported from WHOOP — will reappear on next sync";
     delBtn.addEventListener("click", () => deleteExercise(ex.id));
 
     row.append(icon, label, kcal, delBtn);

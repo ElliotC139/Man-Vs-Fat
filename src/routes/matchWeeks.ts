@@ -92,7 +92,10 @@ matchWeeksRouter.get("/current", async (req, res) => {
     endsAt: end,
     weeksAgo,
     entries,
-    exercises,
+    // whoopWorkoutId is a BigInt (unserializable) and only exists to key
+    // resyncs — swap it for a plain boolean the client can use to badge
+    // auto-imported entries.
+    exercises: exercises.map(({ whoopWorkoutId, ...rest }) => ({ ...rest, fromWhoop: whoopWorkoutId !== null })),
     dailyTotals: dailyTotals(start, entries),
     whoop,
     ...summarize(start, entries, exercises),

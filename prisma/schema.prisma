@@ -90,14 +90,17 @@ model MatchWeek {
 }
 
 model Exercise {
-  id          Int       @id @default(autoincrement())
-  timestamp   DateTime  @default(now())
-  description String
-  kcalBurned  Int?
-  imageUrl    String?
-  matchWeekId Int
-  matchWeek   MatchWeek @relation(fields: [matchWeekId], references: [id])
-  createdAt   DateTime  @default(now())
+  id             Int       @id @default(autoincrement())
+  timestamp      DateTime  @default(now())
+  description    String
+  kcalBurned     Int?
+  imageUrl       String?
+  matchWeekId    Int
+  matchWeek      MatchWeek @relation(fields: [matchWeekId], references: [id])
+  createdAt      DateTime  @default(now())
+  // Set only for entries auto-imported from a WHOOP workout, so resyncing
+  // can upsert by this id instead of creating duplicates each time.
+  whoopWorkoutId BigInt?   @unique
 
   @@index([matchWeekId])
 }

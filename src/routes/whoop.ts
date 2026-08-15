@@ -4,7 +4,7 @@ import { prisma } from "../db";
 import { whoopConfigured } from "../config";
 import { requireAuth } from "../auth";
 import { buildAuthorizeUrl, exchangeCodeForTokens } from "../whoop/client";
-import { syncUserCycles } from "../whoop/sync";
+import { syncUser } from "../whoop/sync";
 
 export const whoopRouter = Router();
 
@@ -51,7 +51,7 @@ whoopRouter.get("/callback", requireAuth, async (req, res) => {
 
     // Backfill so this week isn't empty; failure here shouldn't block the
     // connection itself — the webhook and next scheduled sync will catch up.
-    await syncUserCycles(req.userId!).catch((e) => console.error("Initial WHOOP sync failed:", e));
+    await syncUser(req.userId!).catch((e) => console.error("Initial WHOOP sync failed:", e));
 
     res.redirect("/?whoop=connected");
   } catch (e) {
@@ -73,7 +73,7 @@ whoopRouter.post("/disconnect", requireAuth, async (req, res) => {
 
 whoopRouter.post("/sync", requireAuth, async (req, res) => {
   try {
-    await syncUserCycles(req.userId!);
+    await syncUser(req.userId!);
     res.status(204).end();
   } catch (e) {
     console.error("Manual WHOOP sync failed:", e);
@@ -98,7 +98,7 @@ whoopRouter.post("/webhook", async (req, res) => {
     const conn = await prisma.whoopConnection.findFirst({ where: { whoopUserId: BigInt(whoopUserId) } });
     if (!conn) return;
 
-    await syncUserCycles(conn.userId);
+    await syncUser(conn.userId);
   } catch (e) {
     console.error("WHOOP webhook handling failed:", e);
   }
