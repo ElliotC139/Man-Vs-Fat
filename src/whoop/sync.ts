@@ -116,16 +116,18 @@ export async function syncAllConnectedUsers(): Promise<void> {
 
 export interface WhoopDailyBurn {
   date: string;
-  // This calendar day's full WHOOP burn, built from every cycle that
-  // overlaps it in real time — not just whichever cycle happens to *start*
-  // that day. WHOOP cycles don't reliably align to calendar days (a cycle
-  // can run well over 24h if a night's sleep wasn't detected, silently
-  // swallowing the day after it), so each cycle's resting/BMR-ish portion is
-  // split across every day it actually touches, proportional to real time
-  // overlap.
+  // This calendar day's WHOOP burn — the sum of whichever cycle(s) are
+  // *wholesale* assigned to it. WHOOP itself doesn't split a cycle's kcal
+  // proportionally across the days it happens to span (confirmed against
+  // WHOOP's own trend view): a cycle that runs long — e.g. 26h because a
+  // night's sleep wasn't detected cleanly — is credited entirely to
+  // whichever single calendar day it overlaps the most, so that's the rule
+  // used here too (see assignedDayKey).
   kcal: number | null;
-  // Same idea but intersected with this match week's boundaries too, so the
-  // two boundary Mondays split correctly at the real 17:00 rollover instant.
+  // Same value, except on the two boundary Mondays, where the day's
+  // assigned cycle(s) are split at the real 17:00 rollover instant (using
+  // the cycle's actual start/end, not an assumed midnight alignment) so
+  // only the portion that actually falls in this match week counts.
   kcalWeighted: number | null;
   estimated: boolean;
   scoreState: string | null;
@@ -152,18 +154,50 @@ function dayBounds(dateKey: string): [Date, Date] {
   return [dayStart, dayEnd];
 }
 
+type Cycle = { id: number; start: Date; end: Date | null; kcalBurned: number | null; scoreState: string };
+
+/** Whichever calendar day (by real time overlap) a cycle mostly falls on — matches WHOOP's own per-day attribution. */
+function assignedDayKey(cycle: Cycle, now: Date): string {
+  const cycleStartMs = cycle.start.getTime();
+  const cycleEndMs = (cycle.end ?? now).getTime();
+  const startDay = localDayKey(cycle.start, config.TIMEZONE);
+
+  let bestDay = startDay;
+  let bestOverlapMs = -1;
+  // Cycles are rarely much over 24h; checking the start day plus the next
+  // two covers even a very long one with room to spare.
+  for (let i = 0; i <= 2; i++) {
+    const dateKey = candidateFrom(startDay, i);
+    const [dayStart, dayEnd] = dayBounds(dateKey);
+    const overlapMs = Math.max(0, Math.min(cycleEndMs, dayEnd.getTime()) - Math.max(cycleStartMs, dayStart.getTime()));
+    if (overlapMs > bestOverlapMs) {
+      bestOverlapMs = overlapMs;
+      bestDay = dateKey;
+    }
+  }
+  return bestDay;
+}
+
+/** dateKey shifted forward by `deltaDays` calendar days in local time. */
+function candidateFrom(dateKey: string, deltaDays: number): string {
+  const [year, month, day] = dateKey.split("-").map(Number) as [number, number, number];
+  // Noon avoids landing on a DST-transition instant when reading the date back out.
+  return localDayKey(zonedTimeToUtc(year, month, day + deltaDays, 12, 0, config.TIMEZONE), config.TIMEZONE);
+}
+
 /**
- * Sums this match week's WHOOP calorie burn. Each cycle is logged burn split
- * by real time overlap across whichever calendar day(s) and week it actually
- * touches — see WhoopDailyBurn above for why that matters. Logged activity
- * isn't split proportionally like the rest of a cycle: each workout is
- * already pinned to the correct day/week by its own exact timestamp (set at
- * sync time in syncUserWorkouts), so it's subtracted from its cycle's
- * non-activity total and re-added exactly where it happened. Days with no
- * scored cycle at all fall back to the trailing average of the last week's
- * scored days — including future days, whose contribution is a projection
- * rather than a measurement (dailyBurn flags them via `future` so callers
- * can hide the per-day figure while still counting them toward the total).
+ * Sums this match week's WHOOP calorie burn, one cycle assigned wholesale to
+ * its majority-overlap calendar day at a time (see WhoopDailyBurn above for
+ * why that matches WHOOP's own reporting). Only the two boundary Mondays
+ * need splitting further, at the real 17:00 rollover instant — logged
+ * activity within that split isn't apportioned proportionally like the rest
+ * of the cycle, since each workout is already pinned to the correct side of
+ * 17:00 by its own exact timestamp (set at sync time in syncUserWorkouts).
+ * Days with no cycle assigned at all fall back to the trailing average of
+ * the last week's scored days — including future days, whose contribution
+ * is a projection rather than a measurement (dailyBurn flags them via
+ * `future` so callers can hide the per-day figure while still counting them
+ * toward the total).
  */
 export async function getWhoopWeekBudget(userId: number, start: Date, end: Date): Promise<WhoopWeekBudget | null> {
   const conn = await prisma.whoopConnection.findUnique({ where: { userId } });
@@ -200,73 +234,56 @@ export async function getWhoopWeekBudget(userId: number, start: Date, end: Date)
     ? Math.round(trailing.reduce((sum, c) => sum + (c.kcalBurned ?? 0), 0) / trailing.length)
     : null;
 
-  // Each cycle's resting/BMR-ish portion, isolated once per cycle by
-  // subtracting whatever logged activity happened during its actual span —
-  // reused below for every day that cycle overlaps.
-  const nonActivityByCycleId = new Map<number, number>();
+  const cyclesByDay = new Map<string, Cycle[]>();
   for (const cycle of nearbyCycles) {
-    if (cycle.kcalBurned == null) continue;
-    const cycleStartMs = cycle.start.getTime();
-    const cycleEndMs = (cycle.end ?? now).getTime();
-    const activityDuringCycle = nearbyWorkouts
-      .filter((w) => w.timestamp.getTime() >= cycleStartMs && w.timestamp.getTime() < cycleEndMs)
-      .reduce((sum, w) => sum + (w.kcalBurned ?? 0), 0);
-    nonActivityByCycleId.set(cycle.id, Math.max(cycle.kcalBurned - activityDuringCycle, 0));
+    const day = assignedDayKey(cycle, now);
+    const bucket = cyclesByDay.get(day) ?? [];
+    bucket.push(cycle);
+    cyclesByDay.set(day, bucket);
   }
 
   const calendarDays = matchWeekCalendarDays(start, config.TIMEZONE);
   const todayKey = localDayKey(now, config.TIMEZONE);
   const startMs = start.getTime();
   const endMs = end.getTime();
+  const isBoundary = (date: string) => date === calendarDays[0] || date === calendarDays[calendarDays.length - 1];
 
   function contributionForDay(dateKey: string): { kcal: number | null; kcalWeighted: number | null; scoreState: string | null } {
-    const [dayStart, dayEnd] = dayBounds(dateKey);
-    const dayStartMs = dayStart.getTime();
-    const dayEndMs = dayEnd.getTime();
+    const cycles = cyclesByDay.get(dateKey) ?? [];
+    const scored = cycles.filter((c) => c.kcalBurned !== null);
+    if (scored.length === 0) return { kcal: null, kcalWeighted: null, scoreState: cycles[0]?.scoreState ?? null };
 
-    const overlapping = nearbyCycles.filter((c) => c.start.getTime() < dayEndMs && (c.end ?? now).getTime() > dayStartMs);
-    if (overlapping.length === 0) return { kcal: null, kcalWeighted: null, scoreState: null };
+    const kcal = scored.reduce((sum, c) => sum + (c.kcalBurned ?? 0), 0);
 
-    let dayNonActivity = 0;
-    let weekNonActivity = 0;
-    let hasScored = false;
-    let scoreState: string | null = null;
+    if (!isBoundary(dateKey)) {
+      return { kcal, kcalWeighted: kcal, scoreState: scored[0]?.scoreState ?? null };
+    }
 
-    for (const cycle of overlapping) {
-      scoreState = cycle.scoreState;
-      const nonActivity = nonActivityByCycleId.get(cycle.id);
-      if (nonActivity === undefined) continue; // not yet scored
-      hasScored = true;
-
+    const kcalWeighted = scored.reduce((sum, cycle) => {
       const cycleStartMs = cycle.start.getTime();
       const cycleEndMs = (cycle.end ?? now).getTime();
       const cycleDurationMs = Math.max(cycleEndMs - cycleStartMs, 1);
 
-      const overlapDayMs = Math.max(0, Math.min(cycleEndMs, dayEndMs) - Math.max(cycleStartMs, dayStartMs));
-      dayNonActivity += nonActivity * (overlapDayMs / cycleDurationMs);
+      const workoutsInCycle = nearbyWorkouts.filter(
+        (w) => w.timestamp.getTime() >= cycleStartMs && w.timestamp.getTime() < cycleEndMs,
+      );
+      const activityAll = workoutsInCycle.reduce((s, w) => s + (w.kcalBurned ?? 0), 0);
+      const activityInWeek = workoutsInCycle
+        .filter((w) => w.timestamp.getTime() >= startMs && w.timestamp.getTime() < endMs)
+        .reduce((s, w) => s + (w.kcalBurned ?? 0), 0);
+      const nonActivity = Math.max((cycle.kcalBurned ?? 0) - activityAll, 0);
 
-      const overlapDayWeekMs = Math.max(0, Math.min(cycleEndMs, dayEndMs, endMs) - Math.max(cycleStartMs, dayStartMs, startMs));
-      weekNonActivity += nonActivity * (overlapDayWeekMs / cycleDurationMs);
-    }
+      const overlapWeekMs = Math.max(0, Math.min(cycleEndMs, endMs) - Math.max(cycleStartMs, startMs));
+      const fraction = overlapWeekMs / cycleDurationMs;
 
-    if (!hasScored) return { kcal: null, kcalWeighted: null, scoreState };
+      return sum + Math.round(nonActivity * fraction) + activityInWeek;
+    }, 0);
 
-    const dayWorkouts = nearbyWorkouts.filter((w) => localDayKey(w.timestamp, config.TIMEZONE) === dateKey);
-    const dayWorkoutKcal = dayWorkouts.reduce((sum, w) => sum + (w.kcalBurned ?? 0), 0);
-    const weekWorkoutKcal = dayWorkouts
-      .filter((w) => w.timestamp.getTime() >= startMs && w.timestamp.getTime() < endMs)
-      .reduce((sum, w) => sum + (w.kcalBurned ?? 0), 0);
-
-    return {
-      kcal: Math.round(dayNonActivity + dayWorkoutKcal),
-      kcalWeighted: Math.round(weekNonActivity + weekWorkoutKcal),
-      scoreState,
-    };
+    return { kcal, kcalWeighted, scoreState: scored[0]?.scoreState ?? null };
   }
 
   let weeklyBudget = 0;
   let hasAnyData = false;
-  const isBoundary = (date: string) => date === calendarDays[0] || date === calendarDays[calendarDays.length - 1];
   const dailyBurn: WhoopDailyBurn[] = calendarDays.map((date) => {
     const future = date > todayKey;
     const result = contributionForDay(date);
