@@ -245,6 +245,19 @@ function renderDailyTotals(days, whoopDailyBurn) {
     kcal.className = "day-total-kcal";
     kcal.textContent = day.pending ? `${day.kcal} kcal + pending` : `${day.kcal} kcal`;
 
+    // Net = eaten minus burned for that specific day — positive means a
+    // surplus (ate more than burned), negative a deficit. Only shown once
+    // a real or projected burn figure exists for the day.
+    if (!burn?.future && burn?.kcalWeighted != null) {
+      const net = day.kcal - burn.kcalWeighted;
+      const netLine = document.createElement("span");
+      netLine.className = net > 0 ? "day-total-net day-total-net--over" : net < 0 ? "day-total-net day-total-net--under" : "day-total-net";
+      const sign = net > 0 ? "+" : net < 0 ? "−" : "";
+      netLine.textContent = `${sign}${Math.abs(net).toLocaleString()} kcal net`;
+      kcal.appendChild(document.createElement("br"));
+      kcal.appendChild(netLine);
+    }
+
     row.append(label, kcal);
     dailyTotalsEl.appendChild(row);
   }

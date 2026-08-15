@@ -253,6 +253,20 @@ button.ghost {
   margin-top: 2px;
 }
 
+.day-total-net {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-top: 2px;
+  color: var(--muted);
+}
+.day-total-net--under {
+  color: var(--pitch-dark);
+}
+.day-total-net--over {
+  color: #dc2626;
+}
+
 .day-total-row--today .day-total-label,
 .day-total-row--today .day-total-kcal {
   color: var(--pitch-dark);
