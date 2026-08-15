@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { config } from "../config";
 import { closeMatchWeeksNeedingReport } from "./weeklyReport";
+import { syncAllConnectedUsers } from "../whoop/sync";
 
 export function startScheduler(): void {
   // Hourly rather than a single fixed weekly tick, since each user now has
@@ -21,6 +22,16 @@ export function startScheduler(): void {
   setTimeout(() => {
     closeMatchWeeksNeedingReport().catch((error) => console.error("Startup catch-up report run failed:", error));
   }, 5_000);
+
+  // Backstop for the WHOOP webhook: covers missed/delayed deliveries and
+  // connections still waiting on their first ping. 20 min keeps the budget
+  // widget reasonably fresh without hammering WHOOP's API.
+  cron.schedule("*/20 * * * *", () => {
+    syncAllConnectedUsers().catch((error) => console.error("Scheduled WHOOP sync run failed:", error));
+  });
+  setTimeout(() => {
+    syncAllConnectedUsers().catch((error) => console.error("Startup catch-up WHOOP sync run failed:", error));
+  }, 10_000);
 
   console.log(`Weekly report scheduler started (hourly checks, ${config.TIMEZONE}).`);
 }

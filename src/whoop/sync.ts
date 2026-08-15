@@ -102,6 +102,18 @@ export async function syncUser(userId: number): Promise<void> {
   await syncUserWorkouts(userId, accessToken);
 }
 
+/** Resyncs every connected user — used by the periodic scheduler as a backstop for missed webhooks. */
+export async function syncAllConnectedUsers(): Promise<void> {
+  const connections = await prisma.whoopConnection.findMany({ select: { userId: true } });
+  for (const { userId } of connections) {
+    try {
+      await syncUser(userId);
+    } catch (e) {
+      console.error(`Scheduled WHOOP sync failed for user ${userId}:`, e);
+    }
+  }
+}
+
 export interface WhoopDailyBurn {
   date: string;
   // Full physiological-day value, unweighted.

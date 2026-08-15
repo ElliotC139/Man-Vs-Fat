@@ -34,6 +34,7 @@ const logoutBtn = document.getElementById("logout-btn");
 
 const whoopStatusText = document.getElementById("whoop-status-text");
 const whoopConnectBtn = document.getElementById("whoop-connect-btn");
+const whoopSyncBtn = document.getElementById("whoop-sync-btn");
 const whoopDisconnectBtn = document.getElementById("whoop-disconnect-btn");
 const whoopUnconfiguredNote = document.getElementById("whoop-unconfigured-note");
 
@@ -740,6 +741,7 @@ async function loadWhoopStatus() {
 
     whoopUnconfiguredNote.hidden = status.configured;
     whoopConnectBtn.hidden = !status.configured || status.connected;
+    whoopSyncBtn.hidden = !status.configured || !status.connected;
     whoopDisconnectBtn.hidden = !status.configured || !status.connected;
 
     if (!status.configured) {
@@ -759,6 +761,22 @@ async function loadWhoopStatus() {
 
 whoopConnectBtn.addEventListener("click", () => {
   window.location.href = "/api/whoop/connect";
+});
+
+whoopSyncBtn.addEventListener("click", async () => {
+  whoopSyncBtn.disabled = true;
+  whoopSyncBtn.textContent = "Syncing…";
+  try {
+    const res = await fetch("/api/whoop/sync", { method: "POST" });
+    if (!res.ok) throw new Error();
+    await loadWhoopStatus();
+    await loadWeek();
+  } catch {
+    whoopStatusText.textContent = "Sync failed — please try again.";
+  } finally {
+    whoopSyncBtn.disabled = false;
+    whoopSyncBtn.textContent = "Sync now";
+  }
 });
 
 whoopDisconnectBtn.addEventListener("click", async () => {
