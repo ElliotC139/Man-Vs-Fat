@@ -94,6 +94,7 @@ const weekNoteEl = document.getElementById("week-note");
 const weekTotalEl = document.getElementById("week-total");
 const weekAvgEl = document.getElementById("week-avg");
 const daysLoggedEl = document.getElementById("days-logged");
+const weekNetSummaryEl = document.getElementById("week-net-summary");
 const dailyTotalsEl = document.getElementById("daily-totals");
 const entryListEl = document.getElementById("entry-list");
 const pendingNoteEl = document.getElementById("pending-note");
@@ -219,6 +220,8 @@ async function loadWeek() {
 
 function renderDailyTotals(days, whoopDailyBurn) {
   const burnByDate = new Map((whoopDailyBurn ?? []).map((b) => [b.date, b]));
+  let weekNet = 0;
+  let weekNetHasData = false;
 
   dailyTotalsEl.innerHTML = "";
   for (const day of days) {
@@ -250,6 +253,9 @@ function renderDailyTotals(days, whoopDailyBurn) {
     // a real or projected burn figure exists for the day.
     if (!burn?.future && burn?.kcalWeighted != null) {
       const net = day.kcal - burn.kcalWeighted;
+      weekNet += net;
+      weekNetHasData = true;
+
       const netLine = document.createElement("span");
       netLine.className = net > 0 ? "day-total-net day-total-net--over" : net < 0 ? "day-total-net day-total-net--under" : "day-total-net";
       const sign = net > 0 ? "+" : net < 0 ? "−" : "";
@@ -260,6 +266,18 @@ function renderDailyTotals(days, whoopDailyBurn) {
 
     row.append(label, kcal);
     dailyTotalsEl.appendChild(row);
+  }
+
+  // Sum of the per-day net figures above (days that have actually happened
+  // so far — future days never contribute, same restriction as each row).
+  if (weekNetHasData) {
+    weekNetSummaryEl.hidden = false;
+    weekNetSummaryEl.className =
+      weekNet > 0 ? "week-net-summary week-net-summary--over" : weekNet < 0 ? "week-net-summary week-net-summary--under" : "week-net-summary";
+    const sign = weekNet > 0 ? "+" : weekNet < 0 ? "−" : "";
+    weekNetSummaryEl.textContent = `${sign}${Math.abs(weekNet).toLocaleString()} kcal net so far this week (in vs out)`;
+  } else {
+    weekNetSummaryEl.hidden = true;
   }
 }
 

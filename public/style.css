@@ -216,6 +216,19 @@ button.ghost {
   font-weight: 700;
 }
 
+.week-net-summary {
+  margin-top: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.week-net-summary--under {
+  color: var(--pitch-dark);
+}
+.week-net-summary--over {
+  color: #dc2626;
+}
+
 .day-totals {
   margin-top: 12px;
   text-align: left;
