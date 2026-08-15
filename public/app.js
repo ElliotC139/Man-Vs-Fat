@@ -32,6 +32,11 @@ const settingsSave = document.getElementById("settings-save");
 const settingsError = document.getElementById("settings-error");
 const logoutBtn = document.getElementById("logout-btn");
 
+const whoopStatusText = document.getElementById("whoop-status-text");
+const whoopConnectBtn = document.getElementById("whoop-connect-btn");
+const whoopDisconnectBtn = document.getElementById("whoop-disconnect-btn");
+const whoopUnconfiguredNote = document.getElementById("whoop-unconfigured-note");
+
 const budgetWidget = document.getElementById("budget-widget");
 const budgetWeeklyLabel = document.getElementById("budget-weekly-label");
 const budgetTodayTarget = document.getElementById("budget-today-target");
@@ -659,7 +664,68 @@ function showApp(user) {
   authScreen.hidden = true;
   appShell.hidden = false;
   loadWeek();
+  loadWhoopStatus();
+  handleWhoopRedirect();
 }
+
+// WHOOP's OAuth callback redirects back to "/" with a query param — surface
+// the result once, then strip it so a page refresh doesn't repeat it.
+function handleWhoopRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const whoopResult = params.get("whoop");
+  if (!whoopResult) return;
+
+  if (whoopResult === "connected") {
+    settingsCard.hidden = false;
+  } else if (whoopResult === "error") {
+    settingsCard.hidden = false;
+    whoopStatusText.textContent = "Couldn't connect WHOOP — please try again.";
+  }
+
+  const url = new URL(window.location.href);
+  url.searchParams.delete("whoop");
+  window.history.replaceState({}, "", url.pathname + url.search);
+}
+
+async function loadWhoopStatus() {
+  try {
+    const res = await fetch("/api/whoop/status");
+    if (!res.ok) throw new Error();
+    const status = await res.json();
+
+    whoopUnconfiguredNote.hidden = status.configured;
+    whoopConnectBtn.hidden = !status.configured || status.connected;
+    whoopDisconnectBtn.hidden = !status.configured || !status.connected;
+
+    if (!status.configured) {
+      whoopStatusText.textContent = "Not connected";
+    } else if (status.connected) {
+      const synced = status.lastSyncedAt
+        ? new Date(status.lastSyncedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+        : "not yet";
+      whoopStatusText.textContent = `Connected · last synced ${synced}`;
+    } else {
+      whoopStatusText.textContent = "Not connected";
+    }
+  } catch {
+    whoopStatusText.textContent = "Couldn't check WHOOP status";
+  }
+}
+
+whoopConnectBtn.addEventListener("click", () => {
+  window.location.href = "/api/whoop/connect";
+});
+
+whoopDisconnectBtn.addEventListener("click", async () => {
+  whoopDisconnectBtn.disabled = true;
+  try {
+    await fetch("/api/whoop/disconnect", { method: "POST" });
+    await loadWhoopStatus();
+    await loadWeek();
+  } finally {
+    whoopDisconnectBtn.disabled = false;
+  }
+});
 
 function showAuthScreen() {
   appShell.hidden = true;
@@ -788,14 +854,20 @@ function formatDays(fractional) {
 }
 
 function renderBudgetWidget(week) {
+  // When WHOOP is connected, its measured daily burn replaces the
+  // BMR-formula estimate as the weekly budget — everything downstream
+  // (redistribution, projection) is unchanged, only the input number differs.
+  const whoop = week.whoop;
+  const whoopWeeklyBudget = whoop?.connected && whoop.weeklyBudget != null ? whoop.weeklyBudget : null;
+
   const dailyTarget = calculateDailyTarget(currentUser);
-  if (!dailyTarget || dailyTarget <= 0) {
+  if (whoopWeeklyBudget === null && (!dailyTarget || dailyTarget <= 0)) {
     budgetWidget.hidden = true;
     return;
   }
   budgetWidget.hidden = false;
 
-  const weeklyBudget = dailyTarget * 7;
+  const weeklyBudget = whoopWeeklyBudget ?? dailyTarget * 7;
   const foodConsumed = week.totalKcal ?? 0;
   const exerciseBurned = week.exerciseTotalKcal ?? 0;
   const netConsumed = foodConsumed - exerciseBurned;
@@ -839,7 +911,7 @@ function renderBudgetWidget(week) {
   const overBudget = todayKcal > actualTodayAllowance;
   const approaching = !overBudget && pct >= 0.85;
 
-  budgetWeeklyLabel.textContent = `${weeklyBudget.toLocaleString()} kcal/week`;
+  budgetWeeklyLabel.textContent = `${weeklyBudget.toLocaleString()} kcal/week${whoopWeeklyBudget !== null ? " · WHOOP" : ""}`;
   budgetTodayTarget.textContent = `${actualTodayAllowance.toLocaleString()} kcal`;
 
   budgetBarFill.style.width = `${Math.round(pct * 100)}%`;

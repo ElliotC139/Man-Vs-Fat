@@ -30,6 +30,44 @@ model User {
   weeklyGoalKg     Float?
   createdAt        DateTime @default(now())
   matchWeeks       MatchWeek[]
+  whoopConnection  WhoopConnection?
+  whoopCycles      WhoopCycle[]
+}
+
+// One WHOOP OAuth link per user. accessToken/expiresAt are refreshed in place
+// as needed (see src/whoop/sync.ts); refreshToken only changes if WHOOP
+// rotates it on refresh.
+model WhoopConnection {
+  id           Int       @id @default(autoincrement())
+  userId       Int       @unique
+  user         User      @relation(fields: [userId], references: [id])
+  // WHOOP's own numeric user id, captured from the first synced cycle's
+  // user_id field (not requested via a dedicated profile scope) — lets the
+  // webhook, which is keyed by WHOOP user id, resolve back to our userId.
+  whoopUserId  BigInt?
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  lastSyncedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+// A WHOOP physiological cycle (roughly one per day, wake-to-wake), used as
+// the measured total daily calorie burn feeding the budget widget.
+model WhoopCycle {
+  id           Int       @id @default(autoincrement())
+  userId       Int
+  user         User      @relation(fields: [userId], references: [id])
+  whoopCycleId BigInt    @unique
+  start        DateTime
+  end          DateTime?
+  // Null until WHOOP finalizes ("SCORED") the cycle — see scoreState.
+  kcalBurned   Int?
+  scoreState   String
+  updatedAt    DateTime  @updatedAt
+
+  @@index([userId, start])
 }
 
 // A single week-start -> following week-start boundary, per user. First-class

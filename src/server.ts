@@ -8,6 +8,7 @@ import { authRouter } from "./routes/auth";
 import { entriesRouter } from "./routes/entries";
 import { exercisesRouter } from "./routes/exercises";
 import { matchWeeksRouter } from "./routes/matchWeeks";
+import { whoopRouter } from "./routes/whoop";
 import { startScheduler } from "./jobs/scheduler";
 
 ensureUploadsDir();
@@ -24,6 +25,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/entries", entriesRouter);
 app.use("/api/exercises", exercisesRouter);
 app.use("/api/match-weeks", matchWeeksRouter);
+app.use("/api/whoop", whoopRouter);
 
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
 

@@ -12,6 +12,7 @@ import {
 import { generateMatchWeekReport } from "../pdf/generateReport";
 import { generateWeekInsights } from "../insights";
 import { uploadReportToDrive } from "../drive/uploadToDrive";
+import { getWhoopWeekBudget } from "../whoop/sync";
 
 export const matchWeeksRouter = Router();
 matchWeeksRouter.use(requireAuth);
@@ -84,6 +85,7 @@ matchWeeksRouter.get("/current", async (req, res) => {
 
   const entries = week?.entries ?? [];
   const exercises = week?.exercises ?? [];
+  const whoop = await getWhoopWeekBudget(req.userId!, start, end);
   res.json({
     id: week?.id ?? null,
     startsAt: start,
@@ -92,6 +94,7 @@ matchWeeksRouter.get("/current", async (req, res) => {
     entries,
     exercises,
     dailyTotals: dailyTotals(start, entries),
+    whoop,
     ...summarize(start, entries, exercises),
   });
 });

@@ -15,6 +15,11 @@ const envSchema = z.object({
   // Google" button — distinct from GOOGLE_CLIENT_ID above, which is a "TVs
   // and Limited Input devices" client only usable for the Drive device flow.
   GOOGLE_SIGNIN_CLIENT_ID: z.string().optional(),
+  WHOOP_CLIENT_ID: z.string().optional(),
+  WHOOP_CLIENT_SECRET: z.string().optional(),
+  // Must exactly match the redirect URI registered in the WHOOP developer
+  // dashboard (app URL + /api/whoop/callback).
+  APP_BASE_URL: z.string().default("https://match-week-food-diary.fly.dev"),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -30,3 +35,5 @@ export const config = parsed.data;
 export const driveConfigured = Boolean(
   config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_SECRET && config.GOOGLE_REFRESH_TOKEN,
 );
+
+export const whoopConfigured = Boolean(config.WHOOP_CLIENT_ID && config.WHOOP_CLIENT_SECRET);

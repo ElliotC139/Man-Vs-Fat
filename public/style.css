@@ -496,6 +496,17 @@ h2 {
   font-size: 0.9rem;
 }
 
+.whoop-status-row {
+  margin-bottom: 8px;
+}
+#whoop-connect-btn,
+#whoop-disconnect-btn {
+  width: auto;
+  min-height: 36px;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+}
+
 /* ── Budget widget ── */
 .budget-widget {
   border-left: 4px solid var(--pitch);
