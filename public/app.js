@@ -870,7 +870,11 @@ function renderBudgetWidget(week) {
   const weeklyBudget = whoopWeeklyBudget ?? dailyTarget * 7;
   const foodConsumed = week.totalKcal ?? 0;
   const exerciseBurned = week.exerciseTotalKcal ?? 0;
-  const netConsumed = foodConsumed - exerciseBurned;
+  // WHOOP's measured daily burn already reflects any exercise performed while
+  // wearing it, so crediting logged exercise on top would double-count those
+  // calories. The BMR-formula budget has no such day-specific measurement, so
+  // logged exercise still earns extra room there.
+  const netConsumed = whoopWeeklyBudget !== null ? foodConsumed : foodConsumed - exerciseBurned;
   const weekRemaining = weeklyBudget - netConsumed;
 
   // Weighted remaining days: first and last entry in the week are half-days
@@ -949,7 +953,13 @@ function renderBudgetWidget(week) {
     `Week budget: ${weeklyBudget.toLocaleString()} kcal total`,
     `Eaten so far: ${foodConsumed.toLocaleString()} kcal`,
   ];
-  if (exerciseBurned > 0) lines.push(`Exercise burned: ${exerciseBurned.toLocaleString()} kcal`);
+  if (exerciseBurned > 0) {
+    lines.push(
+      whoopWeeklyBudget !== null
+        ? `Exercise burned: ${exerciseBurned.toLocaleString()} kcal (already counted in WHOOP total)`
+        : `Exercise burned: ${exerciseBurned.toLocaleString()} kcal`,
+    );
+  }
   lines.push(`Remaining: ${weekRemaining.toLocaleString()} kcal over ${formatDays(fractionalDaysRemaining)}`);
 
   if (projectedVsBudget !== null) {
