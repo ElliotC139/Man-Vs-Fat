@@ -879,6 +879,13 @@ function renderExercises(exercises) {
     const label = document.createElement("span");
     label.className = "exercise-label";
     label.textContent = ex.description;
+    const timeLine = document.createElement("span");
+    timeLine.className = "exercise-time";
+    const exDate = new Date(ex.timestamp);
+    const isToday = exDate.toDateString() === new Date().toDateString();
+    timeLine.textContent = isToday ? timeFmt.format(exDate) : `${dateFmt.format(exDate)}, ${timeFmt.format(exDate)}`;
+    label.appendChild(document.createElement("br"));
+    label.appendChild(timeLine);
 
     const kcal = document.createElement("span");
     kcal.className = "exercise-kcal";

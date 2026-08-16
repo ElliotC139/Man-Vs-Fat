@@ -627,6 +627,7 @@ h2 {
 .exercise-entry:last-child { border-bottom: none; }
 .exercise-icon { font-size: 1.2rem; flex-shrink: 0; }
 .exercise-label { flex: 1; font-size: 0.95rem; }
+.exercise-time { display: inline-block; margin-top: 2px; font-size: 0.75rem; color: var(--muted); font-weight: 400; }
 .exercise-kcal { font-weight: 700; color: var(--pitch); font-size: 0.9rem; white-space: nowrap; }
 .exercise-del {
   width: auto;
