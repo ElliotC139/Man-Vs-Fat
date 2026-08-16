@@ -7,7 +7,7 @@ const BACKFILL_DAYS = 10;
 const TRAILING_AVERAGE_SAMPLE = 7;
 
 /** Returns a usable access token, refreshing and persisting it first if it's near expiry. */
-export async function getValidAccessToken(userId: number): Promise<string | null> {
+async function getValidAccessToken(userId: number): Promise<string | null> {
   const conn = await prisma.whoopConnection.findUnique({ where: { userId } });
   if (!conn) return null;
 

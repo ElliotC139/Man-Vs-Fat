@@ -100,7 +100,8 @@ model Exercise {
   createdAt      DateTime  @default(now())
   // Set only for entries auto-imported from a WHOOP workout, so resyncing
   // can upsert by this id instead of creating duplicates each time.
-  whoopWorkoutId BigInt?   @unique
+  // UUID string — WHOOP workout ids aren't numeric, unlike cycle ids.
+  whoopWorkoutId String?   @unique
 
   @@index([matchWeekId])
 }

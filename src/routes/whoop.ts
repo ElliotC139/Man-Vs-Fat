@@ -5,7 +5,7 @@ import { config, whoopConfigured } from "../config";
 import { requireAuth } from "../auth";
 import { localDayKey } from "../matchWeek";
 import { buildAuthorizeUrl, exchangeCodeForTokens } from "../whoop/client";
-import { getValidAccessToken, syncUser } from "../whoop/sync";
+import { syncUser } from "../whoop/sync";
 
 export const whoopRouter = Router();
 
@@ -107,34 +107,6 @@ whoopRouter.get("/debug/cycles", requireAuth, async (req, res) => {
       updatedAt: c.updatedAt,
     })),
   );
-});
-
-// Temporary diagnostic — makes a raw workout fetch directly (bypassing both
-// the DB, the silent-catch in syncUserWorkouts, and fetchRecentWorkouts'
-// own parsing) so the actual HTTP status and response body are visible
-// verbatim, rather than however our assumed response shape interpreted it.
-whoopRouter.get("/debug/workouts-raw", requireAuth, async (req, res) => {
-  const accessToken = await getValidAccessToken(req.userId!);
-  if (!accessToken) {
-    res.status(404).json({ error: "Not connected" });
-    return;
-  }
-  const since = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
-  const urls = [
-    `https://api.prod.whoop.com/developer/v2/activity/workout?limit=25&start=${encodeURIComponent(since.toISOString())}`,
-    `https://api.prod.whoop.com/developer/v2/workout?limit=25&start=${encodeURIComponent(since.toISOString())}`,
-  ];
-  const results = [];
-  for (const url of urls) {
-    try {
-      const r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-      const text = await r.text();
-      results.push({ url, status: r.status, body: text.slice(0, 1500) });
-    } catch (e) {
-      results.push({ url, error: e instanceof Error ? e.message : String(e) });
-    }
-  }
-  res.json(results);
 });
 
 whoopRouter.post("/sync", requireAuth, async (req, res) => {

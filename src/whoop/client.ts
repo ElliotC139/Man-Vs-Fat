@@ -141,7 +141,10 @@ export async function fetchRecentCycles(accessToken: string, since: Date): Promi
 }
 
 export interface WhoopWorkoutRecord {
-  whoopWorkoutId: bigint;
+  // Unlike cycles, workout ids are UUID strings (e.g.
+  // "0a61a1e0-ffa4-48d5-ae7a-b117f0a207c4"), not numeric — confirmed against
+  // a live response, so this isn't a guess.
+  whoopWorkoutId: string;
   whoopUserId: bigint;
   start: Date;
   end: Date;
@@ -154,7 +157,7 @@ export interface WhoopWorkoutRecord {
 }
 
 interface RawWorkoutRecord {
-  id: number | string;
+  id: string;
   user_id: number | string;
   start: string;
   end: string;
@@ -186,7 +189,7 @@ export async function fetchRecentWorkouts(accessToken: string, since: Date): Pro
         const scoreState = r.score_state ?? "UNSCORABLE";
         const kilojoule = r.score?.kilojoule;
         records.push({
-          whoopWorkoutId: BigInt(r.id),
+          whoopWorkoutId: String(r.id),
           whoopUserId: BigInt(r.user_id),
           start: new Date(r.start),
           end: new Date(r.end),
