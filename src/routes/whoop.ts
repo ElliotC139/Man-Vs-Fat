@@ -4,7 +4,7 @@ import { prisma } from "../db";
 import { config, whoopConfigured } from "../config";
 import { requireAuth } from "../auth";
 import { localDayKey } from "../matchWeek";
-import { buildAuthorizeUrl, exchangeCodeForTokens, fetchRecentWorkouts } from "../whoop/client";
+import { buildAuthorizeUrl, exchangeCodeForTokens } from "../whoop/client";
 import { getValidAccessToken, syncUser } from "../whoop/sync";
 
 export const whoopRouter = Router();
@@ -109,33 +109,32 @@ whoopRouter.get("/debug/cycles", requireAuth, async (req, res) => {
   );
 });
 
-// Temporary diagnostic — makes a live workout fetch (bypassing the DB and
-// the silent-catch in syncUserWorkouts) so a missing-scope 401/403 or any
-// other failure is visible directly, instead of just never appearing.
-whoopRouter.get("/debug/workouts", requireAuth, async (req, res) => {
+// Temporary diagnostic — makes a raw workout fetch directly (bypassing both
+// the DB, the silent-catch in syncUserWorkouts, and fetchRecentWorkouts'
+// own parsing) so the actual HTTP status and response body are visible
+// verbatim, rather than however our assumed response shape interpreted it.
+whoopRouter.get("/debug/workouts-raw", requireAuth, async (req, res) => {
   const accessToken = await getValidAccessToken(req.userId!);
   if (!accessToken) {
     res.status(404).json({ error: "Not connected" });
     return;
   }
-  try {
-    const since = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
-    const workouts = await fetchRecentWorkouts(accessToken, since);
-    res.json({
-      ok: true,
-      count: workouts.length,
-      workouts: workouts.map((w) => ({
-        whoopWorkoutId: w.whoopWorkoutId.toString(),
-        start: w.start,
-        end: w.end,
-        kcalBurned: w.kcalBurned,
-        scoreState: w.scoreState,
-        sportName: w.sportName,
-      })),
-    });
-  } catch (e) {
-    res.status(502).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+  const since = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+  const urls = [
+    `https://api.prod.whoop.com/developer/v2/activity/workout?limit=25&start=${encodeURIComponent(since.toISOString())}`,
+    `https://api.prod.whoop.com/developer/v2/workout?limit=25&start=${encodeURIComponent(since.toISOString())}`,
+  ];
+  const results = [];
+  for (const url of urls) {
+    try {
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+      const text = await r.text();
+      results.push({ url, status: r.status, body: text.slice(0, 1500) });
+    } catch (e) {
+      results.push({ url, error: e instanceof Error ? e.message : String(e) });
+    }
   }
+  res.json(results);
 });
 
 whoopRouter.post("/sync", requireAuth, async (req, res) => {
