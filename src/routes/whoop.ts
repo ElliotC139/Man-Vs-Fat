@@ -4,8 +4,8 @@ import { prisma } from "../db";
 import { config, whoopConfigured } from "../config";
 import { requireAuth } from "../auth";
 import { localDayKey } from "../matchWeek";
-import { buildAuthorizeUrl, exchangeCodeForTokens } from "../whoop/client";
-import { syncUser } from "../whoop/sync";
+import { buildAuthorizeUrl, exchangeCodeForTokens, fetchRecentWorkouts } from "../whoop/client";
+import { getValidAccessToken, syncUser } from "../whoop/sync";
 
 export const whoopRouter = Router();
 
@@ -107,6 +107,35 @@ whoopRouter.get("/debug/cycles", requireAuth, async (req, res) => {
       updatedAt: c.updatedAt,
     })),
   );
+});
+
+// Temporary diagnostic — makes a live workout fetch (bypassing the DB and
+// the silent-catch in syncUserWorkouts) so a missing-scope 401/403 or any
+// other failure is visible directly, instead of just never appearing.
+whoopRouter.get("/debug/workouts", requireAuth, async (req, res) => {
+  const accessToken = await getValidAccessToken(req.userId!);
+  if (!accessToken) {
+    res.status(404).json({ error: "Not connected" });
+    return;
+  }
+  try {
+    const since = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+    const workouts = await fetchRecentWorkouts(accessToken, since);
+    res.json({
+      ok: true,
+      count: workouts.length,
+      workouts: workouts.map((w) => ({
+        whoopWorkoutId: w.whoopWorkoutId.toString(),
+        start: w.start,
+        end: w.end,
+        kcalBurned: w.kcalBurned,
+        scoreState: w.scoreState,
+        sportName: w.sportName,
+      })),
+    });
+  } catch (e) {
+    res.status(502).json({ ok: false, error: e instanceof Error ? e.message : String(e) });
+  }
 });
 
 whoopRouter.post("/sync", requireAuth, async (req, res) => {
