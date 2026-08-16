@@ -71,7 +71,14 @@ whoopRouter.get("/callback", requireAuth, async (req, res) => {
 
 whoopRouter.get("/status", requireAuth, async (req, res) => {
   const conn = await prisma.whoopConnection.findUnique({ where: { userId: req.userId! } });
-  res.json({ configured: whoopConfigured, connected: Boolean(conn), lastSyncedAt: conn?.lastSyncedAt ?? null });
+  res.json({
+    configured: whoopConfigured,
+    connected: Boolean(conn),
+    lastSyncedAt: conn?.lastSyncedAt ?? null,
+    // Temporary diagnostic — lets a stuck refresh be told apart from a
+    // genuinely revoked token by checking whether expiresAt looks sane.
+    expiresAt: conn?.expiresAt ?? null,
+  });
 });
 
 whoopRouter.post("/disconnect", requireAuth, async (req, res) => {

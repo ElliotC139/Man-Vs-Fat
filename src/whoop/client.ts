@@ -38,8 +38,8 @@ async function requestToken(body: Record<string, string>): Promise<WhoopTokens> 
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: config.WHOOP_CLIENT_ID!,
-      client_secret: config.WHOOP_CLIENT_SECRET!,
+      client_id: config.WHOOP_CLIENT_ID!.trim(),
+      client_secret: config.WHOOP_CLIENT_SECRET!.trim(),
       ...body,
     }).toString(),
   });
@@ -47,15 +47,26 @@ async function requestToken(body: Record<string, string>): Promise<WhoopTokens> 
     const text = await res.text().catch(() => "");
     throw new Error(`WHOOP token request failed (${res.status}): ${text}`);
   }
-  const data = (await res.json()) as {
-    access_token: string;
-    refresh_token: string;
-    expires_in: number;
-  };
+  const raw = await res.text();
+  let data: { access_token?: unknown; refresh_token?: unknown; expires_in?: unknown };
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(`WHOOP token response wasn't valid JSON: ${raw.slice(0, 200)}`);
+  }
+
+  if (typeof data.access_token !== "string" || !data.access_token) {
+    throw new Error(`WHOOP token response missing access_token. Got keys: ${Object.keys(data).join(", ")}`);
+  }
+  if (typeof data.refresh_token !== "string" || !data.refresh_token) {
+    throw new Error(`WHOOP token response missing refresh_token. Got keys: ${Object.keys(data).join(", ")}`);
+  }
+  const expiresInSeconds = typeof data.expires_in === "number" && Number.isFinite(data.expires_in) ? data.expires_in : 3600;
+
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
-    expiresAt: new Date(Date.now() + data.expires_in * 1000),
+    expiresAt: new Date(Date.now() + expiresInSeconds * 1000),
   };
 }
 
@@ -64,7 +75,11 @@ export function exchangeCodeForTokens(code: string): Promise<WhoopTokens> {
 }
 
 export function refreshAccessToken(refreshToken: string): Promise<WhoopTokens> {
-  return requestToken({ grant_type: "refresh_token", refresh_token: refreshToken });
+  // redirect_uri and scope included defensively — not required by the OAuth2
+  // spec for a refresh_token grant, but WHOOP's own error hint on failed
+  // requests mentions redirect_uri, so this covers the possibility their
+  // implementation expects it here too. Harmless if genuinely unneeded.
+  return requestToken({ grant_type: "refresh_token", refresh_token: refreshToken, redirect_uri: redirectUri(), scope: SCOPES });
 }
 
 export interface WhoopCycleRecord {
