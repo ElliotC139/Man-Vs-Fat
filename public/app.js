@@ -42,8 +42,12 @@ const budgetWidget = document.getElementById("budget-widget");
 const budgetSourceLabel = document.getElementById("budget-source-label");
 const balanceInTotal = document.getElementById("balance-in-total");
 const balanceOutTotal = document.getElementById("balance-out-total");
-const balanceDailyAvg = document.getElementById("balance-daily-avg");
-const balancePredicted = document.getElementById("balance-predicted");
+const balanceDiffCell = document.getElementById("balance-diff-cell");
+const balanceDiff = document.getElementById("balance-diff");
+const balanceDiffCaption = document.getElementById("balance-diff-caption");
+const balanceKgCell = document.getElementById("balance-kg-cell");
+const balanceKg = document.getElementById("balance-kg");
+const balanceKgCaption = document.getElementById("balance-kg-caption");
 
 const exerciseToggle = document.getElementById("exercise-toggle");
 const exerciseForm = document.getElementById("exercise-form");
@@ -922,32 +926,22 @@ function calculateTdee(user) {
 
 function renderBudgetWidget(week) {
   const whoop = week.whoop;
-  const dailyTots = week.dailyTotals ?? [];
-  const lastIdx = dailyTots.length - 1;
-  const todayIdx = dailyTots.findIndex((d) => d.isToday);
 
   const caloriesIn = week.totalKcal ?? 0;
-  const avgIn = week.dailyAverage ?? null;
 
   let caloriesOut = null;
-  let avgOut = null;
   let sourceLabel = "";
 
   if (whoop?.connected && whoop.dailyBurn) {
-    let outWeightedDays = 0;
     caloriesOut = 0;
-    whoop.dailyBurn.forEach((d, i) => {
-      if (d.future || d.kcalWeighted == null) return;
-      const weight = i === 0 || i === lastIdx ? 0.5 : 1;
+    for (const d of whoop.dailyBurn) {
+      if (d.future || d.kcalWeighted == null) continue;
       caloriesOut += d.kcalWeighted;
-      outWeightedDays += weight;
-    });
-    avgOut = outWeightedDays > 0 ? Math.round(caloriesOut / outWeightedDays) : null;
+    }
     sourceLabel = "WHOOP";
   } else {
     const tdee = calculateTdee(currentUser);
     if (tdee && week.daysLogged > 0) {
-      avgOut = Math.round(tdee);
       caloriesOut = Math.round(tdee * week.daysLogged);
       sourceLabel = "estimated";
     }
@@ -962,41 +956,32 @@ function renderBudgetWidget(week) {
   budgetSourceLabel.textContent = sourceLabel ? `· ${sourceLabel}` : "";
   balanceInTotal.textContent = caloriesIn.toLocaleString();
   balanceOutTotal.textContent = caloriesOut.toLocaleString();
-  balanceDailyAvg.textContent =
-    avgIn != null && avgOut != null
-      ? `Daily average: ${avgIn.toLocaleString()} kcal in vs ${avgOut.toLocaleString()} kcal out`
-      : "";
 
-  // Project the current net rate (in minus out, so far) across the rest of
-  // the week to estimate this week's overall weight change. Same weighted-day
-  // approach used elsewhere so the two boundary Mondays count as half a day.
-  const todayWeight = todayIdx < 0 ? 1 : todayIdx === 0 || todayIdx === lastIdx ? 0.5 : 1;
-  let totalWeightedDays = 0;
-  let weightedDaysRemaining = 0;
-  dailyTots.forEach((_, i) => {
-    const w = i === 0 || i === lastIdx ? 0.5 : 1;
-    totalWeightedDays += w;
-    if (todayIdx >= 0 && i >= todayIdx) weightedDaysRemaining += w;
-  });
-  if (todayIdx < 0) weightedDaysRemaining = 0.5;
+  // Direct so-far numbers — no projection to the rest of the week.
+  const net = caloriesIn - caloriesOut; // positive = surplus, negative = deficit
+  const kgChange = -net / 7700; // positive = lost, negative = gained
 
-  const netSoFar = caloriesIn - caloriesOut;
-  const elapsedDays = Math.max(totalWeightedDays - weightedDaysRemaining + todayWeight, 0.5);
-  const dailyNetAvg = netSoFar / elapsedDays;
-  const daysAfterToday = Math.max(weightedDaysRemaining - todayWeight, 0);
-  const projectedNet = netSoFar + dailyNetAvg * daysAfterToday;
-  const kgChange = -projectedNet / 7700; // positive = loss, negative = gain
+  balanceDiffCell.className = "balance-cell";
+  balanceKgCell.className = "balance-cell";
 
-  balancePredicted.className = "balance-predicted";
-  if (Math.abs(kgChange) < 0.05) {
-    balancePredicted.classList.add("balance-predicted--neutral");
-    balancePredicted.textContent = "On track to roughly maintain this week";
-  } else if (kgChange > 0) {
-    balancePredicted.classList.add("balance-predicted--loss");
-    balancePredicted.textContent = `≈${kgChange.toFixed(1)} kg loss this week`;
+  if (net <= 0) {
+    balanceDiffCell.classList.add("balance-cell--loss");
+    balanceDiff.textContent = `−${Math.abs(net).toLocaleString()}`;
+    balanceDiffCaption.textContent = "kcal deficit";
   } else {
-    balancePredicted.classList.add("balance-predicted--gain");
-    balancePredicted.textContent = `≈${Math.abs(kgChange).toFixed(1)} kg gain this week`;
+    balanceDiffCell.classList.add("balance-cell--gain");
+    balanceDiff.textContent = `+${net.toLocaleString()}`;
+    balanceDiffCaption.textContent = "kcal surplus";
+  }
+
+  if (kgChange >= 0) {
+    balanceKgCell.classList.add("balance-cell--loss");
+    balanceKg.textContent = kgChange.toFixed(2);
+    balanceKgCaption.textContent = "kg lost";
+  } else {
+    balanceKgCell.classList.add("balance-cell--gain");
+    balanceKg.textContent = Math.abs(kgChange).toFixed(2);
+    balanceKgCaption.textContent = "kg gained";
   }
 }
 

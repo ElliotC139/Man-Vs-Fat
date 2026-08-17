@@ -189,18 +189,24 @@
             <span class="budget-title">Calorie balance</span>
             <span id="budget-source-label" class="muted"></span>
           </div>
-          <div class="balance-totals">
-            <div class="balance-col">
+          <div class="balance-grid">
+            <div class="balance-cell">
               <span id="balance-in-total" class="balance-number"></span>
-              <span class="balance-caption">kcal in this week</span>
+              <span class="balance-caption">kcal in</span>
             </div>
-            <div class="balance-col balance-col--out">
+            <div class="balance-cell">
               <span id="balance-out-total" class="balance-number"></span>
-              <span class="balance-caption">kcal out this week</span>
+              <span class="balance-caption">kcal out</span>
+            </div>
+            <div id="balance-diff-cell" class="balance-cell">
+              <span id="balance-diff" class="balance-number"></span>
+              <span id="balance-diff-caption" class="balance-caption"></span>
+            </div>
+            <div id="balance-kg-cell" class="balance-cell">
+              <span id="balance-kg" class="balance-number"></span>
+              <span id="balance-kg-caption" class="balance-caption"></span>
             </div>
           </div>
-          <div id="balance-daily-avg" class="balance-daily-avg muted"></div>
-          <div id="balance-predicted" class="balance-predicted"></div>
         </section>
 
         <section id="exercise-section">
