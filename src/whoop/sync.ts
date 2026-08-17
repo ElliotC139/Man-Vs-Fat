@@ -148,9 +148,10 @@ export interface WhoopDailyBurn {
   kcalWeighted: number | null;
   estimated: boolean;
   scoreState: string | null;
-  // True for days after today — no cycle exists for them yet, so callers
-  // should not display a per-day figure even though the trailing-average
-  // fallback still folds into weeklyBudget for projection purposes.
+  // True for any day whose burn isn't known yet — every day after today, plus
+  // today itself until WHOOP has an actual cycle for it. No estimate is used
+  // for these; kcal/kcalWeighted stay null and nothing is added to
+  // weeklyBudget until real data exists.
   future: boolean;
 }
 
@@ -210,11 +211,11 @@ function candidateFrom(dateKey: string, deltaDays: number): string {
  * activity within that split isn't apportioned proportionally like the rest
  * of the cycle, since each workout is already pinned to the correct side of
  * 17:00 by its own exact timestamp (set at sync time in syncUserWorkouts).
- * Days with no cycle assigned at all fall back to the trailing average of
- * the last week's scored days — including future days, whose contribution
- * is a projection rather than a measurement (dailyBurn flags them via
- * `future` so callers can hide the per-day figure while still counting them
- * toward the total).
+ * Past days with no cycle assigned fall back to the trailing average of the
+ * last week's scored days (a genuine sync gap). Today and later days never
+ * get that fallback — a day that hasn't finished (or started) happening
+ * isn't a "gap", it's just unknown — so they're flagged via `future` and
+ * excluded from the total until WHOOP actually has real data for them.
  */
 export async function getWhoopWeekBudget(userId: number, start: Date, end: Date): Promise<WhoopWeekBudget | null> {
   const conn = await prisma.whoopConnection.findUnique({ where: { userId } });
@@ -302,14 +303,21 @@ export async function getWhoopWeekBudget(userId: number, start: Date, end: Date)
   let weeklyBudget = 0;
   let hasAnyData = false;
   const dailyBurn: WhoopDailyBurn[] = calendarDays.map((date) => {
-    const future = date > todayKey;
     const result = contributionForDay(date);
+    // Today counts as "not yet known" the same as a later day until WHOOP
+    // actually has a cycle for it — at 00:41 with no cycle synced yet, a
+    // full trailing-average day would claim to know about 23+ hours that
+    // haven't happened. Once a real cycle appears (even a partial one, still
+    // in progress), this flips to false and the real figure takes over.
+    const future = date > todayKey || (date === todayKey && result.kcal === null);
 
     let kcal = result.kcal;
     let kcalWeighted = result.kcalWeighted;
     let estimated = false;
 
-    if (kcal === null && trailingAvg !== null) {
+    // Only backfill past days with genuinely missing data (a real sync gap)
+    // — never today or later, where the burn simply hasn't happened yet.
+    if (kcal === null && trailingAvg !== null && !future) {
       kcal = trailingAvg;
       kcalWeighted = isBoundary(date) ? Math.round(trailingAvg * 0.5) : trailingAvg;
       estimated = true;
