@@ -264,7 +264,21 @@ export async function getWhoopWeekBudget(userId: number, start: Date, end: Date)
   const todayKey = localDayKey(now, config.TIMEZONE);
   const startMs = start.getTime();
   const endMs = end.getTime();
+  const nowMs = now.getTime();
   const isBoundary = (date: string) => date === calendarDays[0] || date === calendarDays[calendarDays.length - 1];
+
+  // A cycle's resting/BMR-ish portion — its total minus whatever logged
+  // activity happened during its actual span. Activity isn't split
+  // proportionally like this is; it's added back exactly wherever it
+  // happened, since each workout carries its own real timestamp.
+  function nonActivityFor(cycle: Cycle): number {
+    const cycleStartMs = cycle.start.getTime();
+    const cycleEndMs = (cycle.end ?? now).getTime();
+    const activityDuringCycle = nearbyWorkouts
+      .filter((w) => w.timestamp.getTime() >= cycleStartMs && w.timestamp.getTime() < cycleEndMs)
+      .reduce((sum, w) => sum + (w.kcalBurned ?? 0), 0);
+    return Math.max((cycle.kcalBurned ?? 0) - activityDuringCycle, 0);
+  }
 
   function contributionForDay(dateKey: string): { kcal: number | null; kcalWeighted: number | null; scoreState: string | null } {
     const cycles = cyclesByDay.get(dateKey) ?? [];
@@ -281,43 +295,77 @@ export async function getWhoopWeekBudget(userId: number, start: Date, end: Date)
       const cycleStartMs = cycle.start.getTime();
       const cycleEndMs = (cycle.end ?? now).getTime();
       const cycleDurationMs = Math.max(cycleEndMs - cycleStartMs, 1);
-
-      const workoutsInCycle = nearbyWorkouts.filter(
-        (w) => w.timestamp.getTime() >= cycleStartMs && w.timestamp.getTime() < cycleEndMs,
-      );
-      const activityAll = workoutsInCycle.reduce((s, w) => s + (w.kcalBurned ?? 0), 0);
-      const activityInWeek = workoutsInCycle
-        .filter((w) => w.timestamp.getTime() >= startMs && w.timestamp.getTime() < endMs)
-        .reduce((s, w) => s + (w.kcalBurned ?? 0), 0);
-      const nonActivity = Math.max((cycle.kcalBurned ?? 0) - activityAll, 0);
-
       const overlapWeekMs = Math.max(0, Math.min(cycleEndMs, endMs) - Math.max(cycleStartMs, startMs));
       const fraction = overlapWeekMs / cycleDurationMs;
 
-      return sum + Math.round(nonActivity * fraction) + activityInWeek;
+      const activityInWeek = nearbyWorkouts
+        .filter((w) => w.timestamp.getTime() >= cycleStartMs && w.timestamp.getTime() < cycleEndMs)
+        .filter((w) => w.timestamp.getTime() >= startMs && w.timestamp.getTime() < endMs)
+        .reduce((s, w) => s + (w.kcalBurned ?? 0), 0);
+
+      return sum + Math.round(nonActivityFor(cycle) * fraction) + activityInWeek;
     }, 0);
 
     return { kcal, kcalWeighted, scoreState: scored[0]?.scoreState ?? null };
   }
 
+  // Today doesn't wait for "majority overlap" (which can't even be decided
+  // until whatever cycle is covering it eventually ends) — it's a live,
+  // continuously-growing figure: real overlap between every nearby cycle and
+  // [midnight today, now], no averaging or guessing. This is usually the
+  // still-open cycle from last night, so even a few minutes past midnight
+  // gets a small, honest, non-zero number rather than either a full-day
+  // estimate or nothing at all.
+  function contributionForToday(): { kcal: number | null; kcalWeighted: number | null; scoreState: string | null } {
+    const [todayStart] = dayBounds(todayKey);
+    const todayStartMs = todayStart.getTime();
+
+    const overlapping = nearbyCycles.filter((c) => c.start.getTime() < nowMs && (c.end ?? now).getTime() > todayStartMs);
+    const scored = overlapping.filter((c) => c.kcalBurned !== null);
+    if (scored.length === 0) return { kcal: null, kcalWeighted: null, scoreState: overlapping[0]?.scoreState ?? null };
+
+    function burn(windowStartMs: number, windowEndMs: number): number {
+      let total = 0;
+      for (const cycle of scored) {
+        const cycleStartMs = cycle.start.getTime();
+        const cycleEndMs = (cycle.end ?? now).getTime();
+        const cycleDurationMs = Math.max(cycleEndMs - cycleStartMs, 1);
+        const overlapMs = Math.max(0, Math.min(cycleEndMs, windowEndMs) - Math.max(cycleStartMs, windowStartMs));
+        if (overlapMs <= 0) continue;
+        total += nonActivityFor(cycle) * (overlapMs / cycleDurationMs);
+      }
+      total += nearbyWorkouts
+        .filter((w) => w.timestamp.getTime() >= windowStartMs && w.timestamp.getTime() < windowEndMs)
+        .reduce((sum, w) => sum + (w.kcalBurned ?? 0), 0);
+      return total;
+    }
+
+    const kcal = Math.round(burn(todayStartMs, nowMs));
+    const weightedStartMs = Math.max(todayStartMs, startMs);
+    const weightedEndMs = Math.min(nowMs, endMs);
+    const kcalWeighted = weightedEndMs > weightedStartMs ? Math.round(burn(weightedStartMs, weightedEndMs)) : 0;
+
+    return { kcal, kcalWeighted, scoreState: scored[scored.length - 1]?.scoreState ?? null };
+  }
+
   let weeklyBudget = 0;
   let hasAnyData = false;
   const dailyBurn: WhoopDailyBurn[] = calendarDays.map((date) => {
-    const result = contributionForDay(date);
-    // Today counts as "not yet known" the same as a later day until WHOOP
-    // actually has a cycle for it — at 00:41 with no cycle synced yet, a
-    // full trailing-average day would claim to know about 23+ hours that
-    // haven't happened. Once a real cycle appears (even a partial one, still
-    // in progress), this flips to false and the real figure takes over.
-    const future = date > todayKey || (date === todayKey && result.kcal === null);
+    const isToday = date === todayKey;
+    const result = isToday ? contributionForToday() : contributionForDay(date);
+    // Today counts as "not yet known" only if there's genuinely no cycle
+    // covering any part of it yet (rare — usually last night's cycle is
+    // still open). Later days are always unknown until they arrive.
+    const future = date > todayKey || (isToday && result.kcal === null);
 
     let kcal = result.kcal;
     let kcalWeighted = result.kcalWeighted;
     let estimated = false;
 
     // Only backfill past days with genuinely missing data (a real sync gap)
-    // — never today or later, where the burn simply hasn't happened yet.
-    if (kcal === null && trailingAvg !== null && !future) {
+    // — never today (handled live above) or later, where the burn simply
+    // hasn't happened yet.
+    if (!isToday && kcal === null && trailingAvg !== null && !future) {
       kcal = trailingAvg;
       kcalWeighted = isBoundary(date) ? Math.round(trailingAvg * 0.5) : trailingAvg;
       estimated = true;
