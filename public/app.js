@@ -39,12 +39,11 @@ const whoopDisconnectBtn = document.getElementById("whoop-disconnect-btn");
 const whoopUnconfiguredNote = document.getElementById("whoop-unconfigured-note");
 
 const budgetWidget = document.getElementById("budget-widget");
-const budgetWeeklyLabel = document.getElementById("budget-weekly-label");
-const budgetTodayTarget = document.getElementById("budget-today-target");
-const budgetBarFill = document.getElementById("budget-bar-fill");
-const budgetTodayConsumed = document.getElementById("budget-today-consumed");
-const budgetTodayRemaining = document.getElementById("budget-today-remaining");
-const budgetWeekDetail = document.getElementById("budget-week-detail");
+const budgetSourceLabel = document.getElementById("budget-source-label");
+const balanceInTotal = document.getElementById("balance-in-total");
+const balanceOutTotal = document.getElementById("balance-out-total");
+const balanceDailyAvg = document.getElementById("balance-daily-avg");
+const balancePredicted = document.getElementById("balance-predicted");
 
 const exerciseToggle = document.getElementById("exercise-toggle");
 const exerciseForm = document.getElementById("exercise-form");
@@ -910,161 +909,95 @@ async function deleteExercise(id) {
   loadWeek();
 }
 
-// ── Calorie budget widget ──────────────────────────────────────────────────
-function calculateDailyTarget(user) {
-  const { weightKg, heightCm, ageYears, activityLevel, weeklyGoalKg } = user ?? {};
-  if (!weightKg || !heightCm || !ageYears || !activityLevel || !weeklyGoalKg) return null;
-  // Mifflin-St Jeor (male formula — MAN v FAT is specifically for men)
+// ── Calorie balance widget ──────────────────────────────────────────────────
+// TDEE (Mifflin-St Jeor) — used as the "calories out" estimate only when
+// WHOOP isn't connected and there's no measured burn to use instead.
+function calculateTdee(user) {
+  const { weightKg, heightCm, ageYears, activityLevel } = user ?? {};
+  if (!weightKg || !heightCm || !ageYears || !activityLevel) return null;
   const bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageYears + 5;
   const multipliers = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725 };
-  const tdee = bmr * (multipliers[activityLevel] ?? 1.2);
-  const dailyDeficit = (weeklyGoalKg * 7700) / 7;
-  return Math.round(tdee - dailyDeficit);
-}
-
-// Round fractional days to nearest 0.5 and express as "3 days", "3½ days", etc.
-// Boundary days (e.g. the rollover Monday at 17:00) naturally land near 0.5
-// and are shown as "half days" rather than a precise decimal.
-function formatDays(fractional) {
-  const rounded = Math.round(fractional * 2) / 2;
-  const whole = Math.floor(rounded);
-  const half = rounded % 1 !== 0;
-  if (whole === 0) return "half a day";
-  return half ? `${whole}½ days` : `${whole} day${whole === 1 ? "" : "s"}`;
+  return bmr * (multipliers[activityLevel] ?? 1.2);
 }
 
 function renderBudgetWidget(week) {
-  // When WHOOP is connected, its measured daily burn replaces the
-  // BMR-formula estimate as the weekly budget — everything downstream
-  // (redistribution, projection) is unchanged, only the input number differs.
   const whoop = week.whoop;
-  const whoopWeeklyBudget = whoop?.connected && whoop.weeklyBudget != null ? whoop.weeklyBudget : null;
+  const dailyTots = week.dailyTotals ?? [];
+  const lastIdx = dailyTots.length - 1;
+  const todayIdx = dailyTots.findIndex((d) => d.isToday);
 
-  const dailyTarget = calculateDailyTarget(currentUser);
-  if (whoopWeeklyBudget === null && (!dailyTarget || dailyTarget <= 0)) {
+  const caloriesIn = week.totalKcal ?? 0;
+  const avgIn = week.dailyAverage ?? null;
+
+  let caloriesOut = null;
+  let avgOut = null;
+  let sourceLabel = "";
+
+  if (whoop?.connected && whoop.dailyBurn) {
+    let outWeightedDays = 0;
+    caloriesOut = 0;
+    whoop.dailyBurn.forEach((d, i) => {
+      if (d.future || d.kcalWeighted == null) return;
+      const weight = i === 0 || i === lastIdx ? 0.5 : 1;
+      caloriesOut += d.kcalWeighted;
+      outWeightedDays += weight;
+    });
+    avgOut = outWeightedDays > 0 ? Math.round(caloriesOut / outWeightedDays) : null;
+    sourceLabel = "WHOOP";
+  } else {
+    const tdee = calculateTdee(currentUser);
+    if (tdee && week.daysLogged > 0) {
+      avgOut = Math.round(tdee);
+      caloriesOut = Math.round(tdee * week.daysLogged);
+      sourceLabel = "estimated";
+    }
+  }
+
+  if (caloriesOut === null) {
     budgetWidget.hidden = true;
     return;
   }
   budgetWidget.hidden = false;
 
-  const weeklyBudget = whoopWeeklyBudget ?? dailyTarget * 7;
-  const foodConsumed = week.totalKcal ?? 0;
-  const exerciseBurned = week.exerciseTotalKcal ?? 0;
-  // WHOOP's measured daily burn already reflects any exercise performed while
-  // wearing it, so crediting logged exercise on top would double-count those
-  // calories. The BMR-formula budget has no such day-specific measurement, so
-  // logged exercise still earns extra room there.
-  const netConsumed = whoopWeeklyBudget !== null ? foodConsumed : foodConsumed - exerciseBurned;
-  const weekRemaining = weeklyBudget - netConsumed;
+  budgetSourceLabel.textContent = sourceLabel ? `· ${sourceLabel}` : "";
+  balanceInTotal.textContent = caloriesIn.toLocaleString();
+  balanceOutTotal.textContent = caloriesOut.toLocaleString();
+  balanceDailyAvg.textContent =
+    avgIn != null && avgOut != null
+      ? `Daily average: ${avgIn.toLocaleString()} kcal in vs ${avgOut.toLocaleString()} kcal out`
+      : "";
 
-  // Weighted remaining days: first and last entry in the week are half-days
-  // (the rollover Monday is cut mid-afternoon on both ends). Using calendar-day
-  // weights rather than live hours means today's allowance stays fixed all day.
-  const dailyTots = week.dailyTotals ?? [];
-  const todayIdx = dailyTots.findIndex((d) => d.isToday);
-  // todayWeight is 0.5 on boundary Mondays (first or last slot in the week), 1.0 otherwise
-  const todayWeight = todayIdx < 0 ? 1.0
-    : (todayIdx === 0 || todayIdx === dailyTots.length - 1) ? 0.5 : 1.0;
+  // Project the current net rate (in minus out, so far) across the rest of
+  // the week to estimate this week's overall weight change. Same weighted-day
+  // approach used elsewhere so the two boundary Mondays count as half a day.
+  const todayWeight = todayIdx < 0 ? 1 : todayIdx === 0 || todayIdx === lastIdx ? 0.5 : 1;
   let totalWeightedDays = 0;
   let weightedDaysRemaining = 0;
-  for (let i = 0; i < dailyTots.length; i++) {
-    const w = (i === 0 || i === dailyTots.length - 1) ? 0.5 : 1.0;
+  dailyTots.forEach((_, i) => {
+    const w = i === 0 || i === lastIdx ? 0.5 : 1;
     totalWeightedDays += w;
     if (todayIdx >= 0 && i >= todayIdx) weightedDaysRemaining += w;
-  }
+  });
   if (todayIdx < 0) weightedDaysRemaining = 0.5;
-  // adjustedDailyTarget is the per-full-day redistribution rate.
-  // actualTodayAllowance scales it down for half-days (boundary Mondays get ×0.5).
-  const adjustedDailyTarget = Math.round(weekRemaining / Math.max(weightedDaysRemaining, 0.5));
-  const actualTodayAllowance = Math.round(adjustedDailyTarget * todayWeight);
 
-  // Hours remaining used only for the detail-text display
-  const weekStart = new Date(week.startsAt);
-  const weekEnd = new Date(week.endsAt);
-  const now = new Date();
-  const weekMs = weekEnd - weekStart;
-  const elapsedMs = Math.max(0, Math.min(weekMs, now - weekStart));
-  const remainingHours = (weekMs - elapsedMs) / (1000 * 3600);
-  const fractionalDaysRemaining = Math.max(remainingHours / 24, 0.5);
+  const netSoFar = caloriesIn - caloriesOut;
+  const elapsedDays = Math.max(totalWeightedDays - weightedDaysRemaining + todayWeight, 0.5);
+  const dailyNetAvg = netSoFar / elapsedDays;
+  const daysAfterToday = Math.max(weightedDaysRemaining - todayWeight, 0);
+  const projectedNet = netSoFar + dailyNetAvg * daysAfterToday;
+  const kgChange = -projectedNet / 7700; // positive = loss, negative = gain
 
-  // Today's food consumed from dailyTotals
-  const todayKcal = todayIdx >= 0 ? (dailyTots[todayIdx]?.kcal ?? 0) : 0;
-
-  // Bar and labels use actualTodayAllowance so boundary Mondays show the correct cap
-  const pct = actualTodayAllowance > 0 ? Math.min(todayKcal / actualTodayAllowance, 1) : 1;
-  const overBudget = todayKcal > actualTodayAllowance;
-  const approaching = !overBudget && pct >= 0.85;
-
-  budgetWeeklyLabel.textContent = `${weeklyBudget.toLocaleString()} kcal/week${whoopWeeklyBudget !== null ? " · WHOOP" : ""}`;
-  budgetTodayTarget.textContent = `${actualTodayAllowance.toLocaleString()} kcal`;
-
-  budgetBarFill.style.width = `${Math.round(pct * 100)}%`;
-  budgetBarFill.className = "budget-bar-fill";
-  if (overBudget) budgetBarFill.classList.add("budget-bar-fill--over");
-  else if (approaching) budgetBarFill.classList.add("budget-bar-fill--warn");
-
-  budgetTodayConsumed.textContent = `Eaten today: ${todayKcal.toLocaleString()} kcal`;
-
-  if (overBudget) {
-    const over = todayKcal - actualTodayAllowance;
-    budgetTodayRemaining.className = "over";
-    budgetTodayRemaining.textContent = `${over.toLocaleString()} kcal over`;
+  balancePredicted.className = "balance-predicted";
+  if (Math.abs(kgChange) < 0.05) {
+    balancePredicted.classList.add("balance-predicted--neutral");
+    balancePredicted.textContent = "On track to roughly maintain this week";
+  } else if (kgChange > 0) {
+    balancePredicted.classList.add("balance-predicted--loss");
+    balancePredicted.textContent = `≈${kgChange.toFixed(1)} kg loss this week`;
   } else {
-    budgetTodayRemaining.className = "";
-    budgetTodayRemaining.textContent = `${(actualTodayAllowance - todayKcal).toLocaleString()} kcal left`;
+    balancePredicted.classList.add("balance-predicted--gain");
+    balancePredicted.textContent = `≈${Math.abs(kgChange).toFixed(1)} kg gain this week`;
   }
-
-  // Projection at current daily net rate: will the week end over or under total budget?
-  // daysAfterToday uses todayWeight so Monday is counted as 0.5, not a full day.
-  let projectedVsBudget = null;
-  let predictedLossKg = null;
-  if (todayIdx >= 0 && netConsumed > 0) {
-    const elapsedDays = Math.max(totalWeightedDays - weightedDaysRemaining + todayWeight, 0.5);
-    const dailyNetAvg = netConsumed / elapsedDays;
-    const daysAfterToday = Math.max(weightedDaysRemaining - todayWeight, 0);
-    const projectedTotal = netConsumed + dailyNetAvg * daysAfterToday;
-    projectedVsBudget = weeklyBudget - projectedTotal; // positive = under budget
-    if (currentUser?.weeklyGoalKg) {
-      predictedLossKg = currentUser.weeklyGoalKg + projectedVsBudget / 7700;
-    }
-  }
-
-  const lines = [
-    `Week budget: ${weeklyBudget.toLocaleString()} kcal total`,
-    `Eaten so far: ${foodConsumed.toLocaleString()} kcal`,
-  ];
-  if (exerciseBurned > 0) {
-    lines.push(
-      whoopWeeklyBudget !== null
-        ? `Exercise burned: ${exerciseBurned.toLocaleString()} kcal (already counted in WHOOP total)`
-        : `Exercise burned: ${exerciseBurned.toLocaleString()} kcal`,
-    );
-  }
-  lines.push(`Remaining: ${weekRemaining.toLocaleString()} kcal over ${formatDays(fractionalDaysRemaining)}`);
-
-  if (projectedVsBudget !== null) {
-    const kcalDiff = Math.round(Math.abs(projectedVsBudget));
-    let posLabel, posStyle;
-    if (kcalDiff <= 50) {
-      posLabel = "On track for the week";
-      posStyle = "";
-    } else if (projectedVsBudget > 0) {
-      posLabel = `${kcalDiff.toLocaleString()} kcal under budget this week`;
-      posStyle = "color:var(--pitch-dark);font-weight:600";
-    } else {
-      posLabel = `${kcalDiff.toLocaleString()} kcal over budget this week`;
-      posStyle = "color:#dc2626;font-weight:600";
-    }
-    lines.push(`<span${posStyle ? ` style="${posStyle}"` : ""}>${posLabel}</span>`);
-
-    if (predictedLossKg !== null) {
-      lines.push(predictedLossKg >= 0
-        ? `Predicted: ~${predictedLossKg.toFixed(1)} kg loss this week`
-        : `Predicted: ~${Math.abs(predictedLossKg).toFixed(1)} kg gain this week`);
-    }
-  }
-
-  budgetWeekDetail.innerHTML = lines.join("<br>");
 }
 
 // ── Unit preference ────────────────────────────────────────────────────────

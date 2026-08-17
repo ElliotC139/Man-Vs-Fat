@@ -186,23 +186,21 @@
 
         <section id="budget-widget" class="card budget-widget" hidden>
           <div class="budget-header">
-            <span class="budget-title">Calorie budget</span>
-            <span id="budget-weekly-label" class="muted"></span>
+            <span class="budget-title">Calorie balance</span>
+            <span id="budget-source-label" class="muted"></span>
           </div>
-          <div id="budget-today" class="budget-today">
-            <div class="budget-today-label">
-              <span>Today's allowance</span>
-              <span id="budget-today-target"></span>
+          <div class="balance-totals">
+            <div class="balance-col">
+              <span id="balance-in-total" class="balance-number"></span>
+              <span class="balance-caption">kcal in this week</span>
             </div>
-            <div class="budget-bar-track">
-              <div id="budget-bar-fill" class="budget-bar-fill"></div>
-            </div>
-            <div class="budget-today-sub">
-              <span id="budget-today-consumed"></span>
-              <span id="budget-today-remaining"></span>
+            <div class="balance-col balance-col--out">
+              <span id="balance-out-total" class="balance-number"></span>
+              <span class="balance-caption">kcal out this week</span>
             </div>
           </div>
-          <div id="budget-week-detail" class="budget-week-detail muted"></div>
+          <div id="balance-daily-avg" class="balance-daily-avg muted"></div>
+          <div id="balance-predicted" class="balance-predicted"></div>
         </section>
 
         <section id="exercise-section">

@@ -556,46 +556,53 @@ h2 {
   font-weight: 700;
   font-size: 1rem;
 }
-.budget-today {
-  background: var(--bg);
-  border-radius: 10px;
-  padding: 12px 14px;
+.balance-totals {
+  display: flex;
+  gap: 12px;
   margin-bottom: 10px;
 }
-.budget-today-label {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.85rem;
-  margin-bottom: 8px;
+.balance-col {
+  flex: 1;
+  text-align: center;
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 12px 8px;
 }
-.budget-today-label span:last-child {
+.balance-number {
+  display: block;
+  font-size: 1.5rem;
   font-weight: 700;
 }
-.budget-bar-track {
-  height: 8px;
-  background: var(--hairline);
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 6px;
-}
-.budget-bar-fill {
-  height: 100%;
-  border-radius: 4px;
-  background: var(--pitch);
-  transition: width 0.3s ease, background 0.3s ease;
-}
-.budget-bar-fill--warn { background: #d97706; }
-.budget-bar-fill--over { background: #dc2626; }
-.budget-today-sub {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.8rem;
+.balance-caption {
+  display: block;
+  font-size: 0.75rem;
   color: var(--muted);
+  margin-top: 2px;
 }
-.budget-today-sub .over { color: #dc2626; font-weight: 600; }
-.budget-week-detail {
+.balance-daily-avg {
+  text-align: center;
   font-size: 0.82rem;
-  line-height: 1.5;
+  min-height: 1.2em;
+  margin-bottom: 10px;
+}
+.balance-predicted {
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 10px;
+  border-radius: 10px;
+}
+.balance-predicted--loss {
+  color: var(--pitch-dark);
+  background: rgba(31, 122, 63, 0.1);
+}
+.balance-predicted--gain {
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+}
+.balance-predicted--neutral {
+  color: var(--muted);
+  background: var(--bg);
 }
 
 /* ── Exercise section ── */
