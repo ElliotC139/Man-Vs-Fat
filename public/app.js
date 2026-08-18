@@ -49,6 +49,14 @@ const balanceKgCell = document.getElementById("balance-kg-cell");
 const balanceKg = document.getElementById("balance-kg");
 const balanceKgCaption = document.getElementById("balance-kg-caption");
 
+const foodLibraryToggle = document.getElementById("food-library-toggle");
+const foodLibraryScreen = document.getElementById("food-library-screen");
+const foodLibraryBack = document.getElementById("food-library-back");
+const foodSearchInput = document.getElementById("food-search");
+const foodFavoritesSection = document.getElementById("food-favorites-section");
+const foodFavoritesList = document.getElementById("food-favorites-list");
+const foodAllList = document.getElementById("food-all-list");
+
 const exerciseToggle = document.getElementById("exercise-toggle");
 const exerciseForm = document.getElementById("exercise-form");
 const exerciseText = document.getElementById("exercise-text");
@@ -1277,6 +1285,194 @@ productLogBtn.addEventListener("click", async () => {
   } finally {
     productLogBtn.disabled = false;
   }
+});
+
+// ── Food library ────────────────────────────────────────────────────────────
+let foodSearchTimer = null;
+
+function openFoodLibrary() {
+  appShell.hidden = true;
+  foodLibraryScreen.hidden = false;
+  foodSearchInput.value = "";
+  loadFoods("");
+}
+
+function closeFoodLibrary() {
+  foodLibraryScreen.hidden = true;
+  appShell.hidden = false;
+}
+
+async function loadFoods(query) {
+  const res = await fetch(`/api/foods?q=${encodeURIComponent(query ?? "")}`);
+  if (!res.ok) return;
+  const foods = await res.json();
+  renderFoodLibrary(foods);
+}
+
+function renderFoodLibrary(foods) {
+  const favorites = foods.filter((f) => f.favorite);
+  foodFavoritesSection.hidden = favorites.length === 0;
+  foodFavoritesList.innerHTML = "";
+  for (const food of favorites) {
+    foodFavoritesList.appendChild(renderFoodRow(food));
+  }
+
+  foodAllList.innerHTML = "";
+  if (foods.length === 0) {
+    foodAllList.innerHTML = '<p class="empty-state">No foods found.</p>';
+    return;
+  }
+  for (const food of foods) {
+    foodAllList.appendChild(renderFoodRow(food));
+  }
+}
+
+function renderFoodRow(food) {
+  const row = document.createElement("div");
+  row.className = "food-row";
+
+  const starBtn = document.createElement("button");
+  starBtn.type = "button";
+  starBtn.className = "food-star";
+  starBtn.textContent = food.favorite ? "★" : "☆";
+  starBtn.setAttribute("aria-label", food.favorite ? "Remove from favourites" : "Add to favourites");
+  starBtn.addEventListener("click", () => toggleFavorite(food));
+
+  const info = document.createElement("div");
+  info.className = "food-info";
+
+  const labelEl = document.createElement("div");
+  labelEl.className = "food-label";
+  labelEl.textContent = food.label;
+
+  const metaEl = document.createElement("div");
+  metaEl.className = "food-meta";
+  const lastDate = new Date(food.lastLoggedAt);
+  const isToday = lastDate.toDateString() === new Date().toDateString();
+  const countLabel = food.count === 1 ? "Logged once" : `Logged ${food.count}×`;
+  const lastLabel = isToday ? "today" : dateFmt.format(lastDate);
+  const kcalLabel = food.kcal !== null ? ` · ${food.kcal} kcal` : "";
+  metaEl.textContent = `${countLabel} · last ${lastLabel}${kcalLabel}`;
+
+  const tagsEl = document.createElement("div");
+  tagsEl.className = "food-tags";
+  for (const tag of food.tags) {
+    const pill = document.createElement("span");
+    pill.className = "food-tag-pill";
+    pill.textContent = tag;
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.textContent = "×";
+    removeBtn.setAttribute("aria-label", `Remove tag ${tag}`);
+    removeBtn.addEventListener("click", () => removeTag(food, tag));
+    pill.appendChild(removeBtn);
+    tagsEl.appendChild(pill);
+  }
+  const addTagBtn = document.createElement("button");
+  addTagBtn.type = "button";
+  addTagBtn.className = "food-tag-add";
+  addTagBtn.textContent = "+ tag";
+  addTagBtn.addEventListener("click", () => {
+    if (tagsEl.querySelector(".food-tag-input")) return;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "food-tag-input";
+    input.placeholder = "tag";
+    input.maxLength = 30;
+    let settled = false;
+    const commit = async () => {
+      if (settled) return;
+      settled = true;
+      const value = input.value.trim();
+      if (value) await addTag(food, value);
+      else loadFoods(foodSearchInput.value);
+    };
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commit();
+      }
+      if (e.key === "Escape") {
+        settled = true;
+        loadFoods(foodSearchInput.value);
+      }
+    });
+    input.addEventListener("blur", commit);
+    tagsEl.appendChild(input);
+    input.focus();
+  });
+  tagsEl.appendChild(addTagBtn);
+
+  info.append(labelEl, metaEl, tagsEl);
+
+  const logBtn = document.createElement("button");
+  logBtn.type = "button";
+  logBtn.className = "food-log-btn";
+  logBtn.textContent = "+Today";
+  logBtn.addEventListener("click", () => logFood(food, logBtn));
+
+  row.append(starBtn, info, logBtn);
+  return row;
+}
+
+async function toggleFavorite(food) {
+  await fetch("/api/foods/favorite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ labelKey: food.labelKey, favorite: !food.favorite }),
+  });
+  loadFoods(foodSearchInput.value);
+}
+
+async function addTag(food, tag) {
+  await fetch("/api/foods/tags", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ labelKey: food.labelKey, tag }),
+  });
+  loadFoods(foodSearchInput.value);
+}
+
+async function removeTag(food, tag) {
+  await fetch("/api/foods/tags/remove", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ labelKey: food.labelKey, tag }),
+  });
+  loadFoods(foodSearchInput.value);
+}
+
+async function logFood(food, btn) {
+  btn.disabled = true;
+  btn.textContent = "Adding…";
+  try {
+    const res = await fetch("/api/foods/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ labelKey: food.labelKey }),
+    });
+    if (res.ok) {
+      btn.textContent = "Added ✓";
+      await loadWeek();
+      setTimeout(() => {
+        btn.textContent = "+Today";
+        btn.disabled = false;
+      }, 1200);
+    } else {
+      btn.textContent = "+Today";
+      btn.disabled = false;
+    }
+  } catch {
+    btn.textContent = "+Today";
+    btn.disabled = false;
+  }
+}
+
+foodLibraryToggle.addEventListener("click", openFoodLibrary);
+foodLibraryBack.addEventListener("click", closeFoodLibrary);
+foodSearchInput.addEventListener("input", () => {
+  clearTimeout(foodSearchTimer);
+  foodSearchTimer = setTimeout(() => loadFoods(foodSearchInput.value), 250);
 });
 
 productRescanBtn.addEventListener("click", () => {

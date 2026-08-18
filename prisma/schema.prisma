@@ -32,6 +32,35 @@ model User {
   matchWeeks       MatchWeek[]
   whoopConnection  WhoopConnection?
   whoopCycles      WhoopCycle[]
+  foodFavorites    FoodFavorite[]
+  foodTags         FoodTag[]
+}
+
+// A starred food, keyed by the entry label normalized (trimmed, lowercased)
+// so it groups every logging of "the same" food regardless of exact
+// capitalization — see src/routes/foods.ts for how the food library page
+// aggregates Entry rows by this same key.
+model FoodFavorite {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  labelKey  String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, labelKey])
+}
+
+// A tag attached to a food (same labelKey grouping as FoodFavorite above).
+model FoodTag {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  labelKey  String
+  tag       String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, labelKey, tag])
+  @@index([userId, labelKey])
 }
 
 // One WHOOP OAuth link per user. accessToken/expiresAt are refreshed in place

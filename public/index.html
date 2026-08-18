@@ -35,6 +35,7 @@
           <p id="week-range" class="muted">Loading…</p>
           <button id="week-next" type="button" aria-label="Next week" disabled>›</button>
         </div>
+        <button id="food-library-toggle" type="button" class="library-toggle" aria-label="Food library">📋</button>
         <button id="settings-toggle" type="button" class="settings-toggle" aria-label="Settings">⚙</button>
       </header>
 
@@ -235,6 +236,29 @@
         <section>
           <h2>Food diary</h2>
           <div id="entry-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="food-library-screen" hidden>
+      <header class="banner">
+        <button id="food-library-back" type="button" class="library-back" aria-label="Back">‹</button>
+        <h1>Food Library</h1>
+      </header>
+
+      <main>
+        <section class="card">
+          <input type="search" id="food-search" placeholder="Search foods or tags…" />
+        </section>
+
+        <section id="food-favorites-section" hidden>
+          <h2>★ Favourites</h2>
+          <div id="food-favorites-list"></div>
+        </section>
+
+        <section>
+          <h2>All foods</h2>
+          <div id="food-all-list"></div>
         </section>
       </main>
     </div>

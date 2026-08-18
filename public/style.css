@@ -27,10 +27,11 @@ body {
   text-align: center;
 }
 
-.settings-toggle {
+.settings-toggle,
+.library-toggle,
+.library-back {
   position: absolute;
   top: 14px;
-  right: 14px;
   width: 36px;
   height: 36px;
   min-height: 36px;
@@ -44,6 +45,9 @@ body {
   align-items: center;
   justify-content: center;
 }
+.settings-toggle { right: 14px; }
+.library-toggle { right: 58px; }
+.library-back { left: 14px; font-size: 1.4rem; }
 
 .banner h1 {
   margin: 0 0 4px;
@@ -634,6 +638,107 @@ h2 {
 }
 #exercise-list:empty::after {
   content: "No exercise logged this week.";
+  display: block;
+  text-align: center;
+  color: var(--muted);
+  padding: 16px;
+  font-size: 0.9rem;
+}
+
+/* ── Food library ── */
+#food-search {
+  margin: 0;
+}
+.food-row {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.food-star {
+  width: 32px;
+  min-height: 32px;
+  padding: 0;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: #d4a72c;
+  font-size: 1.3rem;
+  line-height: 1;
+}
+.food-info {
+  flex: 1;
+  min-width: 0;
+}
+.food-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.food-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.food-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  align-items: center;
+}
+.food-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg);
+  border-radius: 999px;
+  padding: 2px 4px 2px 10px;
+  font-size: 0.72rem;
+  color: var(--pitch-dark);
+}
+.food-tag-pill button {
+  width: auto;
+  min-height: auto;
+  padding: 0 6px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+.food-tag-add {
+  width: auto;
+  min-height: auto;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  background: transparent;
+  border: 1px dashed var(--hairline);
+  border-radius: 999px;
+  color: var(--muted);
+}
+.food-tag-input {
+  width: 90px;
+  min-height: 24px;
+  margin: 0;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  border-radius: 999px;
+}
+.food-log-btn {
+  width: auto;
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+  align-self: center;
+}
+#food-all-list:empty::after,
+#food-favorites-list:empty::after {
+  content: "Nothing here yet.";
   display: block;
   text-align: center;
   color: var(--muted);
