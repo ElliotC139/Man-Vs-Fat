@@ -1,6 +1,7 @@
 import path from "node:path";
 import express from "express";
 import cookieParser from "cookie-parser";
+import multer from "multer";
 import { config } from "./config";
 import { ensureUploadsDir, UPLOADS_DIR } from "./lib/storage";
 import { ensureSessionSecret } from "./auth";
@@ -30,6 +31,24 @@ app.use("/api/match-weeks", matchWeeksRouter);
 app.use("/api/whoop", whoopRouter);
 
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
+
+// Multer throws synchronously-caught errors (e.g. exceeding the upload size
+// limit) that Express only reaches via the 4-arg error-handling signature —
+// without this, a too-large photo previously fell through to Express's
+// default HTML error page instead of a usable message.
+app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
+  if (err instanceof multer.MulterError) {
+    const message = err.code === "LIMIT_FILE_SIZE" ? "That photo is too large — please use a smaller image." : err.message;
+    res.status(413).json({ error: message });
+    return;
+  }
+  console.error("Unhandled request error:", err);
+  res.status(500).json({ error: "Something went wrong." });
+});
 
 ensureSessionSecret()
   .then(() => {

@@ -8,16 +8,11 @@ export function ensureUploadsDir(): void {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
-const EXT_BY_MIME: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "image/gif": "gif",
-};
-
-export function saveUploadedImage(buffer: Buffer, mimeType: string): string {
-  const ext = EXT_BY_MIME[mimeType] ?? "jpg";
-  const filename = `${Date.now()}-${crypto.randomUUID()}.${ext}`;
+// Callers run every upload through normalizeUploadedImage (see
+// lib/imageProcessing.ts) before saving, so the buffer here is always a JPEG
+// regardless of what format was originally uploaded.
+export function saveUploadedImage(buffer: Buffer): string {
+  const filename = `${Date.now()}-${crypto.randomUUID()}.jpg`;
   fs.writeFileSync(path.join(UPLOADS_DIR, filename), buffer);
   return `/uploads/${filename}`;
 }

@@ -6,28 +6,38 @@ import { requireAuth } from "../auth";
 import { estimateExercise } from "../estimateExercise";
 import { findOrCreateMatchWeek, getUserWeekStart } from "../matchWeek";
 import { saveUploadedImage } from "../lib/storage";
+import { normalizeUploadedImage } from "../lib/imageProcessing";
 
 export const exercisesRouter = Router();
 exercisesRouter.use(requireAuth);
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
+// See lib/imageProcessing.ts — same reasoning as entries.ts for the raised
+// limit (an un-normalized phone photo can exceed 8MB) and the conversion step.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 exercisesRouter.post("/", upload.single("photo"), async (req, res) => {
   const text = typeof req.body.text === "string" ? req.body.text.trim() : undefined;
-  const photo = req.file;
+  const rawPhoto = req.file;
 
-  if (!text && !photo) {
+  if (!text && !rawPhoto) {
     res.status(400).json({ error: "Provide a text description and/or a photo." });
     return;
   }
 
-  const { description, kcalBurned } = await estimateExercise(
-    text,
-    photo?.buffer.toString("base64"),
-    photo?.mimetype,
-  );
+  let photo: { buffer: Buffer; mimeType: "image/jpeg" } | null = null;
+  if (rawPhoto) {
+    try {
+      photo = await normalizeUploadedImage(rawPhoto.buffer, rawPhoto.mimetype);
+    } catch (error) {
+      console.error("Photo processing failed:", error);
+      res.status(400).json({ error: "Couldn't process that photo — please try a different one." });
+      return;
+    }
+  }
 
-  const imageUrl = photo ? saveUploadedImage(photo.buffer, photo.mimetype) : null;
+  const { description, kcalBurned } = await estimateExercise(text, photo?.buffer.toString("base64"), photo?.mimeType);
+
+  const imageUrl = photo ? saveUploadedImage(photo.buffer) : null;
   const timestamp = new Date();
   const weekStart = await getUserWeekStart(req.userId!);
   const matchWeek = await findOrCreateMatchWeek(timestamp, config.TIMEZONE, req.userId!, weekStart);

@@ -8,13 +8,17 @@ import { estimateMeal } from "../estimate";
 import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart, zonedTimeToUtc } from "../matchWeek";
 import { MEAL_TYPES, MEAL_TYPE_DEFAULT_HOUR, inferMealType, type MealType } from "../mealType";
 import { saveUploadedImage } from "../lib/storage";
+import { normalizeUploadedImage } from "../lib/imageProcessing";
 
 export const entriesRouter = Router();
 entriesRouter.use(requireAuth);
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * 1024 * 1024 },
+  // Generous headroom for an un-normalized phone-camera original (HDR/high
+  // megapixel photos routinely exceed the old 8MB cap) — normalizeUploadedImage
+  // shrinks it well below this before anything is stored or sent anywhere.
+  limits: { fileSize: 25 * 1024 * 1024 },
 });
 
 const createEntrySchema = z.object({
@@ -32,11 +36,25 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
   }
 
   const { text, timestamp, lastWeek, directKcal } = parsed.data;
-  const photo = req.file;
+  const rawPhoto = req.file;
 
-  if (!text?.trim() && !photo) {
+  if (!text?.trim() && !rawPhoto) {
     res.status(400).json({ error: "Provide a text description and/or a photo." });
     return;
+  }
+
+  // Converts HEIC (the default iPhone format, which Claude's vision API
+  // doesn't accept) to JPEG and downsizes anything oversized — see
+  // lib/imageProcessing.ts for why this is needed at all.
+  let photo: { buffer: Buffer; mimeType: "image/jpeg" } | null = null;
+  if (rawPhoto) {
+    try {
+      photo = await normalizeUploadedImage(rawPhoto.buffer, rawPhoto.mimetype);
+    } catch (error) {
+      console.error("Photo processing failed:", error);
+      res.status(400).json({ error: "Couldn't process that photo — please try a different one." });
+      return;
+    }
   }
 
   const weekStart = await getUserWeekStart(req.userId!);
@@ -57,10 +75,10 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
     : await estimateMeal({
         text,
         imageBase64: photo?.buffer.toString("base64"),
-        imageMediaType: photo?.mimetype,
+        imageMediaType: photo?.mimeType,
       });
 
-  const imageUrl = photo ? saveUploadedImage(photo.buffer, photo.mimetype) : null;
+  const imageUrl = photo ? saveUploadedImage(photo.buffer) : null;
   const matchWeek = await findOrCreateMatchWeek(entryTimestamp, config.TIMEZONE, req.userId!, weekStart);
   const mealType = inferMealType(getLocalParts(entryTimestamp, config.TIMEZONE).hour);
 
