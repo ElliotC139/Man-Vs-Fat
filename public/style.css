@@ -8,17 +8,22 @@
   --card: #ffffff;
   --hairline: #e6ece8;
   --danger: #dc2626;
-  --gold: #d4a72c;
+  --amber: #d97706;
+  --amber-light: #f59e0b;
+  --gold: var(--amber);
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
 
   --shadow-sm: 0 1px 2px rgba(20, 30, 24, 0.06);
-  --shadow-md: 0 4px 14px rgba(20, 30, 24, 0.08);
+  --shadow-md: 0 4px 14px rgba(20, 30, 24, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.6);
   --shadow-lg: 0 10px 30px rgba(20, 30, 24, 0.12);
 
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --font-heading: "Poppins", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 * {
@@ -41,6 +46,16 @@
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.banner h1,
+h2,
+.summary-total,
+.balance-number,
+.budget-title,
+.auth-title,
+.product-name {
+  font-family: var(--font-heading);
 }
 
 .icon {
@@ -77,6 +92,7 @@ body {
   position: relative;
   background:
     radial-gradient(circle at 15% -20%, rgba(255, 255, 255, 0.16), transparent 55%),
+    radial-gradient(circle at 100% 120%, rgba(217, 119, 6, 0.35), transparent 60%),
     linear-gradient(135deg, var(--pitch-light), var(--pitch) 45%, var(--pitch-dark));
   color: white;
   padding: 30px 20px 24px;
@@ -104,7 +120,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.15s var(--ease), background 0.15s var(--ease);
+  transition: transform 0.22s var(--spring), background 0.15s var(--ease);
 }
 .settings-toggle:active,
 .library-toggle:active,
@@ -155,7 +171,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s var(--ease), transform 0.15s var(--ease);
+  transition: background 0.15s var(--ease), transform 0.22s var(--spring);
 }
 
 .week-nav button:active {
@@ -256,11 +272,11 @@ button {
   color: white;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(31, 157, 82, 0.28);
-  transition: transform 0.12s var(--ease), box-shadow 0.12s var(--ease), opacity 0.12s var(--ease);
+  transition: transform 0.25s var(--spring), box-shadow 0.12s var(--ease), opacity 0.12s var(--ease);
 }
 
 button:active {
-  transform: scale(0.98);
+  transform: scale(0.96);
   box-shadow: 0 1px 4px rgba(31, 157, 82, 0.28);
 }
 
@@ -292,7 +308,7 @@ button.ghost:active {
   border: 1.5px solid var(--pitch);
   color: var(--pitch);
   text-decoration: none;
-  transition: background 0.12s var(--ease), color 0.12s var(--ease), transform 0.12s var(--ease);
+  transition: background 0.12s var(--ease), color 0.12s var(--ease), transform 0.2s var(--spring);
 }
 
 .button-link:active {
@@ -494,7 +510,7 @@ h2 {
   align-items: center;
   gap: 10px;
   animation: fadeInUp 0.3s var(--ease);
-  transition: box-shadow 0.15s var(--ease), transform 0.15s var(--ease);
+  transition: box-shadow 0.15s var(--ease), transform 0.22s var(--spring);
 }
 
 .entry-row:active {
@@ -706,7 +722,7 @@ h2 {
   background: var(--bg);
   border-radius: var(--radius-sm);
   padding: 16px 8px;
-  transition: transform 0.15s var(--ease);
+  transition: transform 0.22s var(--spring);
 }
 .balance-number {
   display: block;
@@ -821,7 +837,7 @@ h2 {
   flex-shrink: 0;
   background: transparent;
   border: none;
-  color: #d4a72c;
+  color: var(--gold);
   font-size: 1.3rem;
   line-height: 1;
 }
@@ -1055,7 +1071,7 @@ h2 {
 
 .ghost-sm,
 .food-log-btn {
-  transition: transform 0.12s var(--ease), background 0.12s var(--ease);
+  transition: transform 0.2s var(--spring), background 0.12s var(--ease);
 }
 .ghost-sm:active {
   background: rgba(31, 157, 82, 0.08);
@@ -1065,7 +1081,7 @@ h2 {
 .entry-actions button,
 .exercise-del,
 .food-tag-add {
-  transition: background 0.12s var(--ease), transform 0.12s var(--ease);
+  transition: background 0.12s var(--ease), transform 0.2s var(--spring);
 }
 .entry-actions button:active,
 .exercise-del:active {
@@ -1074,7 +1090,7 @@ h2 {
 }
 
 .food-star {
-  transition: transform 0.15s var(--ease);
+  transition: transform 0.22s var(--spring);
 }
 .food-star:active {
   transform: scale(1.25);
