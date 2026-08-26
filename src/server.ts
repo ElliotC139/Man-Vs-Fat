@@ -32,6 +32,15 @@ app.use("/api/whoop", whoopRouter);
 
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
 
+// Reached only if nothing above matched — no API route, no static file.
+app.use((req, res) => {
+  if (req.path.startsWith("/api/")) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  res.status(404).sendFile(path.join(process.cwd(), "public", "404.html"));
+});
+
 // Multer throws synchronously-caught errors (e.g. exceeding the upload size
 // limit) that Express only reaches via the 4-arg error-handling signature —
 // without this, a too-large photo previously fell through to Express's

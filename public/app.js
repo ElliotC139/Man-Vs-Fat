@@ -56,6 +56,7 @@ const foodSearchInput = document.getElementById("food-search");
 const foodFavoritesSection = document.getElementById("food-favorites-section");
 const foodFavoritesList = document.getElementById("food-favorites-list");
 const foodAllList = document.getElementById("food-all-list");
+const foodLibraryError = document.getElementById("food-library-error");
 
 const exerciseToggle = document.getElementById("exercise-toggle");
 const exerciseForm = document.getElementById("exercise-form");
@@ -1294,6 +1295,7 @@ function openFoodLibrary() {
   appShell.hidden = true;
   foodLibraryScreen.hidden = false;
   foodSearchInput.value = "";
+  foodLibraryError.hidden = true;
   loadFoods("");
 }
 
@@ -1303,10 +1305,15 @@ function closeFoodLibrary() {
 }
 
 async function loadFoods(query) {
-  const res = await fetch(`/api/foods?q=${encodeURIComponent(query ?? "")}`);
-  if (!res.ok) return;
-  const foods = await res.json();
-  renderFoodLibrary(foods);
+  try {
+    const res = await fetch(`/api/foods?q=${encodeURIComponent(query ?? "")}`);
+    if (!res.ok) throw new Error();
+    const foods = await res.json();
+    renderFoodLibrary(foods);
+  } catch {
+    foodLibraryError.textContent = "Couldn't load your foods — please try again.";
+    foodLibraryError.hidden = false;
+  }
 }
 
 function renderFoodLibrary(foods) {
@@ -1415,31 +1422,41 @@ function renderFoodRow(food) {
   return row;
 }
 
+async function foodLibraryRequest(url, body) {
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      foodLibraryError.textContent = typeof err.error === "string" ? err.error : "Something went wrong — please try again.";
+      foodLibraryError.hidden = false;
+      return false;
+    }
+    foodLibraryError.hidden = true;
+    return true;
+  } catch {
+    foodLibraryError.textContent = "Network error — please try again.";
+    foodLibraryError.hidden = false;
+    return false;
+  }
+}
+
 async function toggleFavorite(food) {
-  await fetch("/api/foods/favorite", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ labelKey: food.labelKey, favorite: !food.favorite }),
-  });
-  loadFoods(foodSearchInput.value);
+  const ok = await foodLibraryRequest("/api/foods/favorite", { labelKey: food.labelKey, favorite: !food.favorite });
+  if (ok) loadFoods(foodSearchInput.value);
 }
 
 async function addTag(food, tag) {
-  await fetch("/api/foods/tags", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ labelKey: food.labelKey, tag }),
-  });
-  loadFoods(foodSearchInput.value);
+  const ok = await foodLibraryRequest("/api/foods/tags", { labelKey: food.labelKey, tag });
+  if (ok) loadFoods(foodSearchInput.value);
 }
 
 async function removeTag(food, tag) {
-  await fetch("/api/foods/tags/remove", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ labelKey: food.labelKey, tag }),
-  });
-  loadFoods(foodSearchInput.value);
+  const ok = await foodLibraryRequest("/api/foods/tags/remove", { labelKey: food.labelKey, tag });
+  if (ok) loadFoods(foodSearchInput.value);
 }
 
 async function logFood(food, btn) {

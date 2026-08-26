@@ -12,6 +12,15 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  /* Defensive guard against any single element pushing past viewport width
+     on a small screen — nothing in this layout should need to scroll
+     sideways. */
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
