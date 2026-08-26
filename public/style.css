@@ -177,8 +177,15 @@ body {
 
 /* Three header icons on the main app-shell banner (food library, stats,
    settings) need more clearance than the single-icon screens below it. */
+/* The generic centered/symmetric-padding title above assumes clearance is
+   needed on both sides. app-shell's icons are only ever on the right, so
+   reserving 144px on the left too (to keep the text visually centered) was
+   starving the title of width on a narrow phone and forcing it onto 3-4
+   lines, ballooning the banner's height. Left-aligning with clearance only
+   where the icons actually are fixes that. */
 #app-shell .banner h1 {
-  padding: 0 144px;
+  padding: 0 144px 0 4px;
+  text-align: left;
 }
 
 .banner .muted {
