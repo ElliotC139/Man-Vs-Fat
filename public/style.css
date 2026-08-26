@@ -103,6 +103,7 @@ body {
 
 .settings-toggle,
 .library-toggle,
+.stats-toggle,
 .library-back {
   position: absolute;
   top: 14px;
@@ -124,12 +125,14 @@ body {
 }
 .settings-toggle:active,
 .library-toggle:active,
+.stats-toggle:active,
 .library-back:active {
   transform: scale(0.9);
   background: rgba(255, 255, 255, 0.28);
 }
 .settings-toggle { right: 14px; }
-.library-toggle { right: 60px; }
+.stats-toggle { right: 60px; }
+.library-toggle { right: 106px; }
 .library-back { left: 14px; }
 
 .banner h1 {
@@ -138,6 +141,12 @@ body {
   font-size: clamp(1.05rem, 5.5vw, 1.4rem);
   font-weight: 800;
   letter-spacing: -0.01em;
+}
+
+/* Three header icons on the main app-shell banner (food library, stats,
+   settings) need more clearance than the single-icon screens below it. */
+#app-shell .banner h1 {
+  padding: 0 144px;
 }
 
 .banner .muted {
@@ -916,6 +925,28 @@ h2 {
   color: var(--muted);
   padding: 16px;
   font-size: 0.9rem;
+}
+
+/* ── Stats / weigh-ins ── */
+#weighin-chart {
+  width: 100%;
+  height: 120px;
+  display: block;
+}
+.weighin-chart-line {
+  fill: none;
+  stroke: var(--pitch);
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+}
+.weighin-chart-point {
+  fill: var(--pitch-dark);
+}
+.weighin-row {
+  align-items: center;
+}
+.weighin-del {
+  flex-shrink: 0;
 }
 
 /* ── Units toggle ── */

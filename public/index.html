@@ -43,6 +43,9 @@
         <button id="food-library-toggle" type="button" class="library-toggle" aria-label="Food library">
           <svg class="icon" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h6M9 8h1"/></svg>
         </button>
+        <button id="stats-toggle" type="button" class="stats-toggle" aria-label="Stats">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M23 6 13.5 15.5 8.5 10.5 1 18"/><path d="M17 6h6v6"/></svg>
+        </button>
         <button id="settings-toggle" type="button" class="settings-toggle" aria-label="Settings">
           <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
         </button>
@@ -287,6 +290,64 @@
         <section>
           <h2>All foods</h2>
           <div id="food-all-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="stats-screen" hidden>
+      <header class="banner">
+        <button id="stats-back" type="button" class="library-back" aria-label="Back">
+          <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <h1>Stats</h1>
+      </header>
+
+      <main>
+        <section id="weighin-summary" class="card" hidden>
+          <div class="balance-grid">
+            <div class="balance-cell">
+              <span id="weighin-current" class="balance-number">—</span>
+              <span class="balance-caption">Current</span>
+            </div>
+            <div class="balance-cell">
+              <span id="weighin-start" class="balance-number">—</span>
+              <span class="balance-caption">Starting</span>
+            </div>
+            <div id="weighin-change-cell" class="balance-cell">
+              <span id="weighin-change" class="balance-number">—</span>
+              <span id="weighin-change-caption" class="balance-caption">Change</span>
+            </div>
+            <div id="weighin-bmi-cell" class="balance-cell" hidden>
+              <span id="weighin-bmi" class="balance-number">—</span>
+              <span class="balance-caption">BMI</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="weighin-chart-card" class="card" hidden>
+          <h2>Trend</h2>
+          <svg id="weighin-chart" viewBox="0 0 300 120" preserveAspectRatio="none"></svg>
+        </section>
+
+        <form id="weighin-form" class="card">
+          <h2>Log a weight</h2>
+          <div class="settings-row">
+            <div class="settings-field">
+              <label for="weighin-date">Date</label>
+              <input type="date" id="weighin-date" required />
+            </div>
+            <div class="settings-field">
+              <label id="weighin-weight-label" for="weighin-weight">Weight (kg)</label>
+              <input type="number" id="weighin-weight" min="30" max="700" step="0.1" required />
+            </div>
+          </div>
+          <button id="weighin-save" type="submit">Save</button>
+          <p id="weighin-error" class="error" hidden></p>
+        </form>
+
+        <section>
+          <h2>History</h2>
+          <div id="weighin-list"></div>
         </section>
       </main>
     </div>

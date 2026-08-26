@@ -81,6 +81,27 @@ const foodFavoritesList = document.getElementById("food-favorites-list");
 const foodAllList = document.getElementById("food-all-list");
 const foodLibraryError = document.getElementById("food-library-error");
 
+const statsToggle = document.getElementById("stats-toggle");
+const statsScreen = document.getElementById("stats-screen");
+const statsBack = document.getElementById("stats-back");
+const weighinSummary = document.getElementById("weighin-summary");
+const weighinCurrent = document.getElementById("weighin-current");
+const weighinStart = document.getElementById("weighin-start");
+const weighinChangeCell = document.getElementById("weighin-change-cell");
+const weighinChange = document.getElementById("weighin-change");
+const weighinChangeCaption = document.getElementById("weighin-change-caption");
+const weighinBmiCell = document.getElementById("weighin-bmi-cell");
+const weighinBmi = document.getElementById("weighin-bmi");
+const weighinChartCard = document.getElementById("weighin-chart-card");
+const weighinChart = document.getElementById("weighin-chart");
+const weighinForm = document.getElementById("weighin-form");
+const weighinDate = document.getElementById("weighin-date");
+const weighinWeight = document.getElementById("weighin-weight");
+const weighinWeightLabel = document.getElementById("weighin-weight-label");
+const weighinSave = document.getElementById("weighin-save");
+const weighinError = document.getElementById("weighin-error");
+const weighinList = document.getElementById("weighin-list");
+
 const exerciseToggle = document.getElementById("exercise-toggle");
 const exerciseForm = document.getElementById("exercise-form");
 const exerciseText = document.getElementById("exercise-text");
@@ -1086,6 +1107,7 @@ function switchUnits(imperial) {
     localStorage.setItem("units", imperial ? "imperial" : "metric");
     applyUnitPreference();
   }
+  if (!statsScreen.hidden) renderStats();
 }
 
 unitsMetricBtn.addEventListener("click", () => switchUnits(false));
@@ -1532,3 +1554,243 @@ productRescanBtn.addEventListener("click", () => {
 
 scanBarcodeBtn.addEventListener("click", openScanner);
 scanCloseBtn.addEventListener("click", stopScanner);
+
+// ── Stats / weigh-ins ───────────────────────────────────────────────────────
+let weighIns = [];
+
+function todayDateValue() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function kgToDisplay(kg) {
+  return useImperial ? +(kg * 2.20462).toFixed(1) : +kg.toFixed(1);
+}
+
+function displayToKg(value) {
+  return useImperial ? +(value / 2.20462).toFixed(2) : +value;
+}
+
+function weightUnit() {
+  return useImperial ? "lbs" : "kg";
+}
+
+function applyWeighinUnitFields() {
+  weighinWeightLabel.textContent = `Weight (${weightUnit()})`;
+  if (useImperial) {
+    weighinWeight.min = "66";
+    weighinWeight.max = "1540";
+    weighinWeight.placeholder = "e.g. 210";
+  } else {
+    weighinWeight.min = "30";
+    weighinWeight.max = "700";
+    weighinWeight.placeholder = "e.g. 95";
+  }
+}
+
+function openStats() {
+  appShell.hidden = true;
+  statsScreen.hidden = false;
+  weighinError.hidden = true;
+  weighinDate.max = todayDateValue();
+  weighinDate.value = todayDateValue();
+  weighinWeight.value = "";
+  applyWeighinUnitFields();
+  loadWeighIns();
+}
+
+function closeStats() {
+  statsScreen.hidden = true;
+  appShell.hidden = false;
+}
+
+async function loadWeighIns() {
+  try {
+    const res = await fetch("/api/weigh-ins");
+    if (!res.ok) throw new Error();
+    weighIns = await res.json();
+    renderStats();
+  } catch {
+    weighinError.textContent = "Couldn't load your weigh-ins — please try again.";
+    weighinError.hidden = false;
+  }
+}
+
+function renderStats() {
+  applyWeighinUnitFields();
+  renderWeighinSummary();
+  renderWeighinChart();
+  renderWeighinList();
+}
+
+function renderWeighinSummary() {
+  if (weighIns.length === 0) {
+    weighinSummary.hidden = true;
+    return;
+  }
+  weighinSummary.hidden = false;
+
+  const starting = weighIns[0].weightKg;
+  const current = weighIns[weighIns.length - 1].weightKg;
+  const changeKg = current - starting;
+
+  weighinCurrent.textContent = `${kgToDisplay(current)} ${weightUnit()}`;
+  weighinStart.textContent = `${kgToDisplay(starting)} ${weightUnit()}`;
+
+  weighinChangeCell.classList.remove("balance-cell--loss", "balance-cell--gain");
+  if (changeKg <= 0) {
+    weighinChangeCell.classList.add("balance-cell--loss");
+    weighinChange.textContent = `-${kgToDisplay(Math.abs(changeKg))} ${weightUnit()}`;
+    weighinChangeCaption.textContent = "lost";
+  } else {
+    weighinChangeCell.classList.add("balance-cell--gain");
+    weighinChange.textContent = `+${kgToDisplay(changeKg)} ${weightUnit()}`;
+    weighinChangeCaption.textContent = "gained";
+  }
+
+  if (currentUser?.heightCm) {
+    const heightM = currentUser.heightCm / 100;
+    weighinBmiCell.hidden = false;
+    weighinBmi.textContent = (current / (heightM * heightM)).toFixed(1);
+  } else {
+    weighinBmiCell.hidden = true;
+  }
+}
+
+function renderWeighinChart() {
+  if (weighIns.length < 2) {
+    weighinChartCard.hidden = true;
+    weighinChart.innerHTML = "";
+    return;
+  }
+  weighinChartCard.hidden = false;
+
+  const weights = weighIns.map((w) => w.weightKg);
+  const min = Math.min(...weights);
+  const max = Math.max(...weights);
+  const range = max - min || 1;
+  const padX = 8;
+  const padY = 12;
+  const w = 300;
+  const h = 120;
+
+  const points = weighIns.map((entry, i) => ({
+    x: padX + (i / (weighIns.length - 1)) * (w - padX * 2),
+    y: h - padY - ((entry.weightKg - min) / range) * (h - padY * 2),
+  }));
+
+  const linePoints = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const circles = points
+    .map((p) => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5" class="weighin-chart-point" />`)
+    .join("");
+
+  weighinChart.innerHTML = `<polyline points="${linePoints}" class="weighin-chart-line" />${circles}`;
+}
+
+function renderWeighinList() {
+  weighinList.innerHTML = "";
+  if (weighIns.length === 0) {
+    weighinList.innerHTML = '<p class="empty-state">No weigh-ins logged yet.</p>';
+    return;
+  }
+
+  for (let ascIndex = weighIns.length - 1; ascIndex >= 0; ascIndex--) {
+    const entry = weighIns[ascIndex];
+    const prev = ascIndex > 0 ? weighIns[ascIndex - 1] : null;
+    weighinList.appendChild(renderWeighinRow(entry, prev));
+  }
+}
+
+function renderWeighinRow(entry, prev) {
+  const row = document.createElement("div");
+  row.className = "food-row weighin-row";
+
+  const info = document.createElement("div");
+  info.className = "food-info";
+
+  const dateEl = document.createElement("div");
+  dateEl.className = "food-label";
+  dateEl.textContent = dateFmt.format(new Date(`${entry.date}T00:00:00`));
+
+  const metaEl = document.createElement("div");
+  metaEl.className = "food-meta";
+  let metaText = `${kgToDisplay(entry.weightKg)} ${weightUnit()}`;
+  if (prev) {
+    const deltaKg = entry.weightKg - prev.weightKg;
+    const sign = deltaKg <= 0 ? "-" : "+";
+    metaText += ` · ${sign}${kgToDisplay(Math.abs(deltaKg))} ${weightUnit()}`;
+  }
+  metaEl.textContent = metaText;
+
+  info.append(dateEl, metaEl);
+
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.className = "food-log-btn";
+  editBtn.textContent = "Edit";
+  editBtn.addEventListener("click", () => {
+    weighinDate.value = entry.date;
+    weighinWeight.value = kgToDisplay(entry.weightKg);
+    weighinWeight.focus();
+  });
+
+  const delBtn = document.createElement("button");
+  delBtn.type = "button";
+  delBtn.className = "exercise-del weighin-del";
+  delBtn.textContent = "Delete";
+  delBtn.addEventListener("click", () => deleteWeighIn(entry.date));
+
+  row.append(info, editBtn, delBtn);
+  return row;
+}
+
+async function deleteWeighIn(date) {
+  try {
+    const res = await fetch(`/api/weigh-ins/${encodeURIComponent(date)}`, { method: "DELETE" });
+    if (!res.ok) throw new Error();
+    await loadWeighIns();
+  } catch {
+    weighinError.textContent = "Couldn't delete that entry — please try again.";
+    weighinError.hidden = false;
+  }
+}
+
+weighinForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  weighinError.hidden = true;
+
+  const date = weighinDate.value;
+  const rawWeight = weighinWeight.value === "" ? null : Number(weighinWeight.value);
+  if (!date || rawWeight === null || Number.isNaN(rawWeight)) {
+    weighinError.textContent = "Enter a date and weight.";
+    weighinError.hidden = false;
+    return;
+  }
+
+  weighinSave.disabled = true;
+  try {
+    const res = await fetch("/api/weigh-ins", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date, weightKg: displayToKg(rawWeight) }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(typeof body.error === "string" ? body.error : "Couldn't save that weigh-in.");
+    }
+    weighinDate.value = todayDateValue();
+    weighinWeight.value = "";
+    await loadWeighIns();
+  } catch (error) {
+    weighinError.textContent = error.message;
+    weighinError.hidden = false;
+  } finally {
+    weighinSave.disabled = false;
+  }
+});
+
+statsToggle.addEventListener("click", openStats);
+statsBack.addEventListener("click", closeStats);
