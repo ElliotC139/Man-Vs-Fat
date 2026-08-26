@@ -29,3 +29,8 @@ min_machines_running = 1
 
 [[vm]]
 size = "shared-cpu-1x"
+# Default shared-cpu-1x memory (256MB) isn't enough headroom for this stack —
+# googleapis' top-level import alone is heavy, plus Prisma/tsx/Express/the
+# Anthropic SDK all load eagerly at boot — and was the likely cause of the
+# server hanging before it ever reached app.listen().
+memory = "1gb"

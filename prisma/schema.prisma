@@ -7,18 +7,132 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// A single Monday 17:00 -> following Monday 17:00 boundary. First-class so
-// reports, averages and the PDF all key off the same definition of "week".
+// One account per person using the diary. Each has their own week-start
+// (weekday + time) so e.g. one user's week can run Mon 17:00 -> Mon 17:00
+// while another's runs Wed 09:00 -> Wed 09:00.
+model User {
+  id               Int      @id @default(autoincrement())
+  username         String   @unique
+  // Null for accounts created via "Sign in with Google" that never set a password.
+  passwordHash     String?
+  // Set once an account is created or signed into via Google.
+  googleId         String?  @unique
+  email            String?  @unique
+  // 0 = Monday .. 6 = Sunday, matching WEEKDAYS_MON_FIRST in matchWeek.ts.
+  weekStartWeekday Int      @default(0)
+  weekStartHour    Int      @default(17)
+  weekStartMinute  Int      @default(0)
+  // Body stats and goal for calorie budget calculation.
+  weightKg         Float?
+  heightCm         Float?
+  ageYears         Int?
+  activityLevel    String?
+  weeklyGoalKg     Float?
+  createdAt        DateTime @default(now())
+  matchWeeks       MatchWeek[]
+  whoopConnection  WhoopConnection?
+  whoopCycles      WhoopCycle[]
+  foodFavorites    FoodFavorite[]
+  foodTags         FoodTag[]
+}
+
+// A starred food, keyed by the entry label normalized (trimmed, lowercased)
+// so it groups every logging of "the same" food regardless of exact
+// capitalization — see src/routes/foods.ts for how the food library page
+// aggregates Entry rows by this same key.
+model FoodFavorite {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  labelKey  String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, labelKey])
+}
+
+// A tag attached to a food (same labelKey grouping as FoodFavorite above).
+model FoodTag {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  labelKey  String
+  tag       String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, labelKey, tag])
+  @@index([userId, labelKey])
+}
+
+// One WHOOP OAuth link per user. accessToken/expiresAt are refreshed in place
+// as needed (see src/whoop/sync.ts); refreshToken only changes if WHOOP
+// rotates it on refresh.
+model WhoopConnection {
+  id           Int       @id @default(autoincrement())
+  userId       Int       @unique
+  user         User      @relation(fields: [userId], references: [id])
+  // WHOOP's own numeric user id, captured from the first synced cycle's
+  // user_id field (not requested via a dedicated profile scope) — lets the
+  // webhook, which is keyed by WHOOP user id, resolve back to our userId.
+  whoopUserId  BigInt?
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  lastSyncedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+// A WHOOP physiological cycle (roughly one per day, wake-to-wake), used as
+// the measured total daily calorie burn feeding the budget widget.
+model WhoopCycle {
+  id           Int       @id @default(autoincrement())
+  userId       Int
+  user         User      @relation(fields: [userId], references: [id])
+  whoopCycleId BigInt    @unique
+  start        DateTime
+  end          DateTime?
+  // Null until WHOOP finalizes ("SCORED") the cycle — see scoreState.
+  kcalBurned   Int?
+  scoreState   String
+  updatedAt    DateTime  @updatedAt
+
+  @@index([userId, start])
+}
+
+// A single week-start -> following week-start boundary, per user. First-class
+// so reports, averages and the PDF all key off the same definition of "week".
+// userId is nullable only to let pre-multi-user rows exist; the first-ever
+// signup claims them (see routes/auth.ts).
 model MatchWeek {
   id                Int       @id @default(autoincrement())
+  userId            Int?
+  user              User?     @relation(fields: [userId], references: [id])
   startsAt          DateTime
   endsAt            DateTime
   reportGeneratedAt DateTime?
   reportDriveFileId String?
   reportDriveUrl    String?
   entries           Entry[]
+  exercises         Exercise[]
 
-  @@unique([startsAt, endsAt])
+  @@unique([userId, startsAt, endsAt])
+}
+
+model Exercise {
+  id             Int       @id @default(autoincrement())
+  timestamp      DateTime  @default(now())
+  description    String
+  kcalBurned     Int?
+  imageUrl       String?
+  matchWeekId    Int
+  matchWeek      MatchWeek @relation(fields: [matchWeekId], references: [id])
+  createdAt      DateTime  @default(now())
+  // Set only for entries auto-imported from a WHOOP workout, so resyncing
+  // can upsert by this id instead of creating duplicates each time.
+  // UUID string — WHOOP workout ids aren't numeric, unlike cycle ids.
+  whoopWorkoutId String?   @unique
+
+  @@index([matchWeekId])
 }
 
 model Entry {
@@ -31,6 +145,9 @@ model Entry {
   // can fill the number in by hand.
   kcal        Int?
   imageUrl    String?
+  // Breakfast / lunch / dinner / snack — defaulted from local time-of-day at
+  // creation (see inferMealType), editable afterwards via PATCH.
+  mealType    String    @default("snack")
   edited      Boolean   @default(false)
   matchWeekId Int
   matchWeek   MatchWeek @relation(fields: [matchWeekId], references: [id])

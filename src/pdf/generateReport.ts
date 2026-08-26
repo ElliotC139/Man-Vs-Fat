@@ -1,6 +1,7 @@
 import PDFDocument from "pdfkit";
 import type { Entry, MatchWeek } from "@prisma/client";
-import { localDayKey, localDayLabel, localTimeLabel } from "../matchWeek";
+import { localDayKey, localDayLabel, localTimeLabel, weightedDaysLogged } from "../matchWeek";
+import type { WeekInsights } from "../insights";
 
 const PITCH_GREEN = "#1f7a3f";
 const INK = "#1a1a1a";
@@ -86,9 +87,49 @@ function groupByLocalDay(entries: Entry[], timeZone: string): DayGroup[] {
   return [...groups.values()].sort((a, b) => a.dayKey.localeCompare(b.dayKey));
 }
 
+const INSIGHT_SECTIONS: { key: keyof WeekInsights; title: string }[] = [
+  { key: "wentWell", title: "What went well" },
+  { key: "couldImprove", title: "What could improve" },
+  { key: "noticed", title: "Worth noticing" },
+  { key: "easyWins", title: "Easy wins for next time" },
+];
+
+function drawInsights(doc: PDFKit.PDFDocument, insights: WeekInsights) {
+  doc.addPage();
+  doc.y = MARGIN;
+  doc.x = MARGIN;
+
+  doc.font("Helvetica-Bold").fontSize(18).fillColor(PITCH_GREEN).text("Weekly Summary", MARGIN);
+  doc.moveDown(0.7);
+
+  for (const section of INSIGHT_SECTIONS) {
+    const items = insights[section.key];
+    if (items.length === 0) continue;
+
+    ensureSpace(doc, 36);
+    doc.font("Helvetica-Bold").fontSize(12).fillColor(INK).text(section.title, MARGIN);
+    doc.moveDown(0.35);
+
+    for (const item of items) {
+      ensureSpace(doc, 36);
+      const rowY = doc.y;
+      doc.font("Helvetica").fontSize(10.5).fillColor(PITCH_GREEN).text("•", MARGIN, rowY, { width: 14 });
+      doc
+        .font("Helvetica")
+        .fontSize(10.5)
+        .fillColor(INK)
+        .text(item, MARGIN + 14, rowY, { width: doc.page.width - MARGIN * 2 - 14 });
+      doc.moveDown(0.4);
+    }
+
+    doc.moveDown(0.5);
+  }
+}
+
 export async function generateMatchWeekReport(
   week: MatchWeek & { entries: Entry[] },
   timeZone: string,
+  insights: WeekInsights | null = null,
 ): Promise<Buffer> {
   const doc = new PDFDocument({ size: "A4", margins: { top: 0, bottom: 56, left: MARGIN, right: MARGIN } });
   const chunks: Buffer[] = [];
@@ -153,7 +194,7 @@ export async function generateMatchWeekReport(
     doc.moveDown(1.1);
   }
 
-  const daysLogged = days.length;
+  const daysLogged = weightedDaysLogged(days.map((d) => d.dayKey), week.startsAt, timeZone);
   const dailyAverage = daysLogged > 0 ? Math.round(weekTotal / daysLogged) : 0;
 
   ensureSpace(doc, 110);
@@ -181,6 +222,10 @@ export async function generateMatchWeekReport(
         } included in the totals above.`,
         MARGIN,
       );
+  }
+
+  if (insights) {
+    drawInsights(doc, insights);
   }
 
   doc.end();

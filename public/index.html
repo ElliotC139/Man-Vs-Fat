@@ -3,57 +3,321 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="A lightweight food and exercise diary tracked in Monday-to-Monday match weeks, with WHOOP integration and an auto-generated weekly report." />
     <title>Match Week Food Diary</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍽️</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <header class="banner">
-      <h1>Match Week Food Diary</h1>
-      <p id="week-range" class="muted">Loading…</p>
-    </header>
+    <div id="auth-screen" class="auth-screen" hidden>
+      <div class="card auth-card">
+        <h1 class="auth-title">Match Week Food Diary</h1>
+        <div id="google-signin-btn" class="google-signin-btn" hidden></div>
+        <p id="auth-divider" class="auth-divider" hidden><span>or</span></p>
+        <form id="auth-form">
+          <label for="auth-username">Username</label>
+          <input type="text" id="auth-username" autocomplete="username" required />
+          <label for="auth-password">Password</label>
+          <input type="password" id="auth-password" autocomplete="current-password" required />
+          <button type="submit" id="auth-submit">Log in</button>
+          <p id="auth-error" class="error" hidden></p>
+        </form>
+        <p class="muted auth-toggle">
+          <span id="auth-toggle-text">Don't have an account?</span>
+          <button type="button" id="auth-toggle-btn" class="link-btn">Sign up</button>
+        </p>
+      </div>
+    </div>
 
-    <main>
-      <form id="entry-form" class="card">
-        <label for="text">What did you eat?</label>
-        <textarea
-          id="text"
-          name="text"
-          rows="2"
-          placeholder="e.g. chicken stir fry with rice, small handful of crisps"
-        ></textarea>
-
-        <label for="photo" class="photo-label">
-          <span id="photo-status">📷 Add a photo (optional)</span>
-          <input type="file" id="photo" name="photo" accept="image/*" capture="environment" />
-        </label>
-
-        <button type="submit" id="submit-btn">Log it</button>
-        <p id="form-error" class="error" hidden></p>
-      </form>
-
-      <section id="result-card" class="card result" hidden>
-        <p class="muted">Got it — looks right?</p>
-        <div class="result-row">
-          <input id="result-label" type="text" aria-label="Label" />
-          <input id="result-kcal" type="number" min="0" inputmode="numeric" aria-label="Kcal" />
+    <div id="app-shell" hidden>
+      <header class="banner">
+        <h1>Match Week Food Diary</h1>
+        <div class="week-nav">
+          <button id="week-prev" type="button" aria-label="Previous week"><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+          <p id="week-range" class="muted">Loading…</p>
+          <button id="week-next" type="button" aria-label="Next week" disabled><svg class="icon" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
         </div>
-        <div class="result-actions">
-          <button id="result-save" type="button">Save correction</button>
-          <button id="result-dismiss" type="button" class="ghost">Looks good</button>
-        </div>
-      </section>
+        <button id="food-library-toggle" type="button" class="library-toggle" aria-label="Food library">
+          <svg class="icon" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h6M9 8h1"/></svg>
+        </button>
+        <button id="settings-toggle" type="button" class="settings-toggle" aria-label="Settings">
+          <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+        </button>
+      </header>
 
-      <section class="summary card">
-        <div class="summary-total"><span id="week-total">0</span> kcal this week</div>
-        <div class="muted"><span id="week-avg">0</span> kcal/day avg over <span id="days-logged">0</span> day(s) logged</div>
-      </section>
+      <main>
+        <p id="week-note" class="muted" hidden>Viewing a past week — go to the current week to log new entries.</p>
 
-      <section>
-        <h2>This week</h2>
-        <div id="entry-list"></div>
-      </section>
-    </main>
+        <form id="entry-form" class="card">
+          <label for="text">What did you eat?</label>
+          <textarea
+            id="text"
+            name="text"
+            rows="2"
+            placeholder="e.g. chicken stir fry with rice, small handful of crisps"
+          ></textarea>
 
+          <label for="photo" class="photo-label">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg>
+            <span id="photo-status">Add a photo (optional)</span>
+            <input type="file" id="photo" name="photo" accept="image/*" />
+          </label>
+
+          <button type="button" id="scan-barcode-btn" class="scan-barcode-btn">
+            <svg class="icon" viewBox="0 0 24 24"><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/><path d="M21 7.35V16.65a1.35 1.35 0 0 1-.68 1.17l-7.64 4.37a1.35 1.35 0 0 1-1.36 0l-7.64-4.37A1.35 1.35 0 0 1 3 16.65V7.35a1.35 1.35 0 0 1 .68-1.17l7.64-4.37a1.35 1.35 0 0 1 1.36 0l7.64 4.37A1.35 1.35 0 0 1 21 7.35Z"/></svg>
+            Scan barcode
+          </button>
+
+          <div id="log-week-row" class="log-week-row" hidden>
+            <span class="muted">Count toward</span>
+            <div class="log-week-btns">
+              <button type="button" id="log-week-current" class="log-week-btn log-week-btn--active">This week</button>
+              <button type="button" id="log-week-last" class="log-week-btn">Last week</button>
+            </div>
+          </div>
+          <button type="submit" id="submit-btn">Log it</button>
+          <p id="form-error" class="error" hidden></p>
+        </form>
+
+        <section id="product-card" class="card product-card" hidden>
+          <p class="muted product-card-eyebrow">Found product</p>
+          <p id="product-name-el" class="product-name"></p>
+          <p id="product-brand-el" class="muted product-brand"></p>
+          <div class="product-serving-row">
+            <label for="product-serving-input">Serving (g)</label>
+            <input type="number" id="product-serving-input" min="1" step="1" />
+            <span id="product-kcal-el" class="product-kcal-badge"></span>
+          </div>
+          <p id="product-nodata-el" class="muted" hidden>No calorie data found — AI will estimate from the name.</p>
+          <div class="result-actions">
+            <button type="button" id="product-log-btn">Log it</button>
+            <button type="button" id="product-rescan-btn" class="ghost">Scan again</button>
+          </div>
+          <p id="product-err-el" class="error" hidden></p>
+        </section>
+
+        <section id="result-card" class="card result" hidden>
+          <p class="muted">Got it — looks right?</p>
+          <p id="result-warning" class="error" hidden></p>
+          <div id="result-rows"></div>
+          <div class="result-actions">
+            <button id="result-save" type="button">Save corrections</button>
+            <button id="result-dismiss" type="button" class="ghost">Looks good</button>
+          </div>
+        </section>
+
+        <section class="summary card">
+          <div class="summary-total"><span id="week-total">0</span> kcal this week</div>
+          <div class="muted"><span id="week-avg">0</span> kcal/day avg over <span id="days-logged">0</span> day(s) logged</div>
+          <div id="week-net-summary" class="week-net-summary" hidden></div>
+          <div id="daily-totals" class="day-totals"></div>
+          <p id="pending-note" class="error" hidden></p>
+          <a id="export-pdf" class="button-link" href="/api/match-weeks/current/report.pdf">Export PDF</a>
+        </section>
+
+        <section id="budget-widget" class="card budget-widget" hidden>
+          <div class="budget-header">
+            <span class="budget-title">Calorie balance</span>
+            <span id="budget-source-label" class="muted"></span>
+          </div>
+          <div class="balance-grid">
+            <div class="balance-cell">
+              <span id="balance-in-total" class="balance-number"></span>
+              <span class="balance-caption">kcal in</span>
+            </div>
+            <div class="balance-cell">
+              <span id="balance-out-total" class="balance-number"></span>
+              <span class="balance-caption">kcal out</span>
+            </div>
+            <div id="balance-diff-cell" class="balance-cell">
+              <span id="balance-diff" class="balance-number"></span>
+              <span id="balance-diff-caption" class="balance-caption"></span>
+            </div>
+            <div id="balance-kg-cell" class="balance-cell">
+              <span id="balance-kg" class="balance-number"></span>
+              <span id="balance-kg-caption" class="balance-caption"></span>
+            </div>
+          </div>
+        </section>
+
+        <section id="exercise-section">
+          <div class="section-header">
+            <h2>Exercise</h2>
+            <button id="exercise-toggle" type="button" class="ghost-sm">+ Log exercise</button>
+          </div>
+          <form id="exercise-form" class="card" hidden>
+            <label for="exercise-text">What did you do?</label>
+            <textarea
+              id="exercise-text"
+              name="text"
+              rows="2"
+              placeholder="e.g. 30 min run, 1 hour gym session"
+            ></textarea>
+            <label for="exercise-photo" class="photo-label">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg>
+              <span id="exercise-photo-status">Add a screenshot (optional)</span>
+              <input type="file" id="exercise-photo" name="photo" accept="image/*" />
+            </label>
+            <button type="submit" id="exercise-submit">Log exercise</button>
+            <p id="exercise-error" class="error" hidden></p>
+          </form>
+          <div id="exercise-list"></div>
+        </section>
+
+        <section>
+          <h2>Food diary</h2>
+          <div id="entry-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="settings-screen" hidden>
+      <header class="banner">
+        <button id="settings-back" type="button" class="library-back" aria-label="Back">
+          <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <h1>Settings</h1>
+      </header>
+
+      <main>
+        <section id="settings-card" class="card">
+          <p class="muted">Signed in as <strong id="settings-username"></strong></p>
+
+          <fieldset class="settings-fieldset">
+            <legend>Week rollover</legend>
+            <label for="settings-weekday">Starts on</label>
+            <select id="settings-weekday">
+              <option value="0">Monday</option>
+              <option value="1">Tuesday</option>
+              <option value="2">Wednesday</option>
+              <option value="3">Thursday</option>
+              <option value="4">Friday</option>
+              <option value="5">Saturday</option>
+              <option value="6">Sunday</option>
+            </select>
+            <label for="settings-time">at</label>
+            <input type="time" id="settings-time" />
+          </fieldset>
+
+          <fieldset class="settings-fieldset">
+            <legend>Units</legend>
+            <div class="units-toggle">
+              <button type="button" id="units-metric" class="units-btn units-btn--active">Metric (kg, cm)</button>
+              <button type="button" id="units-imperial" class="units-btn">Imperial (lbs, ft/in)</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="settings-fieldset">
+            <legend>Calorie budget</legend>
+            <div class="settings-row">
+              <div class="settings-field">
+                <label id="weight-label" for="settings-weight">Weight (kg)</label>
+                <input type="number" id="settings-weight" min="30" max="700" step="0.1" placeholder="e.g. 95" />
+              </div>
+              <div class="settings-field" id="height-cm-wrap">
+                <label for="settings-height">Height (cm)</label>
+                <input type="number" id="settings-height" min="100" max="250" step="1" placeholder="e.g. 178" />
+              </div>
+              <div class="settings-field" id="height-ft-wrap" hidden>
+                <label>Height</label>
+                <div class="ft-in-row">
+                  <input type="number" id="settings-height-ft" min="3" max="8" step="1" placeholder="ft" />
+                  <input type="number" id="settings-height-in" min="0" max="11" step="1" placeholder="in" />
+                </div>
+              </div>
+              <div class="settings-field">
+                <label for="settings-age">Age</label>
+                <input type="number" id="settings-age" min="16" max="99" step="1" placeholder="e.g. 35" />
+              </div>
+            </div>
+            <label for="settings-activity">Activity level</label>
+            <select id="settings-activity">
+              <option value="">— not set —</option>
+              <option value="sedentary">Sedentary (desk job, little exercise)</option>
+              <option value="light">Lightly active (exercise 1–3×/week)</option>
+              <option value="moderate">Moderately active (exercise 3–5×/week)</option>
+              <option value="active">Very active (hard exercise 6–7×/week)</option>
+            </select>
+            <label id="goal-label" for="settings-goal">Target loss (kg/week)</label>
+            <input type="number" id="settings-goal" min="0.1" max="3" step="0.1" placeholder="e.g. 0.5" />
+          </fieldset>
+
+          <fieldset class="settings-fieldset">
+            <legend>Fitness tracker</legend>
+            <div id="whoop-status-row" class="whoop-status-row">
+              <span id="whoop-status-text" class="muted">Checking WHOOP connection…</span>
+            </div>
+            <button type="button" id="whoop-connect-btn" class="ghost" hidden>Connect WHOOP</button>
+            <button type="button" id="whoop-sync-btn" class="ghost" hidden>Sync now</button>
+            <button type="button" id="whoop-disconnect-btn" class="ghost" hidden>Disconnect WHOOP</button>
+            <p id="whoop-unconfigured-note" class="muted" hidden>
+              WHOOP isn't set up on this server yet.
+            </p>
+          </fieldset>
+
+          <button id="settings-save" type="button">Save</button>
+          <p id="settings-error" class="error" hidden></p>
+          <button id="logout-btn" type="button" class="ghost">Log out</button>
+        </section>
+      </main>
+    </div>
+
+    <div id="food-library-screen" hidden>
+      <header class="banner">
+        <button id="food-library-back" type="button" class="library-back" aria-label="Back">
+          <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <h1>Food Library</h1>
+      </header>
+
+      <main>
+        <section class="card">
+          <input type="search" id="food-search" placeholder="Search foods or tags…" />
+          <p id="food-library-error" class="error" hidden></p>
+        </section>
+
+        <section id="food-favorites-section" hidden>
+          <h2><svg class="icon" viewBox="0 0 24 24" style="vertical-align:-2px"><path d="M12 3.5 14.9 9.4l6.5.95-4.7 4.6 1.1 6.45L12 18.3 6.2 21.4l1.1-6.45-4.7-4.6 6.5-.95Z" fill="currentColor"/></svg> Favourites</h2>
+          <div id="food-favorites-list"></div>
+        </section>
+
+        <section>
+          <h2>All foods</h2>
+          <div id="food-all-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="scan-modal" class="scan-modal" hidden>
+      <div class="scan-header">
+        <span>Scan barcode</span>
+        <button type="button" id="scan-close-btn" class="scan-close-btn">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="scan-viewport">
+        <video id="scan-video" autoplay playsinline muted></video>
+        <div class="scan-reticle"></div>
+      </div>
+      <p id="scan-status-el" class="scan-status">Searching for barcode…</p>
+    </div>
+
+    <script>
+      // Defined here (not in app.js) so it exists no matter which of the two
+      // scripts below finishes loading first — app.js is same-origin and
+      // usually wins the race, but on a slow connection to this app's own
+      // server the external Google script can finish first, and onload
+      // can only fire once: if app.js hadn't defined this callback yet at
+      // that moment, the signal would be silently lost.
+      window.__gsiReady = false;
+      window.__onGsiLoad = function () {
+        window.__gsiReady = true;
+      };
+    </script>
+    <script src="https://accounts.google.com/gsi/client" async defer onload="window.__onGsiLoad()"></script>
     <script src="/app.js"></script>
   </body>
 </html>

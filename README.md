@@ -2,12 +2,19 @@
 
 A deliberately rough food log for a Man v Fat Football habit. Log a meal by
 text and/or photo, Claude turns it into a short label + one best-guess kcal
-number, entries are grouped into Monday 17:00 → Monday 17:00 "match weeks,"
-and every Monday at 17:00 a clean PDF report is generated and uploaded to
-Google Drive automatically.
+number, entries are grouped into "match weeks" running from a configurable
+weekly rollover (Monday 17:00 by default) to the next, and a clean PDF report
+is generated and uploaded to Google Drive automatically once each week's
+rollover passes.
 
 No macros, no ranges, no guilt — single numbers, edit anything that looks
 wrong.
+
+Multiple people can use the same deployment: each person creates their own
+account (sign up with a username/password, or "Sign in with Google" if
+that's configured — see below), sees only their own entries, and sets their
+own weekly rollover day/time under the ⚙ settings icon — useful since e.g.
+one person's week might run Monday 17:00 and another's Wednesday 09:00.
 
 ## Stack
 
@@ -22,9 +29,9 @@ database service, no build step in production (runs straight off `tsx`).
 - **`googleapis`** — uploads the PDF to Drive
 
 Why one process instead of e.g. a serverless function + external cron +
-hosted DB: a personal, single-user tool doesn't need that surface area, and
-an in-process cron only works at all if the process is guaranteed to be
-alive at the boundary — see "Hosting" below.
+hosted DB: a small personal tool for a couple of people doesn't need that
+surface area, and an in-process cron only works at all if the process is
+guaranteed to be alive at the boundary — see "Hosting" below.
 
 ## Quick start (local dev)
 
@@ -35,8 +42,11 @@ npm run db:migrate          # creates data/dev.db and applies the schema
 npm run dev                 # http://localhost:3000
 ```
 
-Open the URL on your phone (same network, or via a tunnel) — the form is the
-whole UI. Without Google credentials set, reports still generate locally;
+Open the URL on your phone (same network, or via a tunnel) — sign up with a
+username/password on first visit (anyone can create an account; there's no
+invite step). The very first account ever created on a deployment claims any
+match weeks logged before accounts existed, so pre-multi-user history isn't
+orphaned. Without Google credentials set, reports still generate locally;
 they just won't upload (see logs).
 
 To preview a report without waiting for Monday:
@@ -56,6 +66,7 @@ See `.env.example` for the full list with comments. The essentials:
 | `DATABASE_URL` | SQLite file path. **Relative paths resolve against `prisma/schema.prisma`'s directory, not the repo root** — that's why the default is `file:../data/dev.db` rather than `file:./data/dev.db`. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` | Drive upload. Leave unset to run without Drive (reports generate but stay local + log a warning). |
 | `GOOGLE_DRIVE_FOLDER_ID` | Optional. If unset, the app finds-or-creates a "Food Diary" folder once and caches its id in the DB. |
+| `GOOGLE_SIGNIN_CLIENT_ID` | Optional, separate from the Drive client above. Enables the "Sign in with Google" button. Leave unset to keep username/password as the only sign-in method. |
 
 ## Google Drive one-time setup
 
@@ -78,6 +89,31 @@ See `.env.example` for the full list with comments. The essentials:
    does not have that expiry for the scope used here (`drive.file`, which
    only grants access to files this app creates — not your whole Drive).
 
+## "Sign in with Google" one-time setup (optional)
+
+This is a separate OAuth client from the Drive one above — Drive's is a
+"TVs and Limited Input devices" client (device-code flow, no browser
+origin), which can't be used for a browser sign-in button. Skip this section
+entirely to keep username/password as the only sign-in method; nothing else
+in the app depends on it.
+
+1. In the same (or a different) Google Cloud project, under **APIs &
+   Services → Credentials**, create an OAuth client of type **Web
+   application**.
+2. Add this app's URL (e.g. `https://match-week-food-diary.fly.dev`, and
+   `http://localhost:3000` for local dev) under **Authorized JavaScript
+   origins**. No redirect URI is needed — the button flow doesn't use one.
+3. Put the client ID in `.env` as `GOOGLE_SIGNIN_CLIENT_ID` (no secret needed;
+   the server only verifies ID tokens, it doesn't exchange a code). For the
+   GitHub Actions deploy path, add it as a repo secret of the same name
+   instead.
+4. The first time someone uses the button, an account is created
+   automatically from their Google profile (no separate signup step, no
+   password) — a username is derived from their email and de-duplicated
+   against existing accounts. Signing in with Google again later matches the
+   same Google account, not the email, so it's unrelated to any
+   username/password account that happens to share that email.
+
 ## Hosting
 
 **Recommendation: a single always-on small VM, not serverless.** The brief
@@ -87,8 +123,7 @@ asked about Fly.io / a tiny VPS / scheduled GitHub Actions — reasoning:
   every week. A scheduled GitHub Action is the obvious-looking choice but
   it has no persistent disk of its own, so it would need an external DB
   (Turso/Neon/etc) and an external place to run the web form anyway — at
-  that point you have *more* moving parts, not fewer, for a single-user
-  tool.
+  that point you have *more* moving parts, not fewer, for a tool this small.
 - A serverless function (Vercel/Lambda-style) solves hosting the form but
   cron-on-a-timer there is itself just another scheduled trigger pointed
   back at the function, and you still need an external DB since serverless
@@ -96,31 +131,34 @@ asked about Fly.io / a tiny VPS / scheduled GitHub Actions — reasoning:
 - One small always-on instance with a persistent volume lets SQLite,
   uploaded photos, and an in-process `node-cron` all just live in one place.
   It's the smallest number of accounts/services/secrets to maintain for a
-  tool only one person uses.
+  tool a handful of people use.
 
 `Dockerfile` + `fly.toml` are included as a concrete instance of this
 (Render or Railway work the same way — single service, one volume). The one
 setting that actually matters wherever you deploy: **the instance must not
 auto-suspend on idle.** If the platform spins the process down between
 requests (Fly's default autostop, Render's free-tier sleep), the in-process
-cron simply never fires at 17:00. `fly.toml` sets
+cron simply never fires at each user's rollover time. `fly.toml` sets
 `auto_stop_machines = false` / `min_machines_running = 1` for this reason —
 keep the equivalent "always on" setting wherever you deploy.
 
 ```bash
 fly launch --no-deploy        # creates the app from fly.toml, skip the wizard's deploy
 fly volumes create food_diary_data --size 1
-fly secrets set ANTHROPIC_API_KEY=... GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... GOOGLE_REFRESH_TOKEN=...
+fly secrets set ANTHROPIC_API_KEY=... GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... GOOGLE_REFRESH_TOKEN=... GOOGLE_SIGNIN_CLIENT_ID=...
 fly deploy
 ```
+
+(`GOOGLE_SIGNIN_CLIENT_ID` is optional — omit it to leave "Sign in with
+Google" disabled.)
 
 Alternatively, `.github/workflows/deploy.yml` does all four of the above on
 every push to `main` (and on manual trigger), using `flyctl` on GitHub's
 runners instead of a local machine — useful if you'd rather not install
-`flyctl` anywhere yourself. It needs five repo secrets set once under
-**Settings → Secrets and variables → Actions**: `FLY_API_TOKEN` (from Fly's
-dashboard under Account → Access Tokens) plus the four secrets already
-listed above.
+`flyctl` anywhere yourself. It needs `FLY_API_TOKEN` (from Fly's dashboard
+under Account → Access Tokens) plus the five secrets already listed above
+set once under **Settings → Secrets and variables → Actions** (leave
+`GOOGLE_SIGNIN_CLIENT_ID` unset there too if you don't want the button).
 
 ## Input method
 
@@ -148,34 +186,62 @@ belong to" all key off it — so it's covered by `tests/matchWeek.test.ts`,
 including the BST/GMT transition weeks (a Monday where the UK's UTC offset
 itself changes is the actual edge case that breaks naive implementations).
 
-The rule: a week is `[Monday 17:00, following Monday 17:00)` in `TIMEZONE`.
-An entry timestamped Monday 16:59 belongs to the closing week; Monday 17:00
-exactly starts the new one. Every entry gets assigned a `MatchWeek` row
-(created on first use) via `findOrCreateMatchWeek`, so weeks are first-class
-rows in the DB, not a display-time calculation.
+The rule: a week is `[rollover, following rollover)` in `TIMEZONE`, where the
+rollover weekday + time is configurable per user (`weekStartWeekday` /
+`weekStartHour` / `weekStartMinute` on `User`, defaulting to Monday 17:00 —
+`DEFAULT_WEEK_START`). An entry timestamped one minute before the rollover
+belongs to the closing week; the rollover instant exactly starts the new one.
+Every entry gets assigned a `MatchWeek` row (created on first use, scoped to
+that user) via `findOrCreateMatchWeek`, so weeks are first-class rows in the
+DB, not a display-time calculation.
 
 ## Weekly report job
 
-`src/jobs/scheduler.ts` fires `closeMatchWeeksNeedingReport()` every Monday
-17:00, and once more 5s after process startup to catch up anything missed
-while the process was down (deploy, crash, restart). It queries for any
-`MatchWeek` whose `endsAt` has passed but has no report yet — processing
-more than one if several were missed — generates the PDF, uploads it to
-Drive as `Food Diary/<week-start-date>.pdf`, and stamps the row so it's
-never regenerated automatically. A failure on one week doesn't block
+`src/jobs/scheduler.ts` fires `closeMatchWeeksNeedingReport()` every hour, and
+once more 5s after process startup to catch up anything missed while the
+process was down (deploy, crash, restart). It's hourly rather than a single
+weekly tick because each user has their own rollover weekday/time now —
+running more often keeps every user's report within an hour of their own
+boundary instead of only being timed for one user. It queries for any
+`MatchWeek` whose `endsAt` has passed but has no report yet — across all
+users, processing more than one if several were missed — generates the PDF,
+uploads it to Drive as `Food Diary/<week-start-date>.pdf`, and stamps the row
+so it's never regenerated automatically. A failure on one week doesn't block
 others, and leaves that week's `reportGeneratedAt` null so the next tick
 retries it.
 
 ## Estimation edge cases
 
-`src/estimate.ts`'s system prompt explicitly handles: vague input ("just a
-sandwich"), multiple foods in one entry (summed into one number), and
-photo-only entries. If the model call fails outright or returns something
-unparsable, the entry is still saved — with `kcal: null` and a placeholder
-label — rather than being dropped, since losing a logged entry is worse than
-needing to fix a number by hand. The web form and report both render `null`
-as `—` and exclude it from totals (with a footnote on the PDF if it
-happens), and the inline edit UI lets you fill it in immediately.
+`src/estimate.ts` asks the model for a JSON array of `{label, kcal}` items
+rather than one combined object, so a single submission describing several
+distinct foods/snacks/drinks ("chicken stir fry with rice, small handful of
+crisps") becomes one diary entry per item — while the components of a single
+dish ("chicken stir fry with rice") still collapse into one item, since
+that's one meal, not three. `src/routes/entries.ts` creates one `Entry` row
+per returned item, all in a single transaction so a submission is either
+fully logged or not at all.
+
+The Anthropic call is retried (with backoff) before giving up, to absorb the
+transient network/stream errors seen occasionally in production — the kcal
+number should come from the model, not from typing one in by hand. Only once
+every retry is exhausted does an entry fall back to `kcal: null` and a
+placeholder label, rather than being dropped. The web form and report both
+render `null` as `—` and exclude it from totals (with a footnote on the PDF
+if it happens), and the inline edit UI lets you fill it in immediately.
+
+## Meal slots and editing day/meal
+
+Every entry gets a `mealType` — `breakfast` / `lunch` / `dinner` / `snack` —
+defaulted from local time-of-day at creation (`src/mealType.ts`'s
+`inferMealType`: 04:00–10:59 breakfast, 11:00–14:59 lunch, 17:00–21:59
+dinner, everything else snack). The "This week" list groups entries by day
+then by meal slot in that fixed order.
+
+Tap **Edit** on any entry to change its label, kcal, meal slot, or the day
+it's logged against. Changing the day keeps the original time-of-day and
+only swaps the calendar date, recomputing which `MatchWeek` the entry
+belongs to via `findOrCreateMatchWeek` — so moving an entry across a
+Monday-17:00 boundary correctly reassigns it to the other week's totals.
 
 ## What's out of scope (per the brief, intentionally)
 
