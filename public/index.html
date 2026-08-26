@@ -35,6 +35,12 @@
     <div id="app-shell" hidden>
       <header class="banner">
         <h1>Match Week Food Diary</h1>
+        <nav class="desktop-nav" aria-label="Main">
+          <button type="button" class="desktop-nav-btn desktop-nav-btn--active" data-nav="diary">Diary</button>
+          <button type="button" class="desktop-nav-btn" data-nav="food-library">Food Library</button>
+          <button type="button" class="desktop-nav-btn" data-nav="stats">Stats</button>
+          <button type="button" class="desktop-nav-btn" data-nav="settings">Settings</button>
+        </nav>
         <div class="week-nav">
           <button id="week-prev" type="button" aria-label="Previous week"><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
           <p id="week-range" class="muted">Loading…</p>
@@ -183,6 +189,12 @@
           <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
         <h1>Settings</h1>
+        <nav class="desktop-nav" aria-label="Main">
+          <button type="button" class="desktop-nav-btn" data-nav="diary">Diary</button>
+          <button type="button" class="desktop-nav-btn" data-nav="food-library">Food Library</button>
+          <button type="button" class="desktop-nav-btn" data-nav="stats">Stats</button>
+          <button type="button" class="desktop-nav-btn desktop-nav-btn--active" data-nav="settings">Settings</button>
+        </nav>
       </header>
 
       <main>
@@ -274,6 +286,12 @@
           <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
         <h1>Food Library</h1>
+        <nav class="desktop-nav" aria-label="Main">
+          <button type="button" class="desktop-nav-btn" data-nav="diary">Diary</button>
+          <button type="button" class="desktop-nav-btn desktop-nav-btn--active" data-nav="food-library">Food Library</button>
+          <button type="button" class="desktop-nav-btn" data-nav="stats">Stats</button>
+          <button type="button" class="desktop-nav-btn" data-nav="settings">Settings</button>
+        </nav>
       </header>
 
       <main>
@@ -300,34 +318,42 @@
           <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
         <h1>Stats</h1>
+        <nav class="desktop-nav" aria-label="Main">
+          <button type="button" class="desktop-nav-btn" data-nav="diary">Diary</button>
+          <button type="button" class="desktop-nav-btn" data-nav="food-library">Food Library</button>
+          <button type="button" class="desktop-nav-btn desktop-nav-btn--active" data-nav="stats">Stats</button>
+          <button type="button" class="desktop-nav-btn" data-nav="settings">Settings</button>
+        </nav>
       </header>
 
       <main>
-        <section id="weighin-summary" class="card" hidden>
-          <div class="balance-grid">
-            <div class="balance-cell">
-              <span id="weighin-current" class="balance-number">—</span>
-              <span class="balance-caption">Current</span>
+        <div class="stats-top-row">
+          <section id="weighin-summary" class="card" hidden>
+            <div class="balance-grid">
+              <div class="balance-cell balance-cell--accent">
+                <span id="weighin-current" class="balance-number">—</span>
+                <span class="balance-caption">Current</span>
+              </div>
+              <div class="balance-cell">
+                <span id="weighin-start" class="balance-number">—</span>
+                <span class="balance-caption">Starting</span>
+              </div>
+              <div id="weighin-change-cell" class="balance-cell">
+                <span id="weighin-change" class="balance-number">—</span>
+                <span id="weighin-change-caption" class="balance-caption">Change</span>
+              </div>
+              <div id="weighin-bmi-cell" class="balance-cell" hidden>
+                <span id="weighin-bmi" class="balance-number">—</span>
+                <span class="balance-caption">BMI</span>
+              </div>
             </div>
-            <div class="balance-cell">
-              <span id="weighin-start" class="balance-number">—</span>
-              <span class="balance-caption">Starting</span>
-            </div>
-            <div id="weighin-change-cell" class="balance-cell">
-              <span id="weighin-change" class="balance-number">—</span>
-              <span id="weighin-change-caption" class="balance-caption">Change</span>
-            </div>
-            <div id="weighin-bmi-cell" class="balance-cell" hidden>
-              <span id="weighin-bmi" class="balance-number">—</span>
-              <span class="balance-caption">BMI</span>
-            </div>
-          </div>
-        </section>
+          </section>
 
-        <section id="weighin-chart-card" class="card" hidden>
-          <h2>Trend</h2>
-          <svg id="weighin-chart" viewBox="0 0 300 120" preserveAspectRatio="none"></svg>
-        </section>
+          <section id="weighin-chart-card" class="card" hidden>
+            <h2>Trend</h2>
+            <svg id="weighin-chart" viewBox="0 0 300 120" preserveAspectRatio="none"></svg>
+          </section>
+        </div>
 
         <form id="weighin-form" class="card">
           <h2>Log a weight</h2>

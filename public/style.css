@@ -135,6 +135,38 @@ body {
 .library-toggle { right: 106px; }
 .library-back { left: 14px; }
 
+/* Desktop nav bar: replaces the corner icon buttons/back chevron at wide
+   widths (see the ≥1024px block below) — same four destinations, wired to
+   the same open/close functions in app.js, just shown as labelled tabs
+   instead of small floating circles once there's room for them. */
+.desktop-nav {
+  display: none;
+  gap: 4px;
+}
+.desktop-nav-btn {
+  width: auto;
+  min-height: 38px;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  border: none;
+  border-radius: 999px;
+  box-shadow: none;
+  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+}
+.desktop-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+.desktop-nav-btn--active {
+  background: var(--amber);
+  color: #201200;
+}
+.desktop-nav-btn--active:hover {
+  background: var(--amber);
+}
+
 .banner h1 {
   margin: 0 0 4px;
   padding: 0 96px;
@@ -220,6 +252,7 @@ input[type="text"],
 input[type="number"],
 input[type="password"],
 input[type="time"],
+input[type="date"],
 input[type="search"],
 select {
   width: 100%;
@@ -241,6 +274,20 @@ select:focus {
   outline: none;
   border-color: var(--pitch);
   box-shadow: 0 0 0 3px rgba(31, 157, 82, 0.15);
+}
+
+/* Native <select> chrome (the dropdown arrow) is the one input style that
+   couldn't inherit the shared text-input look above — appearance:none
+   strips it so a custom chevron (matching the app's inline-icon style)
+   can take its place. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 34px;
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-size: 18px;
 }
 
 .photo-label {
@@ -760,6 +807,12 @@ h2 {
 .balance-cell--gain .balance-number {
   color: var(--danger);
 }
+.balance-cell--accent {
+  background: rgba(217, 119, 6, 0.12);
+}
+.balance-cell--accent .balance-number {
+  color: var(--amber);
+}
 
 /* ── Exercise section ── */
 .section-header {
@@ -818,6 +871,14 @@ h2 {
 }
 #exercise-list:empty::after {
   content: "No exercise logged this week.";
+  display: block;
+  text-align: center;
+  color: var(--muted);
+  padding: 16px;
+  font-size: 0.9rem;
+}
+#entry-list:empty::after {
+  content: "Nothing logged yet this week.";
   display: block;
   text-align: center;
   color: var(--muted);
@@ -941,6 +1002,16 @@ h2 {
 }
 .weighin-chart-point {
   fill: var(--pitch-dark);
+}
+.weighin-chart-grid {
+  stroke: var(--hairline);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.weighin-chart-label {
+  font-size: 10px;
+  font-family: "Inter", sans-serif;
+  fill: var(--muted);
 }
 .weighin-row {
   align-items: center;
@@ -1138,7 +1209,106 @@ h2 {
 }
 #exercise-list:empty::after,
 #food-all-list:empty::after,
-#food-favorites-list:empty::after {
+#food-favorites-list:empty::after,
+#entry-list:empty::after {
   border: 1.5px dashed var(--hairline);
   border-radius: var(--radius-md);
+}
+
+/* ── Responsive layout ──────────────────────────────────────────────────────
+   Everything above this point was written mobile-only (no @media queries
+   anywhere in the file). These two breakpoints keep every screen exactly as
+   it is below 720px and progressively give it room to breathe above that,
+   without changing the one-screen-at-a-time navigation model. */
+@media (min-width: 720px) {
+  main {
+    max-width: 640px;
+  }
+}
+
+@media (min-width: 1024px) {
+  main {
+    max-width: 900px;
+  }
+
+  /* The corner icon buttons/back chevron only make sense as a compact
+     mobile affordance — at desktop width they're replaced by .desktop-nav,
+     a real labelled tab bar wired to the same open/close functions. */
+  .settings-toggle,
+  .stats-toggle,
+  .library-toggle,
+  .library-back {
+    display: none;
+  }
+  .desktop-nav {
+    display: flex;
+  }
+
+  .banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    text-align: left;
+    padding: 18px 32px;
+    gap: 16px 24px;
+  }
+  .banner h1,
+  #app-shell .banner h1 {
+    padding: 0;
+    margin: 0;
+    flex-shrink: 0;
+  }
+  .week-nav {
+    margin: 0;
+    order: 3;
+    flex-basis: 100%;
+    justify-content: flex-start;
+  }
+
+  /* Settings: the fieldsets are already flat siblings inside one card, so a
+     grid here lets them flow two-up without touching the markup — the
+     account line, save button, error and logout stay full-width. */
+  #settings-card {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 24px;
+    align-items: start;
+  }
+  #settings-card > .muted,
+  #settings-card > #settings-save,
+  #settings-card > #settings-error,
+  #settings-card > #logout-btn {
+    grid-column: 1 / -1;
+  }
+
+  /* Food library and food diary: same trick — the row/group containers
+     already hold nothing but repeated same-shaped children. */
+  #food-favorites-list,
+  #food-all-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+  }
+  #food-favorites-list .food-row,
+  #food-all-list .food-row {
+    margin-bottom: 0;
+  }
+  #entry-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 24px;
+    align-items: start;
+  }
+
+  /* Stats: summary tiles + trend chart sit side by side. */
+  .stats-top-row {
+    display: grid;
+    grid-template-columns: 1fr 1.3fr;
+    gap: 16px;
+    align-items: start;
+  }
+  .stats-top-row .card {
+    margin-bottom: 0;
+  }
 }

@@ -342,7 +342,8 @@ function renderEntries(entries) {
   entryListEl.innerHTML = "";
 
   if (entries.length === 0) {
-    entryListEl.innerHTML = '<p class="empty-state">Nothing logged yet this week.</p>';
+    // Left empty on purpose — the message is supplied by
+    // #entry-list:empty::after in style.css, same as the exercise/food lists.
     return;
   }
 
@@ -1672,14 +1673,17 @@ function renderWeighinChart() {
   const min = Math.min(...weights);
   const max = Math.max(...weights);
   const range = max - min || 1;
-  const padX = 8;
-  const padY = 12;
+  const padLeft = 38; // room for the min/max value labels
+  const padRight = 8;
+  const padY = 16;
   const w = 300;
   const h = 120;
 
+  const yFor = (kg) => h - padY - ((kg - min) / range) * (h - padY * 2);
+
   const points = weighIns.map((entry, i) => ({
-    x: padX + (i / (weighIns.length - 1)) * (w - padX * 2),
-    y: h - padY - ((entry.weightKg - min) / range) * (h - padY * 2),
+    x: padLeft + (i / (weighIns.length - 1)) * (w - padLeft - padRight),
+    y: yFor(entry.weightKg),
   }));
 
   const linePoints = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
@@ -1687,7 +1691,16 @@ function renderWeighinChart() {
     .map((p) => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5" class="weighin-chart-point" />`)
     .join("");
 
-  weighinChart.innerHTML = `<polyline points="${linePoints}" class="weighin-chart-line" />${circles}`;
+  const maxY = yFor(max);
+  const minY = yFor(min);
+  const gridlines =
+    `<line x1="${padLeft}" y1="${maxY.toFixed(1)}" x2="${w - padRight}" y2="${maxY.toFixed(1)}" class="weighin-chart-grid" />` +
+    `<line x1="${padLeft}" y1="${minY.toFixed(1)}" x2="${w - padRight}" y2="${minY.toFixed(1)}" class="weighin-chart-grid" />`;
+  const labels =
+    `<text x="0" y="${(maxY + 3).toFixed(1)}" class="weighin-chart-label">${kgToDisplay(max)}${weightUnit()}</text>` +
+    `<text x="0" y="${(minY + 3).toFixed(1)}" class="weighin-chart-label">${kgToDisplay(min)}${weightUnit()}</text>`;
+
+  weighinChart.innerHTML = `${gridlines}${labels}<polyline points="${linePoints}" class="weighin-chart-line" />${circles}`;
 }
 
 function renderWeighinList() {
@@ -1794,3 +1807,21 @@ weighinForm.addEventListener("submit", async (e) => {
 
 statsToggle.addEventListener("click", openStats);
 statsBack.addEventListener("click", closeStats);
+
+// ── Desktop nav ─────────────────────────────────────────────────────────────
+// Wide-viewport tab bar (see .desktop-nav in style.css) that replaces the
+// mobile corner icons — every screen carries an identical copy of it, wired
+// to the same open/close functions the icons already use.
+function navTo(target) {
+  if (!settingsScreen.hidden && target !== "settings") closeSettings();
+  if (!foodLibraryScreen.hidden && target !== "food-library") closeFoodLibrary();
+  if (!statsScreen.hidden && target !== "stats") closeStats();
+
+  if (target === "food-library" && foodLibraryScreen.hidden) openFoodLibrary();
+  else if (target === "stats" && statsScreen.hidden) openStats();
+  else if (target === "settings" && settingsScreen.hidden) openSettings();
+}
+
+document.querySelectorAll(".desktop-nav-btn").forEach((btn) => {
+  btn.addEventListener("click", () => navTo(btn.dataset.nav));
+});
