@@ -3,13 +3,14 @@ import { config } from "../config";
 // developer.whoop.com is unreachable from this sandbox's egress proxy, so
 // these endpoint paths and response shapes are implemented from published
 // third-party references (community client libraries, API changelog search
-// results) rather than a direct read of WHOOP's own docs. fetchRecentCycles
-// logs the raw response on any parse failure so a real mismatch is easy to
-// spot and patch from Fly logs rather than failing silently.
+// results) rather than a direct read of WHOOP's own docs — including the
+// sleep/recovery shapes added alongside cycles/workouts. Every fetch*
+// function logs the raw response on any parse failure so a real mismatch is
+// easy to spot and patch from Fly logs rather than failing silently.
 const AUTH_URL = "https://api.prod.whoop.com/oauth/oauth2/auth";
 const TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token";
 const API_BASE = "https://api.prod.whoop.com/developer/v2";
-const SCOPES = "read:cycles read:workout offline";
+const SCOPES = "read:cycles read:workout read:sleep read:recovery offline";
 const KJ_PER_KCAL = 4.184;
 
 function redirectUri(): string {
@@ -199,6 +200,151 @@ export async function fetchRecentWorkouts(accessToken: string, since: Date): Pro
         });
       } catch (parseError) {
         console.error("WHOOP workout record didn't match the expected shape:", parseError, JSON.stringify(r));
+      }
+    }
+    nextToken = data.next_token ?? undefined;
+  } while (nextToken);
+
+  return records;
+}
+
+export interface WhoopSleepRecord {
+  // Sleep ids are UUID strings, like workout ids, not numeric like cycle ids.
+  whoopSleepId: string;
+  whoopUserId: bigint;
+  start: Date;
+  end: Date;
+  scoreState: string;
+  performancePercent: number | null;
+  timeAsleepMin: number | null;
+}
+
+interface RawSleepRecord {
+  id: string;
+  user_id: number | string;
+  start: string;
+  end: string;
+  score_state?: string;
+  score?: {
+    sleep_performance_percentage?: number;
+    stage_summary?: {
+      total_light_sleep_time_milli?: number;
+      total_slow_wave_sleep_time_milli?: number;
+      total_rem_sleep_time_milli?: number;
+    };
+  } | null;
+}
+
+/** Fetches all sleeps starting on/after `since`, following pagination. Requires the read:sleep scope. */
+export async function fetchRecentSleep(accessToken: string, since: Date): Promise<WhoopSleepRecord[]> {
+  const records: WhoopSleepRecord[] = [];
+  let nextToken: string | undefined;
+
+  do {
+    const params = new URLSearchParams({ limit: "25", start: since.toISOString() });
+    if (nextToken) params.set("nextToken", nextToken);
+
+    const res = await fetch(`${API_BASE}/activity/sleep?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`WHOOP sleep fetch failed (${res.status}): ${text}`);
+    }
+
+    const data = (await res.json()) as { records?: RawSleepRecord[]; next_token?: string | null };
+    for (const r of data.records ?? []) {
+      try {
+        const scoreState = r.score_state ?? "UNSCORABLE";
+        const stages = r.score?.stage_summary;
+        const asleepMilli =
+          stages && scoreState === "SCORED"
+            ? (stages.total_light_sleep_time_milli ?? 0) +
+              (stages.total_slow_wave_sleep_time_milli ?? 0) +
+              (stages.total_rem_sleep_time_milli ?? 0)
+            : null;
+        records.push({
+          whoopSleepId: String(r.id),
+          whoopUserId: BigInt(r.user_id),
+          start: new Date(r.start),
+          end: new Date(r.end),
+          scoreState,
+          performancePercent:
+            scoreState === "SCORED" && typeof r.score?.sleep_performance_percentage === "number"
+              ? Math.round(r.score.sleep_performance_percentage)
+              : null,
+          timeAsleepMin: asleepMilli !== null ? Math.round(asleepMilli / 60_000) : null,
+        });
+      } catch (parseError) {
+        console.error("WHOOP sleep record didn't match the expected shape:", parseError, JSON.stringify(r));
+      }
+    }
+    nextToken = data.next_token ?? undefined;
+  } while (nextToken);
+
+  return records;
+}
+
+export interface WhoopRecoveryRecord {
+  // Recovery is 1:1 with a cycle, and carries no start/end of its own — the
+  // calendar date it applies to is derived from the matching WhoopCycle's
+  // start at sync time (see syncUserRecovery).
+  whoopCycleId: bigint;
+  whoopUserId: bigint;
+  scoreState: string;
+  recoveryScore: number | null;
+  restingHeartRate: number | null;
+  hrvMilli: number | null;
+}
+
+interface RawRecoveryRecord {
+  cycle_id: number | string;
+  user_id: number | string;
+  score_state?: string;
+  score?: {
+    recovery_score?: number;
+    resting_heart_rate?: number;
+    hrv_rmssd_milli?: number;
+  } | null;
+}
+
+/** Fetches all recoveries starting on/after `since`, following pagination. Requires the read:recovery scope. */
+export async function fetchRecentRecovery(accessToken: string, since: Date): Promise<WhoopRecoveryRecord[]> {
+  const records: WhoopRecoveryRecord[] = [];
+  let nextToken: string | undefined;
+
+  do {
+    const params = new URLSearchParams({ limit: "25", start: since.toISOString() });
+    if (nextToken) params.set("nextToken", nextToken);
+
+    const res = await fetch(`${API_BASE}/recovery?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`WHOOP recovery fetch failed (${res.status}): ${text}`);
+    }
+
+    const data = (await res.json()) as { records?: RawRecoveryRecord[]; next_token?: string | null };
+    for (const r of data.records ?? []) {
+      try {
+        const scoreState = r.score_state ?? "UNSCORABLE";
+        records.push({
+          whoopCycleId: BigInt(r.cycle_id),
+          whoopUserId: BigInt(r.user_id),
+          scoreState,
+          recoveryScore:
+            scoreState === "SCORED" && typeof r.score?.recovery_score === "number"
+              ? Math.round(r.score.recovery_score)
+              : null,
+          restingHeartRate:
+            scoreState === "SCORED" && typeof r.score?.resting_heart_rate === "number"
+              ? Math.round(r.score.resting_heart_rate)
+              : null,
+          hrvMilli: scoreState === "SCORED" && typeof r.score?.hrv_rmssd_milli === "number" ? r.score.hrv_rmssd_milli : null,
+        });
+      } catch (parseError) {
+        console.error("WHOOP recovery record didn't match the expected shape:", parseError, JSON.stringify(r));
       }
     }
     nextToken = data.next_token ?? undefined;

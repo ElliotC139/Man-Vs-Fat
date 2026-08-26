@@ -4,7 +4,7 @@
   --pitch-dark: #12602f;
   --ink: #14181a;
   --muted: #6b7280;
-  --bg: #f2f6f3;
+  --bg: #f7f7f5;
   --card: #ffffff;
   --hairline: #e6ece8;
   --danger: #dc2626;
@@ -191,6 +191,27 @@ body {
 .banner .muted {
   color: #d7ecdf;
   margin: 0;
+}
+
+/* Header wordmark: the same plate/fork/knife mark used as the home-screen
+   app icon, reused as a small badge next to the title on every screen —
+   gives the header an actual brand identity instead of plain bold text. */
+.banner h1.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+#app-shell .banner h1.brand {
+  justify-content: flex-start;
+}
+.brand-mark {
+  display: block;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  padding: 4px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  flex-shrink: 0;
 }
 
 .week-nav {
@@ -1026,6 +1047,39 @@ h2 {
 .weighin-del {
   flex-shrink: 0;
 }
+
+/* Hero stats: real hierarchy for the numbers that matter most (recovery,
+   sleep) instead of every figure being the same tile size — a large,
+   confident number with a small tracked-letter-spacing caption underneath,
+   the same pattern premium fitness apps (Oura, WHOOP's own app) use. */
+.hero-row {
+  display: flex;
+  justify-content: space-around;
+  gap: 16px;
+  text-align: center;
+}
+.stat-hero-number {
+  display: block;
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: clamp(2.2rem, 9vw, 3rem);
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.stat-hero-caption {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.stat-hero--good .stat-hero-number { color: var(--pitch-dark); }
+.stat-hero--fair .stat-hero-number { color: var(--amber); }
+.stat-hero--poor .stat-hero-number { color: var(--danger); }
 
 /* ── Units toggle ── */
 .units-toggle {

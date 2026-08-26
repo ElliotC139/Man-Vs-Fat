@@ -1,7 +1,7 @@
 import { prisma } from "../db";
 import { config } from "../config";
 import { findOrCreateMatchWeek, getUserWeekStart, localDayKey, matchWeekCalendarDays, zonedTimeToUtc } from "../matchWeek";
-import { fetchRecentCycles, fetchRecentWorkouts, refreshAccessToken } from "./client";
+import { fetchRecentCycles, fetchRecentRecovery, fetchRecentSleep, fetchRecentWorkouts, refreshAccessToken } from "./client";
 
 const BACKFILL_DAYS = 10;
 const TRAILING_AVERAGE_SAMPLE = 7;
@@ -65,6 +65,87 @@ async function syncUserWorkouts(userId: number, accessToken: string): Promise<vo
   }
 }
 
+async function syncUserSleep(userId: number, accessToken: string): Promise<void> {
+  const since = new Date(Date.now() - BACKFILL_DAYS * 24 * 60 * 60 * 1000);
+
+  let sleeps;
+  try {
+    sleeps = await fetchRecentSleep(accessToken, since);
+  } catch (e) {
+    // Most likely a connection made before read:sleep was requested — don't
+    // let a missing scope take down the rest of sync.
+    console.error("WHOOP sleep fetch failed (may need to reconnect for the read:sleep scope):", e);
+    return;
+  }
+
+  for (const sleep of sleeps) {
+    await prisma.whoopSleep.upsert({
+      where: { whoopSleepId: sleep.whoopSleepId },
+      update: {
+        start: sleep.start,
+        end: sleep.end,
+        scoreState: sleep.scoreState,
+        performancePercent: sleep.performancePercent,
+        timeAsleepMin: sleep.timeAsleepMin,
+      },
+      create: {
+        userId,
+        whoopSleepId: sleep.whoopSleepId,
+        start: sleep.start,
+        end: sleep.end,
+        scoreState: sleep.scoreState,
+        performancePercent: sleep.performancePercent,
+        timeAsleepMin: sleep.timeAsleepMin,
+      },
+    });
+  }
+}
+
+async function syncUserRecovery(userId: number, accessToken: string): Promise<void> {
+  const since = new Date(Date.now() - BACKFILL_DAYS * 24 * 60 * 60 * 1000);
+
+  let recoveries;
+  try {
+    recoveries = await fetchRecentRecovery(accessToken, since);
+  } catch (e) {
+    // Most likely a connection made before read:recovery was requested —
+    // don't let a missing scope take down the rest of sync.
+    console.error("WHOOP recovery fetch failed (may need to reconnect for the read:recovery scope):", e);
+    return;
+  }
+
+  for (const recovery of recoveries) {
+    // Recovery carries no start/end of its own — assign it to the calendar
+    // day of the cycle it belongs to (cycles are synced before recovery in
+    // syncUserUnguarded, so the row should already exist). A recovery whose
+    // cycle hasn't synced yet is skipped rather than guessed at; it'll be
+    // picked up on the next sync once the cycle exists.
+    const cycle = await prisma.whoopCycle.findUnique({ where: { whoopCycleId: recovery.whoopCycleId } });
+    if (!cycle) continue;
+    const date = localDayKey(cycle.start, config.TIMEZONE);
+
+    await prisma.whoopRecovery.upsert({
+      where: { whoopCycleId: recovery.whoopCycleId },
+      update: {
+        date,
+        scoreState: recovery.scoreState,
+        recoveryScore: recovery.recoveryScore,
+        restingHeartRate: recovery.restingHeartRate,
+        hrvMilli: recovery.hrvMilli,
+      },
+      create: {
+        userId,
+        whoopCycleId: recovery.whoopCycleId,
+        date,
+        scoreState: recovery.scoreState,
+        recoveryScore: recovery.recoveryScore,
+        restingHeartRate: recovery.restingHeartRate,
+        hrvMilli: recovery.hrvMilli,
+      },
+    });
+  }
+}
+
 // WHOOP rotates refresh tokens on use — two syncs for the same user
 // overlapping (periodic cron, webhook, manual button, startup catch-up all
 // call this) could both read the same stored refresh token and race to
@@ -117,6 +198,10 @@ async function syncUserUnguarded(userId: number): Promise<void> {
   });
 
   await syncUserWorkouts(userId, accessToken);
+  await syncUserSleep(userId, accessToken);
+  // Recovery is synced last since it looks up already-upserted WhoopCycle
+  // rows above to assign itself a calendar date.
+  await syncUserRecovery(userId, accessToken);
 }
 
 /** Resyncs every connected user — used by the periodic scheduler as a backstop for missed webhooks. */
@@ -385,4 +470,47 @@ export async function getWhoopWeekBudget(userId: number, start: Date, end: Date)
     weeklyBudget: hasAnyData ? Math.round(weeklyBudget) : null,
     dailyBurn,
   };
+}
+
+export interface WhoopRecentDay {
+  date: string;
+  recoveryScore: number | null;
+  sleepPerformance: number | null;
+  sleepMinutes: number | null;
+}
+
+/**
+ * Last `days` days of recovery + sleep, one row per calendar day with either
+ * kind of data, oldest first. A sleep is attributed to the day you woke up
+ * (its `end`), matching how WHOOP's own app pairs a night's sleep with that
+ * morning's recovery — the two line up on the same row here for that reason.
+ */
+export async function getRecentSleepRecovery(userId: number, days: number): Promise<WhoopRecentDay[]> {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const [recoveries, sleeps] = await Promise.all([
+    prisma.whoopRecovery.findMany({ where: { userId, date: { gte: localDayKey(since, config.TIMEZONE) } } }),
+    prisma.whoopSleep.findMany({ where: { userId, end: { gte: since } } }),
+  ]);
+
+  const byDate = new Map<string, WhoopRecentDay>();
+  function forDate(date: string): WhoopRecentDay {
+    let row = byDate.get(date);
+    if (!row) {
+      row = { date, recoveryScore: null, sleepPerformance: null, sleepMinutes: null };
+      byDate.set(date, row);
+    }
+    return row;
+  }
+
+  for (const r of recoveries) {
+    forDate(r.date).recoveryScore = r.recoveryScore;
+  }
+  for (const s of sleeps) {
+    const row = forDate(localDayKey(s.end, config.TIMEZONE));
+    row.sleepPerformance = s.performancePercent;
+    row.sleepMinutes = s.timeAsleepMin;
+  }
+
+  return Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }

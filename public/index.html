@@ -43,7 +43,7 @@
 
     <div id="app-shell" hidden>
       <header class="banner">
-        <h1>Match Week Food Diary</h1>
+        <h1 class="brand"><img src="/icons/mark.png" alt="" class="brand-mark" width="28" height="28" /><span class="brand-word">Match Week Food Diary</span></h1>
         <nav class="desktop-nav" aria-label="Main">
           <button type="button" class="desktop-nav-btn desktop-nav-btn--active" data-nav="diary">Diary</button>
           <button type="button" class="desktop-nav-btn" data-nav="food-library">Food Library</button>
@@ -197,7 +197,7 @@
         <button id="settings-back" type="button" class="library-back" aria-label="Back">
           <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
-        <h1>Settings</h1>
+        <h1 class="brand"><img src="/icons/mark.png" alt="" class="brand-mark" width="24" height="24" /><span class="brand-word">Settings</span></h1>
         <nav class="desktop-nav" aria-label="Main">
           <button type="button" class="desktop-nav-btn" data-nav="diary">Diary</button>
           <button type="button" class="desktop-nav-btn" data-nav="food-library">Food Library</button>
@@ -294,7 +294,7 @@
         <button id="food-library-back" type="button" class="library-back" aria-label="Back">
           <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
-        <h1>Food Library</h1>
+        <h1 class="brand"><img src="/icons/mark.png" alt="" class="brand-mark" width="24" height="24" /><span class="brand-word">Food Library</span></h1>
         <nav class="desktop-nav" aria-label="Main">
           <button type="button" class="desktop-nav-btn" data-nav="diary">Diary</button>
           <button type="button" class="desktop-nav-btn desktop-nav-btn--active" data-nav="food-library">Food Library</button>
@@ -326,7 +326,7 @@
         <button id="stats-back" type="button" class="library-back" aria-label="Back">
           <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
-        <h1>Stats</h1>
+        <h1 class="brand"><img src="/icons/mark.png" alt="" class="brand-mark" width="24" height="24" /><span class="brand-word">Stats</span></h1>
         <nav class="desktop-nav" aria-label="Main">
           <button type="button" class="desktop-nav-btn" data-nav="diary">Diary</button>
           <button type="button" class="desktop-nav-btn" data-nav="food-library">Food Library</button>
@@ -355,6 +355,10 @@
                 <span id="weighin-bmi" class="balance-number">—</span>
                 <span class="balance-caption">BMI</span>
               </div>
+              <div id="weighin-pace-cell" class="balance-cell" hidden>
+                <span id="weighin-pace" class="balance-number">—</span>
+                <span id="weighin-pace-caption" class="balance-caption">Pace</span>
+              </div>
             </div>
           </section>
 
@@ -363,6 +367,39 @@
             <svg id="weighin-chart" viewBox="0 0 300 120" preserveAspectRatio="none"></svg>
           </section>
         </div>
+
+        <section id="whoop-stats-card" class="card" hidden>
+          <h2>Recovery &amp; Sleep</h2>
+          <div class="hero-row">
+            <div id="stat-recovery-hero" class="stat-hero">
+              <span id="stat-recovery" class="stat-hero-number">—</span>
+              <span class="stat-hero-caption">Recovery today</span>
+            </div>
+            <div class="stat-hero">
+              <span id="stat-sleep" class="stat-hero-number">—</span>
+              <span class="stat-hero-caption">Sleep last night</span>
+            </div>
+          </div>
+          <p id="whoop-stats-avg" class="muted"></p>
+        </section>
+
+        <section id="whoop-stats-prompt" class="card" hidden>
+          <p class="muted">Connect WHOOP in Settings to see recovery &amp; sleep here.</p>
+        </section>
+
+        <section id="averages-card" class="card">
+          <h2>Averages</h2>
+          <div class="balance-grid">
+            <div class="balance-cell">
+              <span id="stat-avg-kcal" class="balance-number">—</span>
+              <span class="balance-caption">kcal/day (7d)</span>
+            </div>
+            <div class="balance-cell">
+              <span id="stat-streak" class="balance-number">—</span>
+              <span class="balance-caption">day streak</span>
+            </div>
+          </div>
+        </section>
 
         <form id="weighin-form" class="card">
           <h2>Log a weight</h2>
