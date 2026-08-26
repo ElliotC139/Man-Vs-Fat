@@ -134,7 +134,8 @@ body {
 
 .banner h1 {
   margin: 0 0 4px;
-  font-size: 1.4rem;
+  padding: 0 96px;
+  font-size: clamp(1.05rem, 5.5vw, 1.4rem);
   font-weight: 800;
   letter-spacing: -0.01em;
 }

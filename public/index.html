@@ -49,86 +49,6 @@
       </header>
 
       <main>
-        <section id="settings-card" class="card" hidden>
-          <p class="muted">Signed in as <strong id="settings-username"></strong></p>
-
-          <fieldset class="settings-fieldset">
-            <legend>Week rollover</legend>
-            <label for="settings-weekday">Starts on</label>
-            <select id="settings-weekday">
-              <option value="0">Monday</option>
-              <option value="1">Tuesday</option>
-              <option value="2">Wednesday</option>
-              <option value="3">Thursday</option>
-              <option value="4">Friday</option>
-              <option value="5">Saturday</option>
-              <option value="6">Sunday</option>
-            </select>
-            <label for="settings-time">at</label>
-            <input type="time" id="settings-time" />
-          </fieldset>
-
-          <fieldset class="settings-fieldset">
-            <legend>Units</legend>
-            <div class="units-toggle">
-              <button type="button" id="units-metric" class="units-btn units-btn--active">Metric (kg, cm)</button>
-              <button type="button" id="units-imperial" class="units-btn">Imperial (lbs, ft/in)</button>
-            </div>
-          </fieldset>
-
-          <fieldset class="settings-fieldset">
-            <legend>Calorie budget</legend>
-            <div class="settings-row">
-              <div class="settings-field">
-                <label id="weight-label" for="settings-weight">Weight (kg)</label>
-                <input type="number" id="settings-weight" min="30" max="700" step="0.1" placeholder="e.g. 95" />
-              </div>
-              <div class="settings-field" id="height-cm-wrap">
-                <label for="settings-height">Height (cm)</label>
-                <input type="number" id="settings-height" min="100" max="250" step="1" placeholder="e.g. 178" />
-              </div>
-              <div class="settings-field" id="height-ft-wrap" hidden>
-                <label>Height</label>
-                <div class="ft-in-row">
-                  <input type="number" id="settings-height-ft" min="3" max="8" step="1" placeholder="ft" />
-                  <input type="number" id="settings-height-in" min="0" max="11" step="1" placeholder="in" />
-                </div>
-              </div>
-              <div class="settings-field">
-                <label for="settings-age">Age</label>
-                <input type="number" id="settings-age" min="16" max="99" step="1" placeholder="e.g. 35" />
-              </div>
-            </div>
-            <label for="settings-activity">Activity level</label>
-            <select id="settings-activity">
-              <option value="">— not set —</option>
-              <option value="sedentary">Sedentary (desk job, little exercise)</option>
-              <option value="light">Lightly active (exercise 1–3×/week)</option>
-              <option value="moderate">Moderately active (exercise 3–5×/week)</option>
-              <option value="active">Very active (hard exercise 6–7×/week)</option>
-            </select>
-            <label id="goal-label" for="settings-goal">Target loss (kg/week)</label>
-            <input type="number" id="settings-goal" min="0.1" max="3" step="0.1" placeholder="e.g. 0.5" />
-          </fieldset>
-
-          <fieldset class="settings-fieldset">
-            <legend>Fitness tracker</legend>
-            <div id="whoop-status-row" class="whoop-status-row">
-              <span id="whoop-status-text" class="muted">Checking WHOOP connection…</span>
-            </div>
-            <button type="button" id="whoop-connect-btn" class="ghost" hidden>Connect WHOOP</button>
-            <button type="button" id="whoop-sync-btn" class="ghost" hidden>Sync now</button>
-            <button type="button" id="whoop-disconnect-btn" class="ghost" hidden>Disconnect WHOOP</button>
-            <p id="whoop-unconfigured-note" class="muted" hidden>
-              WHOOP isn't set up on this server yet.
-            </p>
-          </fieldset>
-
-          <button id="settings-save" type="button">Save</button>
-          <p id="settings-error" class="error" hidden></p>
-          <button id="logout-btn" type="button" class="ghost">Log out</button>
-        </section>
-
         <p id="week-note" class="muted" hidden>Viewing a past week — go to the current week to log new entries.</p>
 
         <form id="entry-form" class="card">
@@ -250,6 +170,97 @@
         <section>
           <h2>Food diary</h2>
           <div id="entry-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="settings-screen" hidden>
+      <header class="banner">
+        <button id="settings-back" type="button" class="library-back" aria-label="Back">
+          <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <h1>Settings</h1>
+      </header>
+
+      <main>
+        <section id="settings-card" class="card">
+          <p class="muted">Signed in as <strong id="settings-username"></strong></p>
+
+          <fieldset class="settings-fieldset">
+            <legend>Week rollover</legend>
+            <label for="settings-weekday">Starts on</label>
+            <select id="settings-weekday">
+              <option value="0">Monday</option>
+              <option value="1">Tuesday</option>
+              <option value="2">Wednesday</option>
+              <option value="3">Thursday</option>
+              <option value="4">Friday</option>
+              <option value="5">Saturday</option>
+              <option value="6">Sunday</option>
+            </select>
+            <label for="settings-time">at</label>
+            <input type="time" id="settings-time" />
+          </fieldset>
+
+          <fieldset class="settings-fieldset">
+            <legend>Units</legend>
+            <div class="units-toggle">
+              <button type="button" id="units-metric" class="units-btn units-btn--active">Metric (kg, cm)</button>
+              <button type="button" id="units-imperial" class="units-btn">Imperial (lbs, ft/in)</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="settings-fieldset">
+            <legend>Calorie budget</legend>
+            <div class="settings-row">
+              <div class="settings-field">
+                <label id="weight-label" for="settings-weight">Weight (kg)</label>
+                <input type="number" id="settings-weight" min="30" max="700" step="0.1" placeholder="e.g. 95" />
+              </div>
+              <div class="settings-field" id="height-cm-wrap">
+                <label for="settings-height">Height (cm)</label>
+                <input type="number" id="settings-height" min="100" max="250" step="1" placeholder="e.g. 178" />
+              </div>
+              <div class="settings-field" id="height-ft-wrap" hidden>
+                <label>Height</label>
+                <div class="ft-in-row">
+                  <input type="number" id="settings-height-ft" min="3" max="8" step="1" placeholder="ft" />
+                  <input type="number" id="settings-height-in" min="0" max="11" step="1" placeholder="in" />
+                </div>
+              </div>
+              <div class="settings-field">
+                <label for="settings-age">Age</label>
+                <input type="number" id="settings-age" min="16" max="99" step="1" placeholder="e.g. 35" />
+              </div>
+            </div>
+            <label for="settings-activity">Activity level</label>
+            <select id="settings-activity">
+              <option value="">— not set —</option>
+              <option value="sedentary">Sedentary (desk job, little exercise)</option>
+              <option value="light">Lightly active (exercise 1–3×/week)</option>
+              <option value="moderate">Moderately active (exercise 3–5×/week)</option>
+              <option value="active">Very active (hard exercise 6–7×/week)</option>
+            </select>
+            <label id="goal-label" for="settings-goal">Target loss (kg/week)</label>
+            <input type="number" id="settings-goal" min="0.1" max="3" step="0.1" placeholder="e.g. 0.5" />
+          </fieldset>
+
+          <fieldset class="settings-fieldset">
+            <legend>Fitness tracker</legend>
+            <div id="whoop-status-row" class="whoop-status-row">
+              <span id="whoop-status-text" class="muted">Checking WHOOP connection…</span>
+            </div>
+            <button type="button" id="whoop-connect-btn" class="ghost" hidden>Connect WHOOP</button>
+            <button type="button" id="whoop-sync-btn" class="ghost" hidden>Sync now</button>
+            <button type="button" id="whoop-disconnect-btn" class="ghost" hidden>Disconnect WHOOP</button>
+            <p id="whoop-unconfigured-note" class="muted" hidden>
+              WHOOP isn't set up on this server yet.
+            </p>
+          </fieldset>
+
+          <button id="settings-save" type="button">Save</button>
+          <p id="settings-error" class="error" hidden></p>
+          <button id="logout-btn" type="button" class="ghost">Log out</button>
         </section>
       </main>
     </div>

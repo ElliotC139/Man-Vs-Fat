@@ -33,7 +33,8 @@ const googleSigninBtn = document.getElementById("google-signin-btn");
 const authDivider = document.getElementById("auth-divider");
 
 const settingsToggle = document.getElementById("settings-toggle");
-const settingsCard = document.getElementById("settings-card");
+const settingsScreen = document.getElementById("settings-screen");
+const settingsBack = document.getElementById("settings-back");
 const settingsUsername = document.getElementById("settings-username");
 const settingsWeekday = document.getElementById("settings-weekday");
 const settingsTime = document.getElementById("settings-time");
@@ -644,9 +645,18 @@ async function handleGoogleCredential(response) {
   }
 }
 
-settingsToggle.addEventListener("click", () => {
-  settingsCard.hidden = !settingsCard.hidden;
-});
+function openSettings() {
+  appShell.hidden = true;
+  settingsScreen.hidden = false;
+}
+
+function closeSettings() {
+  settingsScreen.hidden = true;
+  appShell.hidden = false;
+}
+
+settingsToggle.addEventListener("click", openSettings);
+settingsBack.addEventListener("click", closeSettings);
 
 logoutBtn.addEventListener("click", async () => {
   await fetch("/api/auth/logout", { method: "POST" });
@@ -692,7 +702,7 @@ settingsSave.addEventListener("click", async () => {
       throw new Error(typeof body.error === "string" ? body.error : "Couldn't save settings.");
     }
     populateSettings(body);
-    settingsCard.hidden = true;
+    closeSettings();
     weeksAgo = 0;
     loadWeek();
   } catch (error) {
@@ -740,7 +750,7 @@ function populateSettings(user) {
 
 async function showApp(user) {
   populateSettings(user);
-  settingsCard.hidden = true;
+  settingsScreen.hidden = true;
   authScreen.hidden = true;
   appShell.hidden = false;
   loadWeek();
@@ -758,9 +768,9 @@ function handleWhoopRedirect() {
   if (!whoopResult) return;
 
   if (whoopResult === "connected") {
-    settingsCard.hidden = false;
+    openSettings();
   } else if (whoopResult === "error") {
-    settingsCard.hidden = false;
+    openSettings();
     const reason = params.get("reason");
     whoopStatusText.textContent = reason ? `Couldn't connect WHOOP: ${reason}` : "Couldn't connect WHOOP — please try again.";
   }
