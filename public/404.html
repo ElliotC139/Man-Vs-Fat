@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Page not found — Match Week Food Diary</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍽️</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/style.css" />
     <style>
       .not-found {
@@ -16,14 +19,28 @@
         text-align: center;
         padding: 24px;
       }
-      .not-found .emoji { font-size: 3rem; margin-bottom: 8px; }
-      .not-found h1 { font-size: 1.3rem; margin: 0 0 8px; }
+      .not-found .not-found-icon {
+        width: 68px;
+        height: 68px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, var(--pitch-light), var(--pitch-dark));
+        color: white;
+        box-shadow: var(--shadow-lg);
+        margin-bottom: 16px;
+      }
+      .not-found .not-found-icon .icon { width: 32px; height: 32px; }
+      .not-found h1 { font-size: 1.35rem; font-weight: 800; margin: 0 0 8px; letter-spacing: -0.01em; }
       .not-found a { display: inline-block; width: auto; margin-top: 16px; padding: 10px 24px; }
     </style>
   </head>
   <body>
     <div class="not-found">
-      <div class="emoji">🍽️</div>
+      <div class="not-found-icon">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3M8 11h6"/></svg>
+      </div>
       <h1>Page not found</h1>
       <p class="muted">There's nothing here — the page may have moved or the link's outdated.</p>
       <a href="/" class="button-link">Back to your diary</a>

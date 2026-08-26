@@ -1,3 +1,25 @@
+function icon(paths, extraClass = "") {
+  return `<svg class="icon ${extraClass}" viewBox="0 0 24 24">${paths}</svg>`;
+}
+const ICONS = {
+  plus: icon('<path d="M5 12h14M12 5v14"/>'),
+  x: icon('<path d="M18 6 6 18M6 6l12 12"/>'),
+  flame: icon(
+    '<path d="M8.5 14.5a2.5 2.5 0 0 0 5 0c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7.5 7.5 0 1 1-15 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 1 2.5Z"/>',
+  ),
+  watch: icon(
+    '<rect x="9" y="1" width="6" height="4" rx="1"/><rect x="9" y="19" width="6" height="4" rx="1"/><circle cx="12" cy="12" r="7"/><path d="M12 9v3l2 2"/>',
+  ),
+  activity: icon('<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>'),
+  starOutline: icon(
+    '<path d="M12 3.5 14.9 9.4l6.5.95-4.7 4.6 1.1 6.45L12 18.3 6.2 21.4l1.1-6.45-4.7-4.6 6.5-.95Z"/>',
+  ),
+  starFilled: icon(
+    '<path d="M12 3.5 14.9 9.4l6.5.95-4.7 4.6 1.1 6.45L12 18.3 6.2 21.4l1.1-6.45-4.7-4.6 6.5-.95Z" fill="currentColor"/>',
+  ),
+  check: icon('<polyline points="20 6 9 17 4 12"/>'),
+};
+
 const authScreen = document.getElementById("auth-screen");
 const appShell = document.getElementById("app-shell");
 const authForm = document.getElementById("auth-form");
@@ -181,7 +203,7 @@ function toDateInputValue(timestamp) {
 }
 
 photoInput.addEventListener("change", () => {
-  photoStatus.textContent = photoInput.files?.[0] ? `📷 ${photoInput.files[0].name}` : "📷 Add a photo (optional)";
+  photoStatus.textContent = photoInput.files?.[0] ? photoInput.files[0].name : "Add a photo (optional)";
 });
 
 weekPrevBtn.addEventListener("click", () => {
@@ -213,7 +235,7 @@ async function loadWeek() {
   form.hidden = weeksAgo !== 0;
   weekNoteEl.hidden = weeksAgo === 0;
   exerciseToggle.hidden = weeksAgo !== 0;
-  if (weeksAgo !== 0) { exerciseForm.hidden = true; exerciseToggle.textContent = "+ Log exercise"; }
+  if (weeksAgo !== 0) { exerciseForm.hidden = true; exerciseToggle.innerHTML = `${ICONS.plus} Log exercise`; }
   const todayJsDay = new Date().getDay();
   logWeekRow.hidden = weeksAgo !== 0 || todayJsDay !== (userWeekStartWeekday + 1) % 7;
 
@@ -252,7 +274,7 @@ function renderDailyTotals(days, whoopDailyBurn) {
     if (!burn?.future && burn?.kcalWeighted != null) {
       const whoopLine = document.createElement("span");
       whoopLine.className = "day-total-whoop";
-      whoopLine.textContent = `🔥 ${burn.kcalWeighted.toLocaleString()} kcal${burn.estimated ? " (est.)" : ""} WHOOP`;
+      whoopLine.innerHTML = `${ICONS.flame} ${burn.kcalWeighted.toLocaleString()} kcal${burn.estimated ? " (est.)" : ""} WHOOP`;
       label.appendChild(document.createElement("br"));
       label.appendChild(whoopLine);
     }
@@ -369,7 +391,7 @@ function renderEntryRow(entry) {
   repeatBtn.setAttribute("aria-label", "Add to today");
   repeatBtn.addEventListener("click", () => repeatEntry(entry.id));
   const delBtn = document.createElement("button");
-  delBtn.textContent = "✕";
+  delBtn.innerHTML = ICONS.x;
   delBtn.type = "button";
   delBtn.addEventListener("click", () => deleteEntry(entry.id));
   actions.append(editBtn, repeatBtn, delBtn);
@@ -494,7 +516,7 @@ form.addEventListener("submit", async (event) => {
     resultCard.hidden = false;
 
     form.reset();
-    photoStatus.textContent = "📷 Add a photo (optional)";
+    photoStatus.textContent = "Add a photo (optional)";
     logToLastWeek = false;
     logWeekCurrentBtn.classList.add("log-week-btn--active");
     logWeekLastBtn.classList.remove("log-week-btn--active");
@@ -831,15 +853,15 @@ loadGoogleConfig();
 // ── Exercise photo status ──────────────────────────────────────────────────
 exercisePhotoInput.addEventListener("change", () => {
   exercisePhotoStatus.textContent = exercisePhotoInput.files[0]
-    ? `📷 ${exercisePhotoInput.files[0].name}`
-    : "📷 Add a screenshot (optional)";
+    ? exercisePhotoInput.files[0].name
+    : "Add a screenshot (optional)";
 });
 
 // ── Exercise form toggle ───────────────────────────────────────────────────
 exerciseToggle.addEventListener("click", () => {
   const hidden = exerciseForm.hidden;
   exerciseForm.hidden = !hidden;
-  exerciseToggle.textContent = hidden ? "✕ Cancel" : "+ Log exercise";
+  exerciseToggle.innerHTML = hidden ? `${ICONS.x} Cancel` : `${ICONS.plus} Log exercise`;
 });
 
 // ── Exercise form submit ───────────────────────────────────────────────────
@@ -864,9 +886,9 @@ exerciseForm.addEventListener("submit", async (event) => {
     const res = await fetch("/api/exercises", { method: "POST", body: formData });
     if (!res.ok) throw new Error("Failed to log exercise.");
     exerciseForm.reset();
-    exercisePhotoStatus.textContent = "📷 Add a screenshot (optional)";
+    exercisePhotoStatus.textContent = "Add a screenshot (optional)";
     exerciseForm.hidden = true;
-    exerciseToggle.textContent = "+ Log exercise";
+    exerciseToggle.innerHTML = `${ICONS.plus} Log exercise`;
     loadWeek();
   } catch (error) {
     exerciseError.textContent = error.message;
@@ -886,7 +908,7 @@ function renderExercises(exercises) {
 
     const icon = document.createElement("span");
     icon.className = "exercise-icon";
-    icon.textContent = ex.fromWhoop ? "⌚" : "🏃";
+    icon.innerHTML = ex.fromWhoop ? ICONS.watch : ICONS.activity;
 
     const label = document.createElement("span");
     label.className = "exercise-label";
@@ -905,7 +927,7 @@ function renderExercises(exercises) {
 
     const delBtn = document.createElement("button");
     delBtn.className = "exercise-del";
-    delBtn.textContent = "✕";
+    delBtn.innerHTML = ICONS.x;
     delBtn.type = "button";
     // Auto-imported entries reappear on the next WHOOP sync since they're
     // matched by the workout's own id, not tracked as user-deleted.
@@ -1341,7 +1363,7 @@ function renderFoodRow(food) {
   const starBtn = document.createElement("button");
   starBtn.type = "button";
   starBtn.className = "food-star";
-  starBtn.textContent = food.favorite ? "★" : "☆";
+  starBtn.innerHTML = food.favorite ? ICONS.starFilled : ICONS.starOutline;
   starBtn.setAttribute("aria-label", food.favorite ? "Remove from favourites" : "Add to favourites");
   starBtn.addEventListener("click", () => toggleFavorite(food));
 
@@ -1469,7 +1491,7 @@ async function logFood(food, btn) {
       body: JSON.stringify({ labelKey: food.labelKey }),
     });
     if (res.ok) {
-      btn.textContent = "Added ✓";
+      btn.innerHTML = `Added ${ICONS.check}`;
       await loadWeek();
       setTimeout(() => {
         btn.textContent = "+Today";
