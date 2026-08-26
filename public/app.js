@@ -92,6 +92,9 @@ const weighinChange = document.getElementById("weighin-change");
 const weighinChangeCaption = document.getElementById("weighin-change-caption");
 const weighinBmiCell = document.getElementById("weighin-bmi-cell");
 const weighinBmi = document.getElementById("weighin-bmi");
+const weighinPaceCell = document.getElementById("weighin-pace-cell");
+const weighinPace = document.getElementById("weighin-pace");
+const weighinPaceCaption = document.getElementById("weighin-pace-caption");
 const weighinChartCard = document.getElementById("weighin-chart-card");
 const weighinChart = document.getElementById("weighin-chart");
 const weighinForm = document.getElementById("weighin-form");
@@ -101,6 +104,15 @@ const weighinWeightLabel = document.getElementById("weighin-weight-label");
 const weighinSave = document.getElementById("weighin-save");
 const weighinError = document.getElementById("weighin-error");
 const weighinList = document.getElementById("weighin-list");
+
+const whoopStatsCard = document.getElementById("whoop-stats-card");
+const whoopStatsPrompt = document.getElementById("whoop-stats-prompt");
+const statRecoveryHero = document.getElementById("stat-recovery-hero");
+const statRecovery = document.getElementById("stat-recovery");
+const statSleep = document.getElementById("stat-sleep");
+const whoopStatsAvg = document.getElementById("whoop-stats-avg");
+const statAvgKcal = document.getElementById("stat-avg-kcal");
+const statStreak = document.getElementById("stat-streak");
 
 const exerciseToggle = document.getElementById("exercise-toggle");
 const exerciseForm = document.getElementById("exercise-form");
@@ -1601,6 +1613,8 @@ function openStats() {
   weighinWeight.value = "";
   applyWeighinUnitFields();
   loadWeighIns();
+  loadWhoopRecent();
+  loadStatsSummary();
 }
 
 function closeStats() {
@@ -1658,6 +1672,89 @@ function renderWeighinSummary() {
     weighinBmi.textContent = (current / (heightM * heightM)).toFixed(1);
   } else {
     weighinBmiCell.hidden = true;
+  }
+}
+
+// ── Recovery, sleep & other stats ───────────────────────────────────────────
+function formatSleepDuration(minutes) {
+  if (minutes === null || minutes === undefined) return "—";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+async function loadWhoopRecent() {
+  try {
+    const res = await fetch("/api/whoop/recent?days=30");
+    if (!res.ok) throw new Error();
+    renderWhoopStats(await res.json());
+  } catch {
+    whoopStatsCard.hidden = true;
+    whoopStatsPrompt.hidden = true;
+  }
+}
+
+function renderWhoopStats(data) {
+  const days = data.connected ? (data.days ?? []) : [];
+  if (days.length === 0) {
+    whoopStatsCard.hidden = true;
+    whoopStatsPrompt.hidden = false;
+    return;
+  }
+  whoopStatsPrompt.hidden = true;
+  whoopStatsCard.hidden = false;
+
+  const latestRecovery = [...days].reverse().find((d) => d.recoveryScore !== null);
+  const latestSleep = [...days].reverse().find((d) => d.sleepMinutes !== null);
+
+  statRecoveryHero.classList.remove("stat-hero--good", "stat-hero--fair", "stat-hero--poor");
+  if (latestRecovery) {
+    statRecovery.textContent = `${latestRecovery.recoveryScore}%`;
+    const score = latestRecovery.recoveryScore;
+    statRecoveryHero.classList.add(score >= 67 ? "stat-hero--good" : score >= 34 ? "stat-hero--fair" : "stat-hero--poor");
+  } else {
+    statRecovery.textContent = "—";
+  }
+  statSleep.textContent = latestSleep ? formatSleepDuration(latestSleep.sleepMinutes) : "—";
+
+  const last7 = days.slice(-7);
+  const recoveryValues = last7.filter((d) => d.recoveryScore !== null).map((d) => d.recoveryScore);
+  const sleepValues = last7.filter((d) => d.sleepMinutes !== null).map((d) => d.sleepMinutes);
+  if (recoveryValues.length && sleepValues.length) {
+    const avgRecovery = Math.round(recoveryValues.reduce((a, b) => a + b, 0) / recoveryValues.length);
+    const avgSleep = Math.round(sleepValues.reduce((a, b) => a + b, 0) / sleepValues.length);
+    whoopStatsAvg.textContent = `7-day avg: ${avgRecovery}% recovery · ${formatSleepDuration(avgSleep)} sleep`;
+  } else {
+    whoopStatsAvg.textContent = "";
+  }
+}
+
+async function loadStatsSummary() {
+  try {
+    const res = await fetch("/api/stats/summary");
+    if (!res.ok) throw new Error();
+    renderStatsSummary(await res.json());
+  } catch {
+    statAvgKcal.textContent = "—";
+    statStreak.textContent = "—";
+    weighinPaceCell.hidden = true;
+  }
+}
+
+function renderStatsSummary(data) {
+  statAvgKcal.textContent = data.avgKcalPerDay !== null && data.avgKcalPerDay !== undefined ? String(data.avgKcalPerDay) : "—";
+  statStreak.textContent = String(data.loggingStreakDays ?? 0);
+
+  if (data.weightPace) {
+    const { kgPerWeek, onTrack } = data.weightPace;
+    weighinPaceCell.hidden = false;
+    weighinPaceCell.classList.remove("balance-cell--loss", "balance-cell--gain");
+    weighinPaceCell.classList.add(onTrack ? "balance-cell--loss" : "balance-cell--gain");
+    const sign = kgPerWeek <= 0 ? "-" : "+";
+    weighinPace.textContent = `${sign}${kgToDisplay(Math.abs(kgPerWeek))} ${weightUnit()}`;
+    weighinPaceCaption.textContent = onTrack ? "on pace/wk" : "off pace/wk";
+  } else {
+    weighinPaceCell.hidden = true;
   }
 }
 
@@ -1765,6 +1862,7 @@ async function deleteWeighIn(date) {
     const res = await fetch(`/api/weigh-ins/${encodeURIComponent(date)}`, { method: "DELETE" });
     if (!res.ok) throw new Error();
     await loadWeighIns();
+    await loadStatsSummary();
   } catch {
     weighinError.textContent = "Couldn't delete that entry — please try again.";
     weighinError.hidden = false;
@@ -1797,6 +1895,9 @@ weighinForm.addEventListener("submit", async (e) => {
     weighinDate.value = todayDateValue();
     weighinWeight.value = "";
     await loadWeighIns();
+    // Pace-vs-goal depends on weigh-in data too, so it needs refreshing
+    // alongside the list rather than only once when the screen opens.
+    await loadStatsSummary();
   } catch (error) {
     weighinError.textContent = error.message;
     weighinError.hidden = false;

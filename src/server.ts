@@ -10,6 +10,7 @@ import { entriesRouter } from "./routes/entries";
 import { exercisesRouter } from "./routes/exercises";
 import { foodsRouter } from "./routes/foods";
 import { matchWeeksRouter } from "./routes/matchWeeks";
+import { statsRouter } from "./routes/stats";
 import { weighInsRouter } from "./routes/weighIns";
 import { whoopRouter } from "./routes/whoop";
 import { startScheduler } from "./jobs/scheduler";
@@ -29,6 +30,7 @@ app.use("/api/entries", entriesRouter);
 app.use("/api/exercises", exercisesRouter);
 app.use("/api/foods", foodsRouter);
 app.use("/api/match-weeks", matchWeeksRouter);
+app.use("/api/stats", statsRouter);
 app.use("/api/weigh-ins", weighInsRouter);
 app.use("/api/whoop", whoopRouter);
 

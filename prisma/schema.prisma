@@ -32,6 +32,8 @@ model User {
   matchWeeks       MatchWeek[]
   whoopConnection  WhoopConnection?
   whoopCycles      WhoopCycle[]
+  whoopSleeps      WhoopSleep[]
+  whoopRecoveries  WhoopRecovery[]
   foodFavorites    FoodFavorite[]
   foodTags         FoodTag[]
   weighIns         WeighIn[]
@@ -98,6 +100,46 @@ model WhoopCycle {
   updatedAt    DateTime  @updatedAt
 
   @@index([userId, start])
+}
+
+// A WHOOP sleep (one per night, occasionally a nap). Sleep ids are UUID
+// strings like workout ids, not numeric like cycle ids.
+model WhoopSleep {
+  id                 Int      @id @default(autoincrement())
+  userId             Int
+  user               User     @relation(fields: [userId], references: [id])
+  whoopSleepId       String   @unique
+  start              DateTime
+  end                DateTime
+  // Null until WHOOP finalizes ("SCORED") the sleep — see scoreState.
+  performancePercent Int?
+  timeAsleepMin      Int?
+  scoreState         String
+  updatedAt          DateTime @updatedAt
+
+  @@index([userId, start])
+}
+
+// A WHOOP recovery — one per cycle, scored from the following sleep's HRV
+// and resting heart rate. Keyed by the cycle it belongs to, same as
+// WhoopCycle.whoopCycleId, since WHOOP relates recovery to a cycle 1:1.
+model WhoopRecovery {
+  id               Int      @id @default(autoincrement())
+  userId           Int
+  user             User     @relation(fields: [userId], references: [id])
+  whoopCycleId     BigInt   @unique
+  // Local calendar day this recovery applies to (see localDayKey in
+  // matchWeek.ts) — lets the Stats screen look up "today's" recovery
+  // without re-deriving it from the cycle's start/end each time.
+  date             String
+  // Null until WHOOP finalizes ("SCORED") the recovery — see scoreState.
+  recoveryScore    Int?
+  restingHeartRate Int?
+  hrvMilli         Float?
+  scoreState       String
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId, date])
 }
 
 // A single week-start -> following week-start boundary, per user. First-class
