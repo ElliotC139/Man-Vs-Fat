@@ -253,10 +253,12 @@ statsRouter.get("/weekly-breakdown", async (req, res) => {
     const endMs = Math.min(end.getTime(), now.getTime());
     const daysElapsed = Math.max(1, Math.min(7, Math.round((endMs - start.getTime()) / (24 * 60 * 60 * 1000))));
 
-    const weekKcal = entries
-      .filter((e) => e.timestamp.getTime() >= start.getTime() && e.timestamp.getTime() < end.getTime())
-      .reduce((sum, e) => sum + (e.kcal ?? 0), 0);
+    const entriesThisWeek = entries.filter(
+      (e) => e.timestamp.getTime() >= start.getTime() && e.timestamp.getTime() < end.getTime(),
+    );
+    const weekKcal = entriesThisWeek.reduce((sum, e) => sum + (e.kcal ?? 0), 0);
     const avgKcalPerDayThisWeek = weekKcal > 0 ? Math.round(weekKcal / daysElapsed) : null;
+    const daysWithEntries = new Set(entriesThisWeek.map((e) => localDayKey(e.timestamp, config.TIMEZONE))).size;
 
     const workoutCount = workouts.filter(
       (w) => w.timestamp.getTime() >= start.getTime() && w.timestamp.getTime() < end.getTime(),
@@ -279,6 +281,7 @@ statsRouter.get("/weekly-breakdown", async (req, res) => {
       weekStart: startKey,
       weekEnd: endKey,
       avgKcalPerDay: avgKcalPerDayThisWeek,
+      daysWithEntries,
       weightChangeKg,
       workoutCount,
       avgRecovery,
