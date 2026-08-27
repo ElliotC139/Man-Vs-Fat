@@ -1047,6 +1047,135 @@ h2 {
 .weighin-del {
   flex-shrink: 0;
 }
+.weighin-chart-avg-line {
+  fill: none;
+  stroke: var(--amber);
+  stroke-width: 1.75;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+#weighin-trend-caption {
+  margin: 10px 6px 0;
+}
+
+/* ── Calorie balance trend ── */
+.card-heading-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 6px 10px;
+}
+.card-heading-row h2 {
+  margin: 0;
+}
+.chart-legend {
+  display: flex;
+  gap: 12px;
+}
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.chart-legend-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.chart-legend-swatch--in {
+  background: var(--pitch);
+}
+.chart-legend-swatch--out {
+  background: var(--amber);
+}
+#balance-trend-chart {
+  width: 100%;
+  height: 120px;
+  display: block;
+}
+.balance-trend-line {
+  fill: none;
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+}
+.balance-trend-line--in {
+  stroke: var(--pitch);
+}
+.balance-trend-line--out {
+  stroke: var(--amber);
+}
+#balance-trend-caption {
+  margin: 10px 6px 0;
+}
+
+/* ── Insights ── */
+.insights-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.insights-list li {
+  position: relative;
+  padding: 10px 12px 10px 30px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+.insights-list li::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 13px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--amber);
+}
+
+/* ── Weekly breakdown ── */
+.table-scroll {
+  overflow-x: auto;
+  margin: 0 -2px;
+}
+.breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  white-space: nowrap;
+}
+.breakdown-table th {
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  padding: 0 10px 8px;
+}
+.breakdown-table td {
+  padding: 9px 10px;
+  border-top: 1px solid var(--hairline);
+  font-variant-numeric: tabular-nums;
+}
+.breakdown-table tbody tr:first-child td {
+  border-top: none;
+}
+.breakdown-loss {
+  color: var(--pitch-dark);
+  font-weight: 700;
+}
+.breakdown-gain {
+  color: var(--danger);
+  font-weight: 700;
+}
 
 /* Hero stats: real hierarchy for the numbers that matter most (recovery,
    sleep) instead of every figure being the same tile size — a large,
