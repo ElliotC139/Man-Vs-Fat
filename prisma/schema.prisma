@@ -11,24 +11,24 @@ datasource db {
 // (weekday + time) so e.g. one user's week can run Mon 17:00 -> Mon 17:00
 // while another's runs Wed 09:00 -> Wed 09:00.
 model User {
-  id               Int      @id @default(autoincrement())
-  username         String   @unique
+  id               Int              @id @default(autoincrement())
+  username         String           @unique
   // Null for accounts created via "Sign in with Google" that never set a password.
   passwordHash     String?
   // Set once an account is created or signed into via Google.
-  googleId         String?  @unique
-  email            String?  @unique
+  googleId         String?          @unique
+  email            String?          @unique
   // 0 = Monday .. 6 = Sunday, matching WEEKDAYS_MON_FIRST in matchWeek.ts.
-  weekStartWeekday Int      @default(0)
-  weekStartHour    Int      @default(17)
-  weekStartMinute  Int      @default(0)
+  weekStartWeekday Int              @default(0)
+  weekStartHour    Int              @default(17)
+  weekStartMinute  Int              @default(0)
   // Body stats and goal for calorie budget calculation.
   weightKg         Float?
   heightCm         Float?
   ageYears         Int?
   activityLevel    String?
   weeklyGoalKg     Float?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime         @default(now())
   matchWeeks       MatchWeek[]
   whoopConnection  WhoopConnection?
   whoopCycles      WhoopCycle[]
@@ -70,19 +70,24 @@ model FoodTag {
 // as needed (see src/whoop/sync.ts); refreshToken only changes if WHOOP
 // rotates it on refresh.
 model WhoopConnection {
-  id           Int       @id @default(autoincrement())
-  userId       Int       @unique
-  user         User      @relation(fields: [userId], references: [id])
+  id               Int       @id @default(autoincrement())
+  userId           Int       @unique
+  user             User      @relation(fields: [userId], references: [id])
   // WHOOP's own numeric user id, captured from the first synced cycle's
   // user_id field (not requested via a dedicated profile scope) — lets the
   // webhook, which is keyed by WHOOP user id, resolve back to our userId.
-  whoopUserId  BigInt?
-  accessToken  String
-  refreshToken String
-  expiresAt    DateTime
-  lastSyncedAt DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  whoopUserId      BigInt?
+  accessToken      String
+  refreshToken     String
+  expiresAt        DateTime
+  lastSyncedAt     DateTime?
+  // Set once a wider one-time historical sync has pulled cycles/workouts/
+  // sleep/recovery as far back as DEEP_BACKFILL_DAYS (see src/whoop/sync.ts)
+  // instead of the normal short trailing window — null means that hasn't
+  // run yet, including for connections that predate this field.
+  deepBackfilledAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 }
 
 // A WHOOP physiological cycle (roughly one per day, wake-to-wake), used as
@@ -147,9 +152,9 @@ model WhoopRecovery {
 // userId is nullable only to let pre-multi-user rows exist; the first-ever
 // signup claims them (see routes/auth.ts).
 model MatchWeek {
-  id                Int       @id @default(autoincrement())
+  id                Int        @id @default(autoincrement())
   userId            Int?
-  user              User?     @relation(fields: [userId], references: [id])
+  user              User?      @relation(fields: [userId], references: [id])
   startsAt          DateTime
   endsAt            DateTime
   reportGeneratedAt DateTime?

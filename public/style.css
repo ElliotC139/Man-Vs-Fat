@@ -243,20 +243,21 @@ body {
   padding: 4px 12px;
   font-size: 1.1rem;
   line-height: 1;
-  background: rgba(255, 255, 255, 0.08);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.08));
   color: white;
   border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: 8px;
-  box-shadow: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.4);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s var(--ease), transform 0.22s var(--spring);
+  transition: background 0.15s var(--ease), transform 0.22s var(--spring), box-shadow 0.15s var(--ease);
 }
 
 .week-nav button:active {
   transform: scale(0.92);
-  background: rgba(255, 255, 255, 0.22);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.16));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
 .week-nav button:disabled {
@@ -1191,8 +1192,20 @@ h2::before {
 /* ── Tooltips ── */
 .has-tooltip {
   cursor: pointer;
+}
+/* The whole breakdown-table row is the tappable target now, not just the
+   date cell — the dotted underline stays on the date as the visual cue
+   for "this row has more detail", and a press highlight makes the wider
+   hit area obvious the first time it's tapped. */
+tr.has-tooltip td:first-child {
   text-decoration: underline dotted var(--muted);
   text-underline-offset: 3px;
+}
+tr.has-tooltip {
+  transition: background 0.12s var(--ease);
+}
+tr.has-tooltip:active {
+  background: var(--bg);
 }
 .app-tooltip {
   position: fixed;
