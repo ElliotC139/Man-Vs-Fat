@@ -365,8 +365,26 @@
           <section id="weighin-chart-card" class="card" hidden>
             <h2>Trend</h2>
             <svg id="weighin-chart" viewBox="0 0 300 120" preserveAspectRatio="none"></svg>
+            <p id="weighin-trend-caption" class="muted"></p>
           </section>
         </div>
+
+        <section id="insights-card" class="card" hidden>
+          <h2>Insights</h2>
+          <ul id="insights-list" class="insights-list"></ul>
+        </section>
+
+        <section id="balance-trend-card" class="card" hidden>
+          <div class="card-heading-row">
+            <h2>Calorie Balance</h2>
+            <div class="chart-legend">
+              <span class="chart-legend-item"><i class="chart-legend-swatch chart-legend-swatch--in"></i>In</span>
+              <span class="chart-legend-item"><i class="chart-legend-swatch chart-legend-swatch--out"></i>Out</span>
+            </div>
+          </div>
+          <svg id="balance-trend-chart" viewBox="0 0 300 120" preserveAspectRatio="none"></svg>
+          <p id="balance-trend-caption" class="muted"></p>
+        </section>
 
         <section id="whoop-stats-card" class="card" hidden>
           <h2>Recovery &amp; Sleep</h2>
@@ -398,6 +416,24 @@
               <span id="stat-streak" class="balance-number">—</span>
               <span class="balance-caption">day streak</span>
             </div>
+          </div>
+        </section>
+
+        <section id="breakdown-card" class="card" hidden>
+          <h2>Weekly Breakdown</h2>
+          <div class="table-scroll">
+            <table class="breakdown-table">
+              <thead>
+                <tr>
+                  <th>Week of</th>
+                  <th>Avg kcal/day</th>
+                  <th>Weight</th>
+                  <th>Workouts</th>
+                  <th>Recovery</th>
+                </tr>
+              </thead>
+              <tbody id="breakdown-body"></tbody>
+            </table>
           </div>
         </section>
 

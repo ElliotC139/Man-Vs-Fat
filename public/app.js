@@ -97,6 +97,7 @@ const weighinPace = document.getElementById("weighin-pace");
 const weighinPaceCaption = document.getElementById("weighin-pace-caption");
 const weighinChartCard = document.getElementById("weighin-chart-card");
 const weighinChart = document.getElementById("weighin-chart");
+const weighinTrendCaption = document.getElementById("weighin-trend-caption");
 const weighinForm = document.getElementById("weighin-form");
 const weighinDate = document.getElementById("weighin-date");
 const weighinWeight = document.getElementById("weighin-weight");
@@ -113,6 +114,13 @@ const statSleep = document.getElementById("stat-sleep");
 const whoopStatsAvg = document.getElementById("whoop-stats-avg");
 const statAvgKcal = document.getElementById("stat-avg-kcal");
 const statStreak = document.getElementById("stat-streak");
+const insightsCard = document.getElementById("insights-card");
+const insightsList = document.getElementById("insights-list");
+const balanceTrendCard = document.getElementById("balance-trend-card");
+const balanceTrendChart = document.getElementById("balance-trend-chart");
+const balanceTrendCaption = document.getElementById("balance-trend-caption");
+const breakdownCard = document.getElementById("breakdown-card");
+const breakdownBody = document.getElementById("breakdown-body");
 
 const exerciseToggle = document.getElementById("exercise-toggle");
 const exerciseForm = document.getElementById("exercise-form");
@@ -1615,6 +1623,9 @@ function openStats() {
   loadWeighIns();
   loadWhoopRecent();
   loadStatsSummary();
+  loadInsights();
+  loadBalanceTrend();
+  loadWeeklyBreakdown();
 }
 
 function closeStats() {
@@ -1756,6 +1767,163 @@ function renderStatsSummary(data) {
   } else {
     weighinPaceCell.hidden = true;
   }
+
+  if (data.weightTrend) {
+    const { kgPerWeek, projectedWeightKg4wk } = data.weightTrend;
+    const verb = kgPerWeek <= 0 ? "losing" : "gaining";
+    weighinTrendCaption.textContent =
+      `At this pace (${verb} ${kgToDisplay(Math.abs(kgPerWeek))} ${weightUnit()}/wk), ` +
+      `you'd be around ${kgToDisplay(projectedWeightKg4wk)} ${weightUnit()} in 4 weeks.`;
+  } else {
+    weighinTrendCaption.textContent = "";
+  }
+}
+
+// ── Insights ─────────────────────────────────────────────────────────────
+async function loadInsights() {
+  try {
+    const res = await fetch("/api/stats/insights");
+    if (!res.ok) throw new Error();
+    renderInsights(await res.json());
+  } catch {
+    insightsCard.hidden = true;
+  }
+}
+
+function renderInsights(data) {
+  const insights = data.insights ?? [];
+  if (insights.length === 0) {
+    insightsCard.hidden = true;
+    return;
+  }
+  insightsCard.hidden = false;
+  insightsList.innerHTML = "";
+  for (const insight of insights) {
+    const li = document.createElement("li");
+    li.textContent = insight.text;
+    insightsList.appendChild(li);
+  }
+}
+
+// ── Calorie balance trend ───────────────────────────────────────────────
+async function loadBalanceTrend() {
+  try {
+    const res = await fetch("/api/stats/balance?days=30");
+    if (!res.ok) throw new Error();
+    renderBalanceTrend(await res.json());
+  } catch {
+    balanceTrendCard.hidden = true;
+  }
+}
+
+function renderBalanceTrend(data) {
+  const days = (data.days ?? []).filter((d) => d.kcalIn !== null || d.kcalOut !== null);
+  if (days.length < 2) {
+    balanceTrendCard.hidden = true;
+    balanceTrendChart.innerHTML = "";
+    return;
+  }
+  balanceTrendCard.hidden = false;
+
+  const allValues = days.flatMap((d) => [d.kcalIn, d.kcalOut]).filter((v) => v !== null);
+  const min = Math.min(...allValues);
+  const max = Math.max(...allValues, min + 1);
+  const range = max - min || 1;
+  const padLeft = 42;
+  const padRight = 8;
+  const padY = 14;
+  const w = 300;
+  const h = 120;
+
+  const xFor = (i) => padLeft + (i / (data.days.length - 1)) * (w - padLeft - padRight);
+  const yFor = (v) => h - padY - ((v - min) / range) * (h - padY * 2);
+
+  function polylineFor(field) {
+    const pts = [];
+    data.days.forEach((d, i) => {
+      if (d[field] === null) return;
+      pts.push(`${xFor(i).toFixed(1)},${yFor(d[field]).toFixed(1)}`);
+    });
+    return pts.join(" ");
+  }
+
+  const gridlines =
+    `<line x1="${padLeft}" y1="${yFor(max).toFixed(1)}" x2="${w - padRight}" y2="${yFor(max).toFixed(1)}" class="weighin-chart-grid" />` +
+    `<line x1="${padLeft}" y1="${yFor(min).toFixed(1)}" x2="${w - padRight}" y2="${yFor(min).toFixed(1)}" class="weighin-chart-grid" />`;
+  const labels =
+    `<text x="0" y="${(yFor(max) + 3).toFixed(1)}" class="weighin-chart-label">${Math.round(max)}</text>` +
+    `<text x="0" y="${(yFor(min) + 3).toFixed(1)}" class="weighin-chart-label">${Math.round(min)}</text>`;
+
+  balanceTrendChart.innerHTML =
+    `${gridlines}${labels}` +
+    `<polyline points="${polylineFor("kcalIn")}" class="balance-trend-line balance-trend-line--in" />` +
+    `<polyline points="${polylineFor("kcalOut")}" class="balance-trend-line balance-trend-line--out" />`;
+
+  const recent = days.filter((d) => d.balance !== null).slice(-7);
+  if (recent.length) {
+    const avgBalance = Math.round(recent.reduce((sum, d) => sum + d.balance, 0) / recent.length);
+    const usedEstimate = recent.some((d) => d.kcalOutSource === "estimated");
+    const verb = avgBalance <= 0 ? "deficit" : "surplus";
+    balanceTrendCaption.textContent =
+      `Averaging a ${Math.abs(avgBalance).toLocaleString()} kcal/day ${verb} over the last 7 days` +
+      (usedEstimate ? " (partly estimated where WHOOP data wasn't available)." : ".");
+  } else {
+    balanceTrendCaption.textContent = "";
+  }
+}
+
+// ── Weekly breakdown ─────────────────────────────────────────────────────
+async function loadWeeklyBreakdown() {
+  try {
+    const res = await fetch("/api/stats/weekly-breakdown?weeks=12");
+    if (!res.ok) throw new Error();
+    renderWeeklyBreakdown(await res.json());
+  } catch {
+    breakdownCard.hidden = true;
+  }
+}
+
+function renderWeeklyBreakdown(data) {
+  const weeks = data.weeks ?? [];
+  if (weeks.length === 0) {
+    breakdownCard.hidden = true;
+    return;
+  }
+  breakdownCard.hidden = false;
+  breakdownBody.innerHTML = "";
+
+  for (let i = weeks.length - 1; i >= 0; i--) {
+    const week = weeks[i];
+    const row = document.createElement("tr");
+
+    const weekOf = document.createElement("td");
+    weekOf.textContent = dateFmt.format(new Date(`${week.weekStart}T00:00:00`));
+    row.appendChild(weekOf);
+
+    const kcal = document.createElement("td");
+    kcal.textContent = week.avgKcalPerDay !== null ? week.avgKcalPerDay.toLocaleString() : "—";
+    row.appendChild(kcal);
+
+    const weight = document.createElement("td");
+    if (week.weightChangeKg !== null) {
+      const sign = week.weightChangeKg <= 0 ? "-" : "+";
+      weight.textContent = `${sign}${kgToDisplay(Math.abs(week.weightChangeKg))} ${weightUnit()}`;
+      weight.className = week.weightChangeKg <= 0 ? "breakdown-loss" : "breakdown-gain";
+    } else {
+      weight.textContent = "—";
+    }
+    row.appendChild(weight);
+
+    const workouts = document.createElement("td");
+    workouts.textContent = String(week.workoutCount);
+    row.appendChild(workouts);
+
+    const recovery = document.createElement("td");
+    recovery.textContent = week.avgRecovery !== null ? `${week.avgRecovery}%` : "—";
+    row.appendChild(recovery);
+
+    breakdownBody.appendChild(row);
+  }
 }
 
 function renderWeighinChart() {
@@ -1797,7 +1965,21 @@ function renderWeighinChart() {
     `<text x="0" y="${(maxY + 3).toFixed(1)}" class="weighin-chart-label">${kgToDisplay(max)}${weightUnit()}</text>` +
     `<text x="0" y="${(minY + 3).toFixed(1)}" class="weighin-chart-label">${kgToDisplay(min)}${weightUnit()}</text>`;
 
-  weighinChart.innerHTML = `${gridlines}${labels}<polyline points="${linePoints}" class="weighin-chart-line" />${circles}`;
+  // Trailing 7-calendar-day moving average, smoothing out day-to-day noise
+  // in the raw line above. Only drawn once there's enough history to differ
+  // meaningfully from the raw line.
+  let movingAvgLine = "";
+  if (weighIns.length >= 4) {
+    const avgPoints = weighIns.map((entry, i) => {
+      const cutoff = Date.parse(entry.date) - 6 * 24 * 60 * 60 * 1000;
+      const window = weighIns.filter((w) => Date.parse(w.date) >= cutoff && Date.parse(w.date) <= Date.parse(entry.date));
+      const avgKg = window.reduce((sum, w) => sum + w.weightKg, 0) / window.length;
+      return `${points[i].x.toFixed(1)},${yFor(avgKg).toFixed(1)}`;
+    });
+    movingAvgLine = `<polyline points="${avgPoints.join(" ")}" class="weighin-chart-avg-line" />`;
+  }
+
+  weighinChart.innerHTML = `${gridlines}${labels}${movingAvgLine}<polyline points="${linePoints}" class="weighin-chart-line" />${circles}`;
 }
 
 function renderWeighinList() {
