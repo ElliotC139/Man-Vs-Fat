@@ -1908,12 +1908,28 @@ function bucketWeekly(days) {
     const kcalOut = outs.length ? Math.round(outs.reduce((a, b) => a + b, 0) / outs.length) : null;
     return {
       date: chunk[0].date,
+      endDate: chunk[chunk.length - 1].date,
       kcalIn,
       kcalOut,
       kcalOutSource: chunk.some((d) => d.kcalOutSource === "estimated") ? "estimated" : outs.length ? "whoop" : null,
       balance: kcalIn !== null && kcalOut !== null ? kcalIn - kcalOut : null,
     };
   });
+}
+
+function escapeAttr(str) {
+  return str.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
+function balancePointTooltip(d) {
+  const label =
+    d.endDate && d.endDate !== d.date
+      ? `${dateFmt.format(new Date(`${d.date}T00:00:00`))} – ${dateFmt.format(new Date(`${d.endDate}T00:00:00`))}`
+      : dateFmt.format(new Date(`${d.date}T00:00:00`));
+  const inText = d.kcalIn !== null ? `${d.kcalIn.toLocaleString()} in` : "no food logged";
+  const outText =
+    d.kcalOut !== null ? `${d.kcalOut.toLocaleString()} out${d.kcalOutSource === "estimated" ? " (estimated)" : ""}` : "no burn data";
+  return `${label}: ${inText} · ${outText}`;
 }
 
 function renderBalanceTrend(data) {
@@ -1957,10 +1973,23 @@ function renderBalanceTrend(data) {
     `<text x="0" y="${(yFor(max) + 3).toFixed(1)}" class="weighin-chart-label">${Math.round(max)}</text>` +
     `<text x="0" y="${(yFor(min) + 3).toFixed(1)}" class="weighin-chart-label">${Math.round(min)}</text>`;
 
+  const pointMarkers = plotDays
+    .map((d, i) => {
+      const ys = [d.kcalIn, d.kcalOut].filter((v) => v !== null).map((v) => yFor(v));
+      if (ys.length === 0) return "";
+      const y = ys.reduce((a, b) => a + b, 0) / ys.length;
+      return (
+        `<circle cx="${xFor(i).toFixed(1)}" cy="${y.toFixed(1)}" r="7" class="balance-trend-point has-tooltip" ` +
+        `tabindex="0" data-tooltip="${escapeAttr(balancePointTooltip(d))}" />`
+      );
+    })
+    .join("");
+
   balanceTrendChart.innerHTML =
     `${gridlines}${labels}` +
     `<polyline points="${polylineFor("kcalIn")}" class="balance-trend-line balance-trend-line--in" />` +
-    `<polyline points="${polylineFor("kcalOut")}" class="balance-trend-line balance-trend-line--out" />`;
+    `<polyline points="${polylineFor("kcalOut")}" class="balance-trend-line balance-trend-line--out" />` +
+    pointMarkers;
 
   const recent = fullDays.filter((d) => d.balance !== null).slice(-7);
   if (recent.length) {

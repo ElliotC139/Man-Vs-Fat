@@ -7,6 +7,7 @@ import {
   getMatchWeekBoundariesForWeeksAgo,
   getUserWeekStart,
   localDayKey,
+  zonedTimeToUtc,
 } from "../matchWeek";
 
 export const statsRouter = Router();
@@ -139,6 +140,32 @@ function estimateTdee(user: {
   return bmr * (multipliers[activityLevel] ?? 1.2);
 }
 
+/**
+ * Splits a span of kcal burned proportionally across the local calendar
+ * days it overlaps, by wall-clock duration in each day. A same-day cycle
+ * (the common case) just returns its full kcalBurned under its one day.
+ */
+function splitCycleAcrossDays(start: Date, end: Date, kcalBurned: number, timeZone: string): Map<string, number> {
+  const result = new Map<string, number>();
+  const totalMs = end.getTime() - start.getTime();
+  if (totalMs <= 0) {
+    result.set(localDayKey(start, timeZone), kcalBurned);
+    return result;
+  }
+
+  let cursor = start;
+  while (cursor.getTime() < end.getTime()) {
+    const key = localDayKey(cursor, timeZone);
+    const { year, month, day } = getLocalParts(cursor, timeZone);
+    const nextDayStart = zonedTimeToUtc(year, month, day + 1, 0, 0, timeZone);
+    const segmentEnd = nextDayStart.getTime() < end.getTime() ? nextDayStart : end;
+    const overlapMs = segmentEnd.getTime() - cursor.getTime();
+    result.set(key, (result.get(key) ?? 0) + kcalBurned * (overlapMs / totalMs));
+    cursor = segmentEnd;
+  }
+  return result;
+}
+
 statsRouter.get("/balance", async (req, res) => {
   const userId = req.userId!;
   const days = clampInt(req.query.days, BALANCE_MIN_DAYS, BALANCE_MAX_DAYS, BALANCE_DEFAULT_DAYS);
@@ -154,8 +181,16 @@ statsRouter.get("/balance", async (req, res) => {
       select: { timestamp: true, kcal: true },
     }),
     prisma.whoopCycle.findMany({
-      where: { userId, scoreState: "SCORED", start: { gte: since }, kcalBurned: { not: null } },
-      select: { start: true, kcalBurned: true },
+      // A 2-day buffer before `since` catches a cycle that started just
+      // before the window but overlaps into it — see splitCycleAcrossDays
+      // below, which needs the cycle's real start to split it correctly.
+      where: {
+        userId,
+        scoreState: "SCORED",
+        start: { gte: new Date(since.getTime() - 2 * 24 * 60 * 60 * 1000) },
+        kcalBurned: { not: null },
+      },
+      select: { start: true, end: true, kcalBurned: true },
     }),
   ]);
 
@@ -166,8 +201,14 @@ statsRouter.get("/balance", async (req, res) => {
   }
   const kcalOutByDay = new Map<string, number>();
   for (const c of cycles) {
-    const key = localDayKey(c.start, config.TIMEZONE);
-    kcalOutByDay.set(key, (kcalOutByDay.get(key) ?? 0) + (c.kcalBurned ?? 0));
+    // A cycle spans wake-to-wake and is occasionally much longer than 24h
+    // (irregular sleep, a nap that started a new cycle) — crediting all of
+    // its kcalBurned to its start day alone can massively overstate that
+    // one day while leaving the days it actually ran through empty.
+    // Splitting proportionally by how long the cycle actually overlaps
+    // each calendar day gives a realistic per-day burn instead.
+    const split = splitCycleAcrossDays(c.start, c.end ?? new Date(), c.kcalBurned ?? 0, config.TIMEZONE);
+    for (const [key, kcal] of split) kcalOutByDay.set(key, (kcalOutByDay.get(key) ?? 0) + kcal);
   }
   const tdee = estimateTdee(user ?? { weightKg: null, heightCm: null, ageYears: null, activityLevel: null });
 

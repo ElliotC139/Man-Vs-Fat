@@ -112,7 +112,7 @@ vi.mock("../src/db", () => {
 import { prisma } from "../src/db";
 import { authRouter } from "../src/routes/auth";
 import { statsRouter } from "../src/routes/stats";
-import { localDayKey } from "../src/matchWeek";
+import { getLocalParts, localDayKey, zonedTimeToUtc } from "../src/matchWeek";
 
 const TIMEZONE = "Europe/London";
 
@@ -308,7 +308,9 @@ describe("GET /api/stats/balance", () => {
     const { cookie, userId } = await signUp("alice");
     const day = daysAgo(1);
     state.entries.push({ userId, timestamp: day, kcal: 1800 });
-    state.whoopCycles.push({ userId, start: day, scoreState: "SCORED", kcalBurned: 2200 });
+    // end an hour after start, well inside the same calendar day, so the
+    // whole cycle lands on one day rather than getting split across two.
+    state.whoopCycles.push({ userId, start: day, end: new Date(day.getTime() + 60 * 60 * 1000), scoreState: "SCORED", kcalBurned: 2200 });
 
     const days = await fetchBalance(cookie, 7);
     const entry = days.find((d) => d.date === localDayKey(day, TIMEZONE));
@@ -329,6 +331,22 @@ describe("GET /api/stats/balance", () => {
     expect(entry?.kcalOut).toBeNull();
     expect(entry?.kcalOutSource).toBeNull();
     expect(entry?.balance).toBeNull();
+  });
+
+  it("splits a multi-day cycle's kcal proportionally across the days it spans", async () => {
+    const { cookie, userId } = await signUp("alice");
+    // A cycle running exactly London noon-to-noon spans two calendar days
+    // 50/50, regardless of the test host's own timezone or DST state.
+    const base = getLocalParts(daysAgo(2), TIMEZONE);
+    const start = zonedTimeToUtc(base.year, base.month, base.day, 12, 0, TIMEZONE);
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    state.whoopCycles.push({ userId, start, end, scoreState: "SCORED", kcalBurned: 2000 });
+
+    const days = await fetchBalance(cookie, 7);
+    const day1 = days.find((d) => d.date === localDayKey(start, TIMEZONE));
+    const day2 = days.find((d) => d.date === localDayKey(end, TIMEZONE));
+    expect(day1?.kcalOut).toBe(1000);
+    expect(day2?.kcalOut).toBe(1000);
   });
 });
 
