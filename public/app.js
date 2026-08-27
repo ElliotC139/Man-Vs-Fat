@@ -2023,13 +2023,20 @@ function weekRangeLabel(week) {
   return `${start} – ${end}`;
 }
 
-function weekOfCell(week, extraDetail) {
+function weekOfCell(week) {
   const td = document.createElement("td");
   td.textContent = dateFmt.format(new Date(`${week.weekStart}T00:00:00`));
-  td.className = "has-tooltip";
-  td.tabIndex = 0;
-  td.dataset.tooltip = extraDetail ? `${weekRangeLabel(week)} · ${extraDetail}` : weekRangeLabel(week);
   return td;
+}
+
+// Applies the tooltip trigger to the whole row rather than just the date
+// cell, so tapping anywhere on a row — not just its first column — shows
+// the detail. Rows are otherwise inert (no click action), so this doesn't
+// compete with anything else the row might do.
+function makeRowTappable(row, week, extraDetail) {
+  row.className = "has-tooltip";
+  row.tabIndex = 0;
+  row.dataset.tooltip = extraDetail ? `${weekRangeLabel(week)} · ${extraDetail}` : weekRangeLabel(week);
 }
 
 function renderWeeklyBreakdown(data) {
@@ -2048,6 +2055,7 @@ function renderWeeklyBreakdown(data) {
     const week = weeks[i];
 
     const weightRow = document.createElement("tr");
+    makeRowTappable(weightRow, week);
     weightRow.appendChild(weekOfCell(week));
     const weight = document.createElement("td");
     if (week.weightChangeKg !== null) {
@@ -2063,7 +2071,8 @@ function renderWeeklyBreakdown(data) {
     const kcalDetail =
       week.avgKcalPerDay !== null ? `logged ${week.daysWithEntries} of 7 days` : undefined;
     const caloriesRow = document.createElement("tr");
-    caloriesRow.appendChild(weekOfCell(week, kcalDetail));
+    makeRowTappable(caloriesRow, week, kcalDetail);
+    caloriesRow.appendChild(weekOfCell(week));
     const kcal = document.createElement("td");
     kcal.textContent = week.avgKcalPerDay !== null ? week.avgKcalPerDay.toLocaleString() : "—";
     caloriesRow.appendChild(kcal);
@@ -2073,6 +2082,7 @@ function renderWeeklyBreakdown(data) {
     breakdownCaloriesBody.appendChild(caloriesRow);
 
     const recoveryRow = document.createElement("tr");
+    makeRowTappable(recoveryRow, week);
     recoveryRow.appendChild(weekOfCell(week));
     const recovery = document.createElement("td");
     recovery.textContent = week.avgRecovery !== null ? `${week.avgRecovery}%` : "—";

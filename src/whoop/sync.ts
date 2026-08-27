@@ -4,6 +4,14 @@ import { findOrCreateMatchWeek, getUserWeekStart, localDayKey, matchWeekCalendar
 import { fetchRecentCycles, fetchRecentRecovery, fetchRecentSleep, fetchRecentWorkouts, refreshAccessToken } from "./client";
 
 const BACKFILL_DAYS = 10;
+// The first sync after a connection is created (or after this field was
+// added — deepBackfilledAt is null either way) reaches back this far
+// instead of the normal short trailing window, so cycles/workouts/sleep/
+// recovery WHOOP already has recorded get pulled in rather than leaving
+// everything older than BACKFILL_DAYS to fall back to an estimate. Matches
+// the calorie balance chart's own max range (see BALANCE_MAX_DAYS in
+// src/routes/stats.ts) — no point fetching further back than we ever plot.
+const DEEP_BACKFILL_DAYS = 90;
 const TRAILING_AVERAGE_SAMPLE = 7;
 
 /** Returns a usable access token, refreshing and persisting it first if it's near expiry. */
@@ -32,9 +40,7 @@ function formatDurationLabel(startMs: number, endMs: number): string {
   return `${mins} min`;
 }
 
-async function syncUserWorkouts(userId: number, accessToken: string): Promise<void> {
-  const since = new Date(Date.now() - BACKFILL_DAYS * 24 * 60 * 60 * 1000);
-
+async function syncUserWorkouts(userId: number, accessToken: string, since: Date): Promise<void> {
   let workouts;
   try {
     workouts = await fetchRecentWorkouts(accessToken, since);
@@ -65,9 +71,7 @@ async function syncUserWorkouts(userId: number, accessToken: string): Promise<vo
   }
 }
 
-async function syncUserSleep(userId: number, accessToken: string): Promise<void> {
-  const since = new Date(Date.now() - BACKFILL_DAYS * 24 * 60 * 60 * 1000);
-
+async function syncUserSleep(userId: number, accessToken: string, since: Date): Promise<void> {
   let sleeps;
   try {
     sleeps = await fetchRecentSleep(accessToken, since);
@@ -101,9 +105,7 @@ async function syncUserSleep(userId: number, accessToken: string): Promise<void>
   }
 }
 
-async function syncUserRecovery(userId: number, accessToken: string): Promise<void> {
-  const since = new Date(Date.now() - BACKFILL_DAYS * 24 * 60 * 60 * 1000);
-
+async function syncUserRecovery(userId: number, accessToken: string, since: Date): Promise<void> {
   let recoveries;
   try {
     recoveries = await fetchRecentRecovery(accessToken, since);
@@ -168,7 +170,10 @@ async function syncUserUnguarded(userId: number): Promise<void> {
   const accessToken = await getValidAccessToken(userId);
   if (!accessToken) return;
 
-  const since = new Date(Date.now() - BACKFILL_DAYS * 24 * 60 * 60 * 1000);
+  const conn = await prisma.whoopConnection.findUnique({ where: { userId } });
+  const isDeepBackfill = conn?.deepBackfilledAt == null;
+  const since = new Date(Date.now() - (isDeepBackfill ? DEEP_BACKFILL_DAYS : BACKFILL_DAYS) * 24 * 60 * 60 * 1000);
+
   const cycles = await fetchRecentCycles(accessToken, since);
 
   for (const cycle of cycles) {
@@ -186,7 +191,6 @@ async function syncUserUnguarded(userId: number): Promise<void> {
     });
   }
 
-  const conn = await prisma.whoopConnection.findUnique({ where: { userId } });
   await prisma.whoopConnection.update({
     where: { userId },
     data: {
@@ -194,14 +198,15 @@ async function syncUserUnguarded(userId: number): Promise<void> {
       // Captured once from cycle data (no read:profile scope requested) so the
       // webhook — keyed by WHOOP user id — can resolve pings back to this user.
       ...(conn?.whoopUserId == null && cycles[0] ? { whoopUserId: cycles[0].whoopUserId } : {}),
+      ...(isDeepBackfill ? { deepBackfilledAt: new Date() } : {}),
     },
   });
 
-  await syncUserWorkouts(userId, accessToken);
-  await syncUserSleep(userId, accessToken);
+  await syncUserWorkouts(userId, accessToken, since);
+  await syncUserSleep(userId, accessToken, since);
   // Recovery is synced last since it looks up already-upserted WhoopCycle
   // rows above to assign itself a calendar date.
-  await syncUserRecovery(userId, accessToken);
+  await syncUserRecovery(userId, accessToken, since);
 }
 
 /** Resyncs every connected user — used by the periodic scheduler as a backstop for missed webhooks. */
