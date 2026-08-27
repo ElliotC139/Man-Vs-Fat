@@ -119,8 +119,19 @@ const insightsList = document.getElementById("insights-list");
 const balanceTrendCard = document.getElementById("balance-trend-card");
 const balanceTrendChart = document.getElementById("balance-trend-chart");
 const balanceTrendCaption = document.getElementById("balance-trend-caption");
-const breakdownCard = document.getElementById("breakdown-card");
-const breakdownBody = document.getElementById("breakdown-body");
+const granularityBtns = document.querySelectorAll(".granularity-btn");
+const breakdownWeightCard = document.getElementById("breakdown-weight-card");
+const breakdownWeightBody = document.getElementById("breakdown-weight-body");
+const breakdownCaloriesCard = document.getElementById("breakdown-calories-card");
+const breakdownCaloriesBody = document.getElementById("breakdown-calories-body");
+const breakdownRecoveryCard = document.getElementById("breakdown-recovery-card");
+const breakdownRecoveryBody = document.getElementById("breakdown-recovery-body");
+const statsTabBtns = document.querySelectorAll(".stats-tab-btn");
+const statsTabPanels = {
+  weight: document.getElementById("stats-tab-weight"),
+  calories: document.getElementById("stats-tab-calories"),
+  recovery: document.getElementById("stats-tab-recovery"),
+};
 
 const exerciseToggle = document.getElementById("exercise-toggle");
 const exerciseForm = document.getElementById("exercise-form");
@@ -1612,6 +1623,13 @@ function applyWeighinUnitFields() {
   }
 }
 
+function switchStatsTab(name) {
+  for (const [key, panel] of Object.entries(statsTabPanels)) panel.hidden = key !== name;
+  statsTabBtns.forEach((btn) => btn.classList.toggle("stats-tab-btn--active", btn.dataset.statsTab === name));
+}
+
+statsTabBtns.forEach((btn) => btn.addEventListener("click", () => switchStatsTab(btn.dataset.statsTab)));
+
 function openStats() {
   appShell.hidden = true;
   statsScreen.hidden = false;
@@ -1620,6 +1638,7 @@ function openStats() {
   weighinDate.value = todayDateValue();
   weighinWeight.value = "";
   applyWeighinUnitFields();
+  switchStatsTab("weight");
   loadWeighIns();
   loadWhoopRecent();
   loadStatsSummary();
@@ -1779,6 +1798,54 @@ function renderStatsSummary(data) {
   }
 }
 
+// ── Tooltips ─────────────────────────────────────────────────────────────
+// Tap/click-driven (not hover-only) so this works on the phone this app is
+// mostly used on, not just with a mouse. Any element with data-tooltip and
+// the has-tooltip class becomes a trigger.
+let activeTooltipEl = null;
+let activeTooltipTarget = null;
+
+function hideTooltip() {
+  if (activeTooltipEl) activeTooltipEl.remove();
+  activeTooltipEl = null;
+  activeTooltipTarget = null;
+}
+
+function showTooltip(target) {
+  const tip = document.createElement("div");
+  tip.className = "app-tooltip";
+  tip.textContent = target.dataset.tooltip;
+  document.body.appendChild(tip);
+
+  const rect = target.getBoundingClientRect();
+  tip.style.top = `${rect.bottom + 6}px`;
+  tip.style.left = `${rect.left + rect.width / 2}px`;
+
+  const tipRect = tip.getBoundingClientRect();
+  const overflowRight = tipRect.right - (window.innerWidth - 4);
+  const overflowLeft = 4 - tipRect.left;
+  if (overflowRight > 0) tip.style.left = `${rect.left + rect.width / 2 - overflowRight}px`;
+  else if (overflowLeft > 0) tip.style.left = `${rect.left + rect.width / 2 + overflowLeft}px`;
+
+  activeTooltipEl = tip;
+  activeTooltipTarget = target;
+}
+
+document.addEventListener("click", (e) => {
+  const trigger = e.target.closest(".has-tooltip");
+  if (trigger) {
+    e.stopPropagation();
+    if (trigger === activeTooltipTarget) hideTooltip();
+    else {
+      hideTooltip();
+      showTooltip(trigger);
+    }
+  } else {
+    hideTooltip();
+  }
+});
+window.addEventListener("scroll", hideTooltip, true);
+
 // ── Insights ─────────────────────────────────────────────────────────────
 async function loadInsights() {
   try {
@@ -1806,26 +1873,62 @@ function renderInsights(data) {
 }
 
 // ── Calorie balance trend ───────────────────────────────────────────────
+let balanceTrendRaw = null;
+let balanceGranularity = "daily";
+
+granularityBtns.forEach((btn) =>
+  btn.addEventListener("click", () => {
+    balanceGranularity = btn.dataset.granularity;
+    granularityBtns.forEach((b) => b.classList.toggle("granularity-btn--active", b === btn));
+    if (balanceTrendRaw) renderBalanceTrend(balanceTrendRaw);
+  }),
+);
+
 async function loadBalanceTrend() {
   try {
-    const res = await fetch("/api/stats/balance?days=30");
+    const res = await fetch("/api/stats/balance?days=90");
     if (!res.ok) throw new Error();
-    renderBalanceTrend(await res.json());
+    balanceTrendRaw = await res.json();
+    renderBalanceTrend(balanceTrendRaw);
   } catch {
     balanceTrendCard.hidden = true;
   }
 }
 
+// Groups a chronological daily array into consecutive 7-day buckets,
+// averaging each field across whatever days in the bucket have data. The
+// final bucket may hold fewer than 7 days if the range isn't a multiple of 7.
+function bucketWeekly(days) {
+  const buckets = [];
+  for (let i = 0; i < days.length; i += 7) buckets.push(days.slice(i, i + 7));
+  return buckets.map((chunk) => {
+    const ins = chunk.map((d) => d.kcalIn).filter((v) => v !== null);
+    const outs = chunk.map((d) => d.kcalOut).filter((v) => v !== null);
+    const kcalIn = ins.length ? Math.round(ins.reduce((a, b) => a + b, 0) / ins.length) : null;
+    const kcalOut = outs.length ? Math.round(outs.reduce((a, b) => a + b, 0) / outs.length) : null;
+    return {
+      date: chunk[0].date,
+      kcalIn,
+      kcalOut,
+      kcalOutSource: chunk.some((d) => d.kcalOutSource === "estimated") ? "estimated" : outs.length ? "whoop" : null,
+      balance: kcalIn !== null && kcalOut !== null ? kcalIn - kcalOut : null,
+    };
+  });
+}
+
 function renderBalanceTrend(data) {
-  const days = (data.days ?? []).filter((d) => d.kcalIn !== null || d.kcalOut !== null);
-  if (days.length < 2) {
+  const fullDays = data.days ?? [];
+  const plotDays = (balanceGranularity === "weekly" ? bucketWeekly(fullDays) : fullDays.slice(-30)).filter(
+    (d) => d.kcalIn !== null || d.kcalOut !== null,
+  );
+  if (plotDays.length < 2) {
     balanceTrendCard.hidden = true;
     balanceTrendChart.innerHTML = "";
     return;
   }
   balanceTrendCard.hidden = false;
 
-  const allValues = days.flatMap((d) => [d.kcalIn, d.kcalOut]).filter((v) => v !== null);
+  const allValues = plotDays.flatMap((d) => [d.kcalIn, d.kcalOut]).filter((v) => v !== null);
   const min = Math.min(...allValues);
   const max = Math.max(...allValues, min + 1);
   const range = max - min || 1;
@@ -1835,12 +1938,12 @@ function renderBalanceTrend(data) {
   const w = 300;
   const h = 120;
 
-  const xFor = (i) => padLeft + (i / (data.days.length - 1)) * (w - padLeft - padRight);
+  const xFor = (i) => padLeft + (i / (plotDays.length - 1)) * (w - padLeft - padRight);
   const yFor = (v) => h - padY - ((v - min) / range) * (h - padY * 2);
 
   function polylineFor(field) {
     const pts = [];
-    data.days.forEach((d, i) => {
+    plotDays.forEach((d, i) => {
       if (d[field] === null) return;
       pts.push(`${xFor(i).toFixed(1)},${yFor(d[field]).toFixed(1)}`);
     });
@@ -1859,7 +1962,7 @@ function renderBalanceTrend(data) {
     `<polyline points="${polylineFor("kcalIn")}" class="balance-trend-line balance-trend-line--in" />` +
     `<polyline points="${polylineFor("kcalOut")}" class="balance-trend-line balance-trend-line--out" />`;
 
-  const recent = days.filter((d) => d.balance !== null).slice(-7);
+  const recent = fullDays.filter((d) => d.balance !== null).slice(-7);
   if (recent.length) {
     const avgBalance = Math.round(recent.reduce((sum, d) => sum + d.balance, 0) / recent.length);
     const usedEstimate = recent.some((d) => d.kcalOutSource === "estimated");
@@ -1879,31 +1982,44 @@ async function loadWeeklyBreakdown() {
     if (!res.ok) throw new Error();
     renderWeeklyBreakdown(await res.json());
   } catch {
-    breakdownCard.hidden = true;
+    breakdownWeightCard.hidden = true;
+    breakdownCaloriesCard.hidden = true;
+    breakdownRecoveryCard.hidden = true;
   }
+}
+
+function weekRangeLabel(week) {
+  const start = dateFmt.format(new Date(`${week.weekStart}T00:00:00`));
+  const end = dateFmt.format(new Date(`${week.weekEnd}T00:00:00`));
+  return `${start} – ${end}`;
+}
+
+function weekOfCell(week, extraDetail) {
+  const td = document.createElement("td");
+  td.textContent = dateFmt.format(new Date(`${week.weekStart}T00:00:00`));
+  td.className = "has-tooltip";
+  td.tabIndex = 0;
+  td.dataset.tooltip = extraDetail ? `${weekRangeLabel(week)} · ${extraDetail}` : weekRangeLabel(week);
+  return td;
 }
 
 function renderWeeklyBreakdown(data) {
   const weeks = data.weeks ?? [];
-  if (weeks.length === 0) {
-    breakdownCard.hidden = true;
-    return;
-  }
-  breakdownCard.hidden = false;
-  breakdownBody.innerHTML = "";
+  const hasAny = (field) => weeks.some((w) => w[field] !== null && w[field] !== undefined && w[field] !== 0);
+
+  breakdownWeightCard.hidden = !hasAny("weightChangeKg");
+  breakdownCaloriesCard.hidden = !(hasAny("avgKcalPerDay") || hasAny("workoutCount"));
+  breakdownRecoveryCard.hidden = !hasAny("avgRecovery");
+
+  breakdownWeightBody.innerHTML = "";
+  breakdownCaloriesBody.innerHTML = "";
+  breakdownRecoveryBody.innerHTML = "";
 
   for (let i = weeks.length - 1; i >= 0; i--) {
     const week = weeks[i];
-    const row = document.createElement("tr");
 
-    const weekOf = document.createElement("td");
-    weekOf.textContent = dateFmt.format(new Date(`${week.weekStart}T00:00:00`));
-    row.appendChild(weekOf);
-
-    const kcal = document.createElement("td");
-    kcal.textContent = week.avgKcalPerDay !== null ? week.avgKcalPerDay.toLocaleString() : "—";
-    row.appendChild(kcal);
-
+    const weightRow = document.createElement("tr");
+    weightRow.appendChild(weekOfCell(week));
     const weight = document.createElement("td");
     if (week.weightChangeKg !== null) {
       const sign = week.weightChangeKg <= 0 ? "-" : "+";
@@ -1912,17 +2028,27 @@ function renderWeeklyBreakdown(data) {
     } else {
       weight.textContent = "—";
     }
-    row.appendChild(weight);
+    weightRow.appendChild(weight);
+    breakdownWeightBody.appendChild(weightRow);
 
+    const kcalDetail =
+      week.avgKcalPerDay !== null ? `logged ${week.daysWithEntries} of 7 days` : undefined;
+    const caloriesRow = document.createElement("tr");
+    caloriesRow.appendChild(weekOfCell(week, kcalDetail));
+    const kcal = document.createElement("td");
+    kcal.textContent = week.avgKcalPerDay !== null ? week.avgKcalPerDay.toLocaleString() : "—";
+    caloriesRow.appendChild(kcal);
     const workouts = document.createElement("td");
     workouts.textContent = String(week.workoutCount);
-    row.appendChild(workouts);
+    caloriesRow.appendChild(workouts);
+    breakdownCaloriesBody.appendChild(caloriesRow);
 
+    const recoveryRow = document.createElement("tr");
+    recoveryRow.appendChild(weekOfCell(week));
     const recovery = document.createElement("td");
     recovery.textContent = week.avgRecovery !== null ? `${week.avgRecovery}%` : "—";
-    row.appendChild(recovery);
-
-    breakdownBody.appendChild(row);
+    recoveryRow.appendChild(recovery);
+    breakdownRecoveryBody.appendChild(recoveryRow);
   }
 }
 

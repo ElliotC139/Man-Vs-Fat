@@ -336,6 +336,7 @@ interface WeekBreakdown {
   weekStart: string;
   weekEnd: string;
   avgKcalPerDay: number | null;
+  daysWithEntries: number;
   weightChangeKg: number | null;
   workoutCount: number;
   avgRecovery: number | null;
@@ -374,6 +375,21 @@ describe("GET /api/stats/weekly-breakdown", () => {
     const currentWeek = weeks[weeks.length - 1]!;
     expect(currentWeek.workoutCount).toBe(2);
     expect(currentWeek.avgRecovery).toBe(50);
+  });
+
+  it("counts the distinct days with a logged entry within the week", async () => {
+    const { cookie, userId } = await signUp("alice");
+    const now = daysAgo(0);
+    // Two entries on today count as one logged day, plus one more on yesterday.
+    state.entries.push(
+      { userId, timestamp: now, kcal: 500 },
+      { userId, timestamp: now, kcal: 300 },
+      { userId, timestamp: daysAgo(1), kcal: 400 },
+    );
+
+    const weeks = await fetchBreakdown(cookie, 4);
+    const currentWeek = weeks[weeks.length - 1]!;
+    expect(currentWeek.daysWithEntries).toBe(2);
   });
 
   it("computes week-over-week weight change using the most recent weigh-in per week", async () => {
