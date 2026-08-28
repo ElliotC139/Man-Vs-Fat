@@ -11,7 +11,7 @@ import {
 } from "../matchWeek";
 import { estimateAdaptiveTdee } from "../adaptiveTdee";
 import { foodRecoveryFindings } from "../foodRecovery";
-import { latestTrendWeight, trendRate } from "../trendWeight";
+import { latestWeightKg, weightRate } from "../weightStats";
 
 export const statsRouter = Router();
 statsRouter.use(requireAuth);
@@ -56,8 +56,8 @@ interface GoalProjection {
   movingTowardGoal: boolean;
 }
 
-function projectGoal(goalWeightKg: number, currentTrendKg: number, kgPerWeek: number): GoalProjection {
-  const remainingKg = Math.round((currentTrendKg - goalWeightKg) * 100) / 100;
+function projectGoal(goalWeightKg: number, currentWeightKg: number, kgPerWeek: number): GoalProjection {
+  const remainingKg = Math.round((currentWeightKg - goalWeightKg) * 100) / 100;
   const needToLose = remainingKg > 0;
   const losing = kgPerWeek < 0;
   const movingTowardGoal = Math.abs(remainingKg) > 0.05 && needToLose === losing && Math.abs(kgPerWeek) > 0.01;
@@ -88,12 +88,11 @@ statsRouter.get("/summary", async (req, res) => {
     prisma.weighIn.findMany({ where: { userId }, orderBy: { date: "asc" } }),
   ]);
 
-  // Rate comes from the recent window (what's happening now); the current
-  // trend value comes from the full history, so the smoothing has all the
-  // readings behind it rather than restarting at the window edge.
+  // Rate is measured across the recent window (what's happening now);
+  // current weight is simply the latest reading on the scale.
   const points = windowWeighIns.map((w) => ({ date: w.date, weightKg: w.weightKg }));
-  const rate = trendRate(points);
-  const currentTrendKg = latestTrendWeight(allWeighIns.map((w) => ({ date: w.date, weightKg: w.weightKg })));
+  const rate = weightRate(points);
+  const currentWeightKg = latestWeightKg(allWeighIns.map((w) => ({ date: w.date, weightKg: w.weightKg })));
 
   const kgPerWeek = rate ? Math.round(rate.kgPerWeek * 100) / 100 : null;
 
@@ -107,16 +106,16 @@ statsRouter.get("/summary", async (req, res) => {
       : null;
 
   const weightTrend =
-    kgPerWeek !== null && currentTrendKg !== null
+    kgPerWeek !== null && currentWeightKg !== null
       ? {
           kgPerWeek,
-          trendWeightKg: Math.round(currentTrendKg * 100) / 100,
-          projectedWeightKg4wk: Math.round((currentTrendKg + kgPerWeek * 4) * 100) / 100,
+          currentWeightKg: Math.round(currentWeightKg * 100) / 100,
+          projectedWeightKg4wk: Math.round((currentWeightKg + kgPerWeek * 4) * 100) / 100,
         }
       : null;
 
   const goalProjection =
-    user?.goalWeightKg && currentTrendKg !== null ? projectGoal(user.goalWeightKg, currentTrendKg, kgPerWeek ?? 0) : null;
+    user?.goalWeightKg && currentWeightKg !== null ? projectGoal(user.goalWeightKg, currentWeightKg, kgPerWeek ?? 0) : null;
 
   res.json({
     avgKcalPerDay: avgKcal,

@@ -126,9 +126,9 @@ const breakdownWeightBody = document.getElementById("breakdown-weight-body");
 const breakdownCaloriesCard = document.getElementById("breakdown-calories-card");
 const breakdownCaloriesBody = document.getElementById("breakdown-calories-body");
 const breakdownRecoveryCard = document.getElementById("breakdown-recovery-card");
-const trendHero = document.getElementById("trend-hero");
-const trendWeightEl = document.getElementById("trend-weight");
-const trendHeroNote = document.getElementById("trend-hero-note");
+const weightHero = document.getElementById("weight-hero");
+const weightHeroValue = document.getElementById("weight-hero-value");
+const weightHeroNote = document.getElementById("weight-hero-note");
 const goalProgress = document.getElementById("goal-progress");
 const goalProgressLabel = document.getElementById("goal-progress-label");
 const goalProgressEta = document.getElementById("goal-progress-eta");
@@ -1826,24 +1826,21 @@ function renderStatsSummary(data) {
   }
 
   if (data.weightTrend) {
-    const { kgPerWeek, projectedWeightKg4wk, trendWeightKg } = data.weightTrend;
+    const { kgPerWeek, projectedWeightKg4wk, currentWeightKg } = data.weightTrend;
     const verb = kgPerWeek <= 0 ? "losing" : "gaining";
     weighinTrendCaption.textContent =
       `At this pace (${verb} ${kgToDisplay(Math.abs(kgPerWeek))} ${weightUnit()}/wk), ` +
       `you'd be around ${kgToDisplay(projectedWeightKg4wk)} ${weightUnit()} in 4 weeks.`;
 
-    // Trend weight leads, because a single day's scale reading swings on
-    // water and food volume and says almost nothing about fat lost.
-    trendHero.hidden = false;
-    trendWeightEl.textContent = `${kgToDisplay(trendWeightKg)} ${weightUnit()}`;
-    const latest = weighIns.length ? weighIns[weighIns.length - 1].weightKg : null;
-    trendHeroNote.textContent =
-      latest === null
-        ? ""
-        : `Smoothed — your scale said ${kgToDisplay(latest)} ${weightUnit()} last time.`;
+    weightHero.hidden = false;
+    weightHeroValue.textContent = `${kgToDisplay(currentWeightKg)} ${weightUnit()}`;
+    const last = weighIns.length ? weighIns[weighIns.length - 1] : null;
+    weightHeroNote.textContent = last
+      ? `Last weighed ${dateFmt.format(new Date(`${last.date}T00:00:00`))}`
+      : "";
   } else {
     weighinTrendCaption.textContent = "";
-    trendHero.hidden = true;
+    weightHero.hidden = true;
   }
 
   renderGoalProgress(data.goalProjection);
@@ -2495,27 +2492,12 @@ function renderWeighinChart(animate = true) {
     )
     .join("");
 
-  // Trailing 7-calendar-day moving average, smoothing out day-to-day noise
-  // in the raw line above. Only drawn once there's enough history to differ
-  // meaningfully from the raw line.
-  let movingAvgLine = "";
-  if (weighIns.length >= 4) {
-    const avgPoints = weighIns.map((entry, i) => {
-      const cutoff = Date.parse(entry.date) - 6 * 24 * 60 * 60 * 1000;
-      const window = weighIns.filter((w) => Date.parse(w.date) >= cutoff && Date.parse(w.date) <= Date.parse(entry.date));
-      const avgKg = window.reduce((sum, w) => sum + w.weightKg, 0) / window.length;
-      return { x: points[i].x, y: yFor(avgKg) };
-    });
-    movingAvgLine = `<path d="${smoothPathD(avgPoints)}" class="weighin-chart-avg-line chart-fade-in${animateCls}" />`;
-  }
-
   weighinChart.innerHTML =
     `<defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1">` +
     `<stop offset="0%" stop-color="var(--pitch)" stop-opacity="0.22" />` +
     `<stop offset="100%" stop-color="var(--pitch)" stop-opacity="0" /></linearGradient></defs>` +
     `${gridlines}${labels}` +
     `<path d="${areaD}" fill="url(#${gradientId})" class="chart-area${animateCls}" />` +
-    `${movingAvgLine}` +
     `<path d="${smoothPathD(points)}" class="weighin-chart-line chart-draw" />` +
     circles +
     hitTargets;

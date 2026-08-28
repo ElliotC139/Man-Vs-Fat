@@ -1168,13 +1168,6 @@ h2::before {
 .weighin-del {
   flex-shrink: 0;
 }
-.weighin-chart-avg-line {
-  fill: none;
-  stroke: var(--amber);
-  stroke-width: 1.75;
-  stroke-dasharray: 3 3;
-  vector-effect: non-scaling-stroke;
-}
 #weighin-trend-caption {
   margin: 10px 6px 0;
 }
@@ -1768,17 +1761,14 @@ tr.has-tooltip:active {
   }
 }
 
-/* ── Trend weight hero ── */
-/* The smoothed figure is the headline and the raw scale reading is the
-   footnote, not the other way round — day-to-day scale noise is mostly
-   water and gut contents, and reading it as progress is demoralising. */
-.trend-hero {
+/* ── Current weight hero ── */
+.weight-hero {
   text-align: center;
   padding: 4px 0 16px;
   border-bottom: 1px solid var(--hairline);
   margin-bottom: 14px;
 }
-.trend-hero-number {
+.weight-hero-number {
   display: block;
   font-family: var(--font-heading);
   font-weight: 800;
@@ -1788,7 +1778,7 @@ tr.has-tooltip:active {
   font-variant-numeric: tabular-nums;
   color: var(--pitch-dark);
 }
-.trend-hero-caption {
+.weight-hero-caption {
   display: block;
   margin-top: 6px;
   font-size: 0.72rem;
@@ -1797,7 +1787,7 @@ tr.has-tooltip:active {
   letter-spacing: 0.09em;
   color: var(--muted);
 }
-.trend-hero-note {
+.weight-hero-note {
   display: block;
   margin-top: 8px;
   font-size: 0.8rem;

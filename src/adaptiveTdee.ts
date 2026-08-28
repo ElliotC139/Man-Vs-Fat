@@ -1,7 +1,7 @@
 import { prisma } from "./db";
 import { config } from "./config";
 import { localDayKey } from "./matchWeek";
-import { latestTrendWeight, trendRate, type WeighInPoint } from "./trendWeight";
+import { weightRate, type WeighInPoint } from "./weightStats";
 
 /**
  * Adaptive TDEE — what this person's body is *actually* burning, learned from
@@ -46,8 +46,8 @@ export interface AdaptiveTdee {
   /** Share of days in the window with at least one food entry, 0-1. */
   completeness: number;
   weighInCount: number;
-  /** Trend-weight change across the window, kg. Negative = lost. */
-  trendChangeKg: number;
+  /** Weight change across the window, kg, from the fitted line. Negative = lost. */
+  weightChangeKg: number;
   /**
    * Mean daily WHOOP-measured burn over the same window, when connected.
    * Present so the two independent estimates can be compared — see
@@ -138,7 +138,7 @@ export async function estimateAdaptiveTdee(userId: number, windowDaysInput?: unk
   // Δweight comes from the regression fit rather than the raw endpoints: a
   // single water-heavy morning at either end would otherwise shift the
   // implied energy balance by thousands of kcal and wreck the estimate.
-  const fit = trendRate(weighIns);
+  const fit = weightRate(weighIns);
   if (!fit) return unavailable("too-short-a-span");
 
   // Intake across exactly that span.
@@ -160,8 +160,8 @@ export async function estimateAdaptiveTdee(userId: number, windowDaysInput?: unk
   const meanLogged = loggedValues.reduce((a, b) => a + b, 0) / daysLogged;
   const totalIntake = loggedValues.reduce((a, b) => a + b, 0) + (spanDayKeys.length - daysLogged) * meanLogged;
 
-  const trendChangeKg = fit.toKg - fit.fromKg;
-  const kcalPerDay = Math.round((totalIntake - trendChangeKg * KCAL_PER_KG) / spanDayKeys.length);
+  const weightChangeKg = fit.toKg - fit.fromKg;
+  const kcalPerDay = Math.round((totalIntake - weightChangeKg * KCAL_PER_KG) / spanDayKeys.length);
 
   // A nonsensical result (someone logging 400 kcal/day, or a scale in the
   // wrong units) is worse than no result — better to withhold it than to
@@ -191,14 +191,9 @@ export async function estimateAdaptiveTdee(userId: number, windowDaysInput?: unk
     daysLogged,
     completeness: Math.round(completeness * 100) / 100,
     weighInCount: weighIns.length,
-    trendChangeKg: Math.round(trendChangeKg * 100) / 100,
+    weightChangeKg: Math.round(weightChangeKg * 100) / 100,
     whoopKcalPerDay,
     underLoggingKcalPerDay,
   };
 }
 
-/** Current trend weight for a user, or null with no weigh-ins. */
-export async function currentTrendWeightKg(userId: number): Promise<number | null> {
-  const rows = await prisma.weighIn.findMany({ where: { userId }, orderBy: { date: "asc" } });
-  return latestTrendWeight(rows.map((w) => ({ date: w.date, weightKg: w.weightKg })));
-}

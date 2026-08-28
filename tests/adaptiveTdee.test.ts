@@ -90,7 +90,7 @@ describe("estimateAdaptiveTdee", () => {
     if (!isAdaptiveTdeeAvailable(result)) return;
     expect(result.kcalPerDay).toBeGreaterThan(2200);
     expect(result.kcalPerDay).toBeLessThan(2330);
-    expect(result.trendChangeKg).toBeCloseTo(-1, 1);
+    expect(result.weightChangeKg).toBeCloseTo(-1, 1);
     expect(result.completeness).toBe(1);
   });
 
