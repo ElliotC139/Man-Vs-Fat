@@ -516,6 +516,30 @@
             <p id="import-status" class="muted" hidden></p>
           </fieldset>
 
+          <fieldset class="settings-fieldset">
+            <legend>Weight from your phone</legend>
+            <p class="muted">
+              Apple Health and Android's Health Connect are native apps — no website can read
+              them directly, whatever it promises. What does work is the export file they
+              already make.
+            </p>
+            <details class="health-help">
+              <summary>Where to find it</summary>
+              <p class="muted">
+                <strong>iPhone:</strong> Health &rarr; your photo, top right &rarr; Export All
+                Health Data. Share the zip to Files, then pick it here.
+              </p>
+              <p class="muted">
+                <strong>Android, or a smart scale:</strong> any CSV with a date column and a
+                weight column — Health Connect exporters, Withings, Garmin and most scale apps
+                all produce one.
+              </p>
+            </details>
+            <label for="health-file" class="import-label">Import weight history</label>
+            <input type="file" id="health-file" accept=".zip,.xml,.csv,application/zip,text/csv,text/xml" />
+            <p id="health-status" class="muted" hidden></p>
+          </fieldset>
+
           <button id="settings-save" type="button">Save</button>
           <p id="settings-error" class="error" hidden></p>
           <button id="logout-btn" type="button" class="ghost">Log out</button>

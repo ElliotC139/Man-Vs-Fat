@@ -1,9 +1,12 @@
 import { Router } from "express";
+import multer from "multer";
 import { z } from "zod";
 import { prisma } from "../db";
 import { config } from "../config";
 import { requireAuth } from "../auth";
 import { findOrCreateMatchWeek, getUserWeekStart, localDayKey } from "../matchWeek";
+import { parseAppleHealthStream, parseHealthExport, type HealthParseResult } from "../healthImport";
+import { openZipEntry } from "../lib/zipEntry";
 
 /**
  * Data portability. Everything a user has put in, back out again in a form
@@ -287,4 +290,102 @@ dataRouter.post("/import", async (req, res) => {
   }
 
   res.json({ imported: counts });
+});
+
+
+/**
+ * Weight history out of a phone's health app.
+ *
+ * Neither Apple HealthKit nor Android's Health Connect has a web API — both
+ * are native-only, and no amount of installing this to a home screen changes
+ * that. What a browser *can* do is read the export file those apps already
+ * produce, so that's what this accepts: an Apple Health export (the zip, or
+ * the export.xml out of it) or a CSV from Health Connect, a smart scale, or
+ * anything else with a date and a weight column.
+ */
+const healthUpload = multer({
+  storage: multer.memoryStorage(),
+  // An Apple export covering several years is mostly heart-rate samples and
+  // gets large. This is generous for the zip while still bounding what one
+  // request can ask the server to hold.
+  limits: { fileSize: 120 * 1024 * 1024 },
+});
+
+dataRouter.post("/import/health", healthUpload.single("file"), async (req, res) => {
+  const file = req.file;
+  if (!file) {
+    res.status(400).json({ error: "Choose an export file first." });
+    return;
+  }
+
+  let parsed: HealthParseResult;
+  try {
+    // A zip starts "PK\x03\x04". Sniffing the bytes rather than trusting the
+    // file name, since iOS shares the export under all sorts of names.
+    const isZip = file.buffer.length > 4 && file.buffer.readUInt32LE(0) === 0x04034b50;
+    if (isZip) {
+      const entry = openZipEntry(file.buffer, (name) => name.endsWith("export.xml"));
+      if (!entry) {
+        res.status(400).json({ error: "That zip doesn't contain an export.xml — is it an Apple Health export?" });
+        return;
+      }
+      // Streamed rather than buffered: the XML inside routinely unpacks to
+      // hundreds of megabytes.
+      parsed = await parseAppleHealthStream(entry);
+    } else {
+      const text = file.buffer.toString("utf8");
+      // The JSON restore field sits directly above this one, so putting a
+      // food-diary export in the wrong box is an easy mistake — worth naming
+      // rather than reporting as a malformed CSV.
+      if (text.trimStart().startsWith("{")) {
+        res.status(400).json({
+          error: "That's a food diary backup — use \u201cRestore from a JSON export\u201d above for it.",
+        });
+        return;
+      }
+      parsed = parseHealthExport(text);
+    }
+  } catch (error) {
+    console.error("Health import parse failed:", error);
+    res.status(400).json({ error: "Couldn't read that file — please check it's an unmodified export." });
+    return;
+  }
+
+  if (parsed.weighIns.length === 0) {
+    res.status(422).json({
+      error:
+        parsed.format === "apple-health"
+          ? "No weight readings in that export — Apple Health only has them if something has been writing weight to it."
+          : "Couldn't find a date column and a weight column in that CSV.",
+      skipped: parsed.skipped,
+    });
+    return;
+  }
+
+  const userId = req.userId!;
+  const today = localDayKey(new Date(), config.TIMEZONE);
+  let imported = 0;
+  let skipped = parsed.skipped;
+
+  for (const weighIn of parsed.weighIns) {
+    // A future date is a timezone artefact or a bad row, not a weigh-in.
+    if (weighIn.date > today) {
+      skipped += 1;
+      continue;
+    }
+    await prisma.weighIn.upsert({
+      where: { userId_date: { userId, date: weighIn.date } },
+      update: { weightKg: weighIn.weightKg },
+      create: { userId, date: weighIn.date, weightKg: weighIn.weightKg },
+    });
+    imported += 1;
+  }
+
+  res.json({
+    imported,
+    skipped,
+    format: parsed.format,
+    firstDate: parsed.weighIns[0]?.date ?? null,
+    lastDate: parsed.weighIns[parsed.weighIns.length - 1]?.date ?? null,
+  });
 });

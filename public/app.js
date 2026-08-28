@@ -3990,3 +3990,47 @@ function haptic(pattern = 12) {
     // Some browsers throw if the page hasn't been interacted with yet.
   }
 }
+
+// ── Weight history from a phone's health app ────────────────────────────────
+// No web API exists for HealthKit or Health Connect, so this reads the export
+// file instead — see the note in src/healthImport.ts.
+const healthFileInput = document.getElementById("health-file");
+const healthStatus = document.getElementById("health-status");
+
+healthFileInput.addEventListener("change", async () => {
+  const file = healthFileInput.files?.[0];
+  if (!file) return;
+
+  healthStatus.hidden = false;
+  healthStatus.classList.remove("error");
+  // An Apple export is big enough that the upload alone takes a while, so it
+  // says what it's doing rather than sitting silent.
+  healthStatus.textContent =
+    file.size > 20 * 1024 * 1024 ? "Uploading — a big export can take a minute…" : "Reading…";
+
+  try {
+    const body = new FormData();
+    body.append("file", file);
+    const res = await fetch("/api/data/import/health", { method: "POST", body });
+    const result = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(typeof result.error === "string" ? result.error : "Couldn't read that file.");
+    }
+
+    const range =
+      result.firstDate && result.lastDate && result.firstDate !== result.lastDate
+        ? ` (${result.firstDate} to ${result.lastDate})`
+        : "";
+    const ignored = result.skipped > 0 ? ` ${result.skipped} row${result.skipped === 1 ? "" : "s"} skipped.` : "";
+    healthStatus.textContent = `Imported ${result.imported} weigh-in${result.imported === 1 ? "" : "s"}${range}.${ignored}`;
+
+    await loadWeighIns();
+    await loadStatsSummary();
+  } catch (error) {
+    healthStatus.textContent = error.message;
+    healthStatus.classList.add("error");
+  } finally {
+    healthFileInput.value = "";
+  }
+});
