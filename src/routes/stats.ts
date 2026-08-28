@@ -9,6 +9,9 @@ import {
   localDayKey,
   zonedTimeToUtc,
 } from "../matchWeek";
+import { estimateAdaptiveTdee } from "../adaptiveTdee";
+import { foodRecoveryFindings } from "../foodRecovery";
+import { latestTrendWeight, trendRate } from "../trendWeight";
 
 export const statsRouter = Router();
 statsRouter.use(requireAuth);
@@ -42,55 +45,91 @@ async function avgKcalPerDay(userId: number): Promise<number | null> {
   return Math.round(total / AVG_KCAL_WINDOW_DAYS);
 }
 
-interface WeightTrend {
-  kgPerWeek: number;
-  latestWeightKg: number;
-  projectedWeightKg4wk: number;
+/** Projected arrival at the goal weight, extrapolating the current trend rate. */
+interface GoalProjection {
+  goalWeightKg: number;
+  remainingKg: number;
+  /** Null when the current pace never reaches the goal (flat, or moving away from it). */
+  projectedDate: string | null;
+  weeksRemaining: number | null;
+  /** True when the trend is moving toward the goal at all. */
+  movingTowardGoal: boolean;
 }
 
-/**
- * Measured rate of weight change (kg/week, negative = losing) between the
- * oldest and newest weigh-in in `weighIns`, plus a naive straight-line
- * projection 4 weeks out at that same pace. Null if there aren't at least
- * two weigh-ins spanning at least a day.
- */
-function computeWeightTrend(weighIns: { date: string; weightKg: number }[]): WeightTrend | null {
-  if (weighIns.length < 2) return null;
-  const first = weighIns[0]!;
-  const last = weighIns[weighIns.length - 1]!;
-  const daysSpan = (Date.parse(last.date) - Date.parse(first.date)) / (24 * 60 * 60 * 1000);
-  if (daysSpan < 1) return null;
+function projectGoal(goalWeightKg: number, currentTrendKg: number, kgPerWeek: number): GoalProjection {
+  const remainingKg = Math.round((currentTrendKg - goalWeightKg) * 100) / 100;
+  const needToLose = remainingKg > 0;
+  const losing = kgPerWeek < 0;
+  const movingTowardGoal = Math.abs(remainingKg) > 0.05 && needToLose === losing && Math.abs(kgPerWeek) > 0.01;
 
-  const kgPerWeek = Math.round((((last.weightKg - first.weightKg) / daysSpan) * 7) * 100) / 100;
-  const projectedWeightKg4wk = Math.round((last.weightKg + kgPerWeek * 4) * 100) / 100;
-  return { kgPerWeek, latestWeightKg: last.weightKg, projectedWeightKg4wk };
+  if (!movingTowardGoal) {
+    return { goalWeightKg, remainingKg, projectedDate: null, weeksRemaining: null, movingTowardGoal: false };
+  }
+
+  const weeksRemaining = Math.abs(remainingKg / kgPerWeek);
+  const projected = new Date(Date.now() + weeksRemaining * 7 * 86_400_000);
+  return {
+    goalWeightKg,
+    remainingKg,
+    projectedDate: localDayKey(projected, config.TIMEZONE),
+    weeksRemaining: Math.round(weeksRemaining * 10) / 10,
+    movingTowardGoal: true,
+  };
 }
 
 statsRouter.get("/summary", async (req, res) => {
   const userId = req.userId!;
   const since = localDayKey(new Date(Date.now() - WEIGHT_TREND_WINDOW_DAYS * 24 * 60 * 60 * 1000), config.TIMEZONE);
 
-  const [avgKcal, user, weighIns] = await Promise.all([
+  const [avgKcal, user, windowWeighIns, allWeighIns] = await Promise.all([
     avgKcalPerDay(userId),
-    prisma.user.findUnique({ where: { id: userId }, select: { weeklyGoalKg: true } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { weeklyGoalKg: true, goalWeightKg: true } }),
     prisma.weighIn.findMany({ where: { userId, date: { gte: since } }, orderBy: { date: "asc" } }),
+    prisma.weighIn.findMany({ where: { userId }, orderBy: { date: "asc" } }),
   ]);
 
-  const trend = computeWeightTrend(weighIns);
+  // Rate comes from the recent window (what's happening now); the current
+  // trend value comes from the full history, so the smoothing has all the
+  // readings behind it rather than restarting at the window edge.
+  const points = windowWeighIns.map((w) => ({ date: w.date, weightKg: w.weightKg }));
+  const rate = trendRate(points);
+  const currentTrendKg = latestTrendWeight(allWeighIns.map((w) => ({ date: w.date, weightKg: w.weightKg })));
+
+  const kgPerWeek = rate ? Math.round(rate.kgPerWeek * 100) / 100 : null;
+
   const weightPace =
-    trend && user?.weeklyGoalKg
+    kgPerWeek !== null && user?.weeklyGoalKg
       ? {
-          kgPerWeek: trend.kgPerWeek,
+          kgPerWeek,
           goalKgPerWeek: user.weeklyGoalKg,
-          onTrack: trend.kgPerWeek <= 0 && Math.abs(trend.kgPerWeek) >= user.weeklyGoalKg * 0.9,
+          onTrack: kgPerWeek <= 0 && Math.abs(kgPerWeek) >= user.weeklyGoalKg * 0.9,
         }
       : null;
+
+  const weightTrend =
+    kgPerWeek !== null && currentTrendKg !== null
+      ? {
+          kgPerWeek,
+          trendWeightKg: Math.round(currentTrendKg * 100) / 100,
+          projectedWeightKg4wk: Math.round((currentTrendKg + kgPerWeek * 4) * 100) / 100,
+        }
+      : null;
+
+  const goalProjection =
+    user?.goalWeightKg && currentTrendKg !== null ? projectGoal(user.goalWeightKg, currentTrendKg, kgPerWeek ?? 0) : null;
 
   res.json({
     avgKcalPerDay: avgKcal,
     weightPace,
-    weightTrend: trend ? { kgPerWeek: trend.kgPerWeek, projectedWeightKg4wk: trend.projectedWeightKg4wk } : null,
+    weightTrend,
+    goalProjection,
   });
+});
+
+// ── Adaptive TDEE ──────────────────────────────────────────────────────────
+
+statsRouter.get("/tdee", async (req, res) => {
+  res.json(await estimateAdaptiveTdee(req.userId!, req.query.days));
 });
 
 // ── Calorie balance trend ───────────────────────────────────────────────────
@@ -397,5 +436,13 @@ statsRouter.get("/insights", async (req, res) => {
     }
   }
 
-  res.json({ insights });
+  // Food/recovery associations come from a wider 90-day window and their own
+  // sample-size gates, so they're computed separately and appended rather
+  // than folded into the checks above.
+  const bodyFindings = await foodRecoveryFindings(userId).catch((e) => {
+    console.error("Food/recovery findings failed:", e);
+    return [];
+  });
+
+  res.json({ insights: [...insights, ...bodyFindings] });
 });

@@ -28,6 +28,9 @@ model User {
   ageYears         Int?
   activityLevel    String?
   weeklyGoalKg     Float?
+  // Target weight. weeklyGoalKg is the desired *rate*; this is the
+  // destination, which is what makes a projected arrival date possible.
+  goalWeightKg     Float?
   createdAt        DateTime         @default(now())
   matchWeeks       MatchWeek[]
   whoopConnection  WhoopConnection?

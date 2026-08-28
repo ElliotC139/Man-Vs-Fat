@@ -265,8 +265,16 @@
               <option value="moderate">Moderately active (exercise 3–5×/week)</option>
               <option value="active">Very active (hard exercise 6–7×/week)</option>
             </select>
-            <label id="goal-label" for="settings-goal">Target loss (kg/week)</label>
-            <input type="number" id="settings-goal" min="0.1" max="3" step="0.1" placeholder="e.g. 0.5" />
+            <div class="settings-row">
+              <div class="settings-field">
+                <label id="goal-label" for="settings-goal">Target loss (per week)</label>
+                <input type="number" id="settings-goal" min="0.1" max="3" step="0.1" placeholder="e.g. 0.5" />
+              </div>
+              <div class="settings-field">
+                <label id="goal-weight-label" for="settings-goal-weight">Goal weight</label>
+                <input type="number" id="settings-goal-weight" min="30" max="700" step="0.1" placeholder="e.g. 85" />
+              </div>
+            </div>
           </fieldset>
 
           <fieldset class="settings-fieldset">
@@ -280,6 +288,19 @@
             <p id="whoop-unconfigured-note" class="muted" hidden>
               WHOOP isn't set up on this server yet.
             </p>
+          </fieldset>
+
+          <fieldset class="settings-fieldset">
+            <legend>Your data</legend>
+            <p class="muted">Everything you've logged, in a file you own.</p>
+            <div class="export-row">
+              <a id="export-json-btn" class="button-link" href="/api/data/export.json">Export all (JSON)</a>
+              <a id="export-entries-btn" class="button-link" href="/api/data/export/entries.csv">Food CSV</a>
+              <a id="export-weighins-btn" class="button-link" href="/api/data/export/weigh-ins.csv">Weigh-ins CSV</a>
+            </div>
+            <label for="import-file" class="import-label">Restore from a JSON export</label>
+            <input type="file" id="import-file" accept="application/json,.json" />
+            <p id="import-status" class="muted" hidden></p>
           </fieldset>
 
           <button id="settings-save" type="button">Save</button>
@@ -350,10 +371,15 @@
         <div id="stats-tab-weight" class="stats-tab-panel">
           <div class="stats-top-row">
             <section id="weighin-summary" class="card" hidden>
+              <div id="trend-hero" class="trend-hero" hidden>
+                <span id="trend-weight" class="trend-hero-number">—</span>
+                <span class="trend-hero-caption">Trend weight</span>
+                <span id="trend-hero-note" class="trend-hero-note"></span>
+              </div>
               <div class="balance-grid">
                 <div class="balance-cell balance-cell--accent">
                   <span id="weighin-current" class="balance-number">—</span>
-                  <span class="balance-caption">Current</span>
+                  <span class="balance-caption">Last weigh-in</span>
                 </div>
                 <div class="balance-cell">
                   <span id="weighin-start" class="balance-number">—</span>
@@ -371,6 +397,13 @@
                   <span id="weighin-pace" class="balance-number">—</span>
                   <span id="weighin-pace-caption" class="balance-caption">Pace</span>
                 </div>
+              </div>
+              <div id="goal-progress" class="goal-progress" hidden>
+                <div class="goal-progress-head">
+                  <span id="goal-progress-label" class="goal-progress-label"></span>
+                  <span id="goal-progress-eta" class="goal-progress-eta"></span>
+                </div>
+                <div class="goal-progress-track"><div id="goal-progress-fill" class="goal-progress-fill"></div></div>
               </div>
             </section>
 
@@ -435,6 +468,26 @@
             </div>
             <svg id="balance-trend-chart" viewBox="0 0 300 120" preserveAspectRatio="none"></svg>
             <p id="balance-trend-caption" class="muted"></p>
+          </section>
+
+          <section id="tdee-card" class="card" hidden>
+            <div class="card-heading-row">
+              <h2>Your Metabolism</h2>
+              <span id="tdee-confidence" class="confidence-pill"></span>
+            </div>
+            <div class="hero-row">
+              <div class="stat-hero">
+                <span id="tdee-value" class="stat-hero-number">—</span>
+                <span class="stat-hero-caption">kcal/day burned</span>
+              </div>
+            </div>
+            <p id="tdee-explain" class="muted"></p>
+            <p id="tdee-underlogging" class="tdee-warning" hidden></p>
+          </section>
+
+          <section id="tdee-pending-card" class="card" hidden>
+            <h2>Your Metabolism</h2>
+            <p id="tdee-pending-text" class="muted"></p>
           </section>
 
           <section id="averages-card" class="card">
