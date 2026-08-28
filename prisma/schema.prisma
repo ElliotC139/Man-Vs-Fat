@@ -31,6 +31,10 @@ model User {
   // Target weight. weeklyGoalKg is the desired *rate*; this is the
   // destination, which is what makes a projected arrival date possible.
   goalWeightKg     Float?
+  // Local hour (0-23) to send the "you haven't logged today" nudge, or null
+  // for no reminder at all. Off by default: an app that starts nagging
+  // without being asked gets its notifications turned off for good.
+  reminderHour     Int?
   createdAt        DateTime         @default(now())
   matchWeeks       MatchWeek[]
   whoopConnection  WhoopConnection?
@@ -41,6 +45,7 @@ model User {
   foodTags         FoodTag[]
   weighIns         WeighIn[]
   savedMeals       SavedMeal[]
+  pushSubscriptions PushSubscription[]
 }
 
 // A starred food, keyed by the entry label normalized (trimmed, lowercased)
@@ -213,6 +218,27 @@ model Entry {
   updatedAt   DateTime  @updatedAt
 
   @@index([matchWeekId])
+}
+
+// A browser push endpoint the user has granted this app. One row per
+// browser/device, not per user — the same account signed in on a phone and a
+// laptop is two subscriptions, and both should get the reminder.
+//
+// endpoint is the natural key: the browser regenerates it when a
+// subscription is replaced, so an upsert on it keeps this table from filling
+// with dead endpoints for the same device.
+model PushSubscription {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  endpoint  String   @unique
+  // The two keys from the browser's PushSubscription, needed to encrypt a
+  // payload that only that browser can read.
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 // A named set of foods the user logs together. Two shapes share this table

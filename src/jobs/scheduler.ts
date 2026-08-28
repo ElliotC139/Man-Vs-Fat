@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { config } from "../config";
 import { closeMatchWeeksNeedingReport } from "./weeklyReport";
+import { sendDueReminders } from "./reminders";
 import { syncAllConnectedUsers } from "../whoop/sync";
 
 export function startScheduler(): void {
@@ -32,6 +33,16 @@ export function startScheduler(): void {
   setTimeout(() => {
     syncAllConnectedUsers().catch((error) => console.error("Startup catch-up WHOOP sync run failed:", error));
   }, 10_000);
+
+  // On the hour, so the check lines up with the whole-hour reminderHour each
+  // user picks. sendDueReminders is a no-op for anyone who hasn't set one.
+  cron.schedule(
+    "0 * * * *",
+    () => {
+      sendDueReminders().catch((error) => console.error("Scheduled reminder run failed:", error));
+    },
+    { timezone: config.TIMEZONE },
+  );
 
   console.log(`Weekly report scheduler started (hourly checks, ${config.TIMEZONE}).`);
 }

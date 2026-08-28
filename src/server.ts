@@ -5,6 +5,7 @@ import multer from "multer";
 import { config } from "./config";
 import { ensureUploadsDir, UPLOADS_DIR } from "./lib/storage";
 import { ensureSessionSecret } from "./auth";
+import { ensureVapidKeys } from "./push";
 import { authRouter } from "./routes/auth";
 import { dataRouter } from "./routes/dataExport";
 import { entriesRouter } from "./routes/entries";
@@ -12,6 +13,7 @@ import { exercisesRouter } from "./routes/exercises";
 import { foodsRouter } from "./routes/foods";
 import { matchWeeksRouter } from "./routes/matchWeeks";
 import { mealsRouter } from "./routes/meals";
+import { pushRouter } from "./routes/push";
 import { statsRouter } from "./routes/stats";
 import { weighInsRouter } from "./routes/weighIns";
 import { whoopRouter } from "./routes/whoop";
@@ -34,6 +36,7 @@ app.use("/api/exercises", exercisesRouter);
 app.use("/api/foods", foodsRouter);
 app.use("/api/match-weeks", matchWeeksRouter);
 app.use("/api/meals", mealsRouter);
+app.use("/api/push", pushRouter);
 app.use("/api/stats", statsRouter);
 app.use("/api/weigh-ins", weighInsRouter);
 app.use("/api/whoop", whoopRouter);
@@ -67,7 +70,7 @@ app.use((err: unknown, _req: express.Request, res: express.Response, next: expre
   res.status(500).json({ error: "Something went wrong." });
 });
 
-ensureSessionSecret()
+Promise.all([ensureSessionSecret(), ensureVapidKeys()])
   .then(() => {
     app.listen(config.PORT, () => {
       console.log(`Match week food diary listening on :${config.PORT} (timezone ${config.TIMEZONE})`);
@@ -75,6 +78,6 @@ ensureSessionSecret()
     });
   })
   .catch((error) => {
-    console.error("Failed to bootstrap session secret:", error);
+    console.error("Failed to bootstrap session secret or push keys:", error);
     process.exit(1);
   });

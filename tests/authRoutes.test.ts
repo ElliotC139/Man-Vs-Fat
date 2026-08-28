@@ -112,8 +112,8 @@ describe("POST /api/auth/signup", () => {
 
     expect(res.status).toBe(201);
     const body = await res.json();
-    // The body-stat fields (added later, for the calorie budget) come back
-    // null on a fresh account — this assertion predates them.
+    // Every optional field — body stats for the calorie budget, the goal
+    // weight, the reminder hour — comes back null on a fresh account.
     expect(body).toEqual({
       id: 1,
       username: "alice",
@@ -126,6 +126,7 @@ describe("POST /api/auth/signup", () => {
       activityLevel: null,
       weeklyGoalKg: null,
       goalWeightKg: null,
+      reminderHour: null,
     });
     expect(sessionCookieFrom(res)).toMatch(/^session=/);
   });
