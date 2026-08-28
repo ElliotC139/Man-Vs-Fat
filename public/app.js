@@ -582,7 +582,24 @@ form.addEventListener("submit", async (event) => {
   submitBtn.textContent = "Estimating…";
 
   try {
-    const res = await fetch("/api/entries", { method: "POST", body: data });
+    let res;
+    try {
+      res = await fetch("/api/entries", { method: "POST", body: data });
+    } catch (error) {
+      // No connection: keep what was typed rather than losing it to an error
+      // message. It goes out as soon as the network is back.
+      if (!isNetworkFailure(error)) throw error;
+      await enqueue({
+        kind: "entry",
+        payload: { text, photo: photo ?? null, photoName: photo?.name ?? null, lastWeek: logToLastWeek },
+      });
+      form.reset();
+      photoStatus.textContent = "Add a photo (optional)";
+      logToLastWeek = false;
+      logWeekCurrentBtn.classList.add("log-week-btn--active");
+      logWeekLastBtn.classList.remove("log-week-btn--active");
+      return;
+    }
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.error ? JSON.stringify(body.error) : "Failed to log entry");
@@ -666,7 +683,8 @@ authForm.addEventListener("submit", async (event) => {
       throw new Error(typeof body.error === "string" ? body.error : "Something went wrong. Try again.");
     }
     authForm.reset();
-    showApp(body);
+    const isNewAccount = res.status === 201;
+    await showApp(body, { firstRun: isNewAccount });
   } catch (error) {
     authError.textContent = error.message;
     authError.hidden = false;
@@ -729,6 +747,7 @@ async function handleGoogleCredential(response) {
 function openSettings() {
   appShell.hidden = true;
   settingsScreen.hidden = false;
+  refreshPushUi();
 }
 
 function closeSettings() {
@@ -779,6 +798,7 @@ settingsSave.addEventListener("click", async () => {
         activityLevel: activityVal,
         weeklyGoalKg: goalVal,
         goalWeightKg: goalWeightVal,
+        reminderHour: settingsReminderHour.value === "" ? null : Number(settingsReminderHour.value),
       }),
     });
     const body = await res.json().catch(() => ({}));
@@ -800,6 +820,7 @@ settingsSave.addEventListener("click", async () => {
 function populateSettings(user) {
   currentUser = user;
   settingsUsername.textContent = user.username;
+  settingsReminderHour.value = user.reminderHour === null ? "" : String(user.reminderHour);
   settingsWeekday.value = String(user.weekStartWeekday);
   settingsTime.value = `${String(user.weekStartHour).padStart(2, "0")}:${String(user.weekStartMinute).padStart(2, "0")}`;
   userWeekStartWeekday = user.weekStartWeekday;
@@ -837,17 +858,28 @@ function populateSettings(user) {
   }
 }
 
-async function showApp(user) {
+async function showApp(user, { firstRun = false } = {}) {
   populateSettings(user);
   settingsScreen.hidden = true;
   authScreen.hidden = true;
-  appShell.hidden = false;
+
+  // A fresh sign-up gets the wizard once. The flag is per-device rather than
+  // per-account on purpose: it's a UI nicety, not data worth a column.
+  if (firstRun && !localStorage.getItem(ONBOARDED_KEY)) {
+    openOnboarding();
+  } else {
+    localStorage.setItem(ONBOARDED_KEY, "1");
+    appShell.hidden = false;
+  }
+
   loadWeek();
   // Awaited so a redirect error set below isn't silently overwritten by the
   // status fetch's own (less specific) message resolving afterward.
   await loadWhoopStatus();
   handleWhoopRedirect();
   handleLaunchParams();
+  refreshOfflineBanner();
+  flushQueue();
 }
 
 // WHOOP's OAuth callback redirects back to "/" with a query param — surface
@@ -2608,11 +2640,22 @@ weighinForm.addEventListener("submit", async (e) => {
 
   weighinSave.disabled = true;
   try {
-    const res = await fetch("/api/weigh-ins", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date, weightKg: displayToKg(rawWeight) }),
-    });
+    const payload = { date, weightKg: displayToKg(rawWeight) };
+    let res;
+    try {
+      res = await fetch("/api/weigh-ins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (error) {
+      // Scales live in bathrooms, which is where signal goes to die.
+      if (!isNetworkFailure(error)) throw error;
+      await enqueue({ kind: "weighIn", payload });
+      weighinDate.value = todayDateValue();
+      weighinWeight.value = "";
+      return;
+    }
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(typeof body.error === "string" ? body.error : "Couldn't save that weigh-in.");
@@ -3280,3 +3323,428 @@ function handleLaunchParams() {
   const query = params.toString();
   window.history.replaceState({}, "", query ? `${window.location.pathname}?${query}` : window.location.pathname);
 }
+
+// ── Offline ─────────────────────────────────────────────────────────────────
+// Logging happens in kitchens, gyms and pub gardens, which is exactly where
+// signal isn't. Anything the user writes while offline goes into IndexedDB
+// and is replayed when the connection comes back, so nothing typed is ever
+// lost to a spinner.
+//
+// This lives in the page rather than the service worker on purpose:
+// Background Sync is Chrome-only, and half the point is that it works on an
+// iPhone.
+const DB_NAME = "food-diary-offline";
+const DB_VERSION = 1;
+const QUEUE_STORE = "pending";
+
+let dbPromise = null;
+
+function openQueueDb() {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(QUEUE_STORE)) {
+        db.createObjectStore(QUEUE_STORE, { keyPath: "id", autoIncrement: true });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return dbPromise;
+}
+
+function queueTx(mode) {
+  return openQueueDb().then((db) => db.transaction(QUEUE_STORE, mode).objectStore(QUEUE_STORE));
+}
+
+function requestToPromise(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function enqueue(item) {
+  const store = await queueTx("readwrite");
+  await requestToPromise(store.add({ ...item, queuedAt: Date.now() }));
+  await refreshOfflineBanner();
+}
+
+async function queuedItems() {
+  try {
+    const store = await queueTx("readonly");
+    return await requestToPromise(store.getAll());
+  } catch {
+    // A browser with IndexedDB blocked (private mode on some platforms) just
+    // doesn't get the queue — better than the app refusing to start.
+    return [];
+  }
+}
+
+async function dequeue(id) {
+  const store = await queueTx("readwrite");
+  await requestToPromise(store.delete(id));
+}
+
+/** True when a fetch failed because the network is gone, rather than because
+ *  the server said no — only the former is worth queuing. */
+function isNetworkFailure(error) {
+  return error instanceof TypeError || !navigator.onLine;
+}
+
+const offlineBanner = document.getElementById("offline-banner");
+const offlineBannerText = document.getElementById("offline-banner-text");
+
+async function refreshOfflineBanner() {
+  const items = await queuedItems();
+  const offline = !navigator.onLine;
+
+  if (!offline && items.length === 0) {
+    offlineBanner.hidden = true;
+    return;
+  }
+
+  offlineBanner.hidden = false;
+  offlineBanner.classList.toggle("offline-banner--waiting", items.length > 0);
+  if (items.length > 0) {
+    const noun = items.length === 1 ? "entry" : "entries";
+    offlineBannerText.textContent = offline
+      ? `Offline — ${items.length} ${noun} saved on this device, and will sync when you're back.`
+      : `Syncing ${items.length} ${noun} saved while you were offline…`;
+  } else {
+    offlineBannerText.textContent = "Offline — anything you log now is saved here and synced later.";
+  }
+}
+
+let flushing = false;
+
+/** Replays everything queued, oldest first, stopping at the first item that
+ *  fails for a network reason so the order is preserved. */
+async function flushQueue() {
+  if (flushing || !navigator.onLine) return;
+  flushing = true;
+  try {
+    const items = (await queuedItems()).sort((a, b) => a.queuedAt - b.queuedAt);
+    if (items.length === 0) return;
+    await refreshOfflineBanner();
+
+    let sent = 0;
+    for (const item of items) {
+      try {
+        const ok = await replayQueued(item);
+        // A request the server rejected outright (a 400 on malformed data)
+        // will never succeed on a retry, so it's dropped rather than left to
+        // block everything behind it forever.
+        await dequeue(item.id);
+        if (ok) sent += 1;
+      } catch (error) {
+        if (isNetworkFailure(error)) break;
+        await dequeue(item.id);
+      }
+    }
+
+    await refreshOfflineBanner();
+    if (sent > 0) {
+      await loadWeek();
+      if (!statsScreen.hidden) await loadWeighIns();
+    }
+  } finally {
+    flushing = false;
+  }
+}
+
+async function replayQueued(item) {
+  if (item.kind === "weighIn") {
+    const res = await fetch("/api/weigh-ins", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(item.payload),
+    });
+    return res.ok;
+  }
+
+  // Entries carry an optional photo Blob, so they go back out as FormData.
+  const body = new FormData();
+  if (item.payload.text) body.append("text", item.payload.text);
+  if (item.payload.photo) body.append("photo", item.payload.photo, item.payload.photoName || "photo.jpg");
+  if (item.payload.lastWeek) body.append("lastWeek", "true");
+  const res = await fetch("/api/entries", { method: "POST", body });
+  return res.ok;
+}
+
+window.addEventListener("online", () => {
+  refreshOfflineBanner();
+  flushQueue();
+});
+window.addEventListener("offline", refreshOfflineBanner);
+
+// ── Service worker ──────────────────────────────────────────────────────────
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch((error) => {
+      // Not fatal: without a worker the app simply needs a connection.
+      console.warn("Service worker registration failed:", error);
+    });
+  });
+}
+
+// ── Reminders (web push) ────────────────────────────────────────────────────
+const pushControls = document.getElementById("push-controls");
+const pushUnsupported = document.getElementById("push-unsupported");
+const pushStatusEl = document.getElementById("push-status");
+const pushEnableBtn = document.getElementById("push-enable-btn");
+const pushTestBtn = document.getElementById("push-test-btn");
+const pushErrorEl = document.getElementById("push-error");
+const settingsReminderHour = document.getElementById("settings-reminder-hour");
+
+const pushSupported =
+  "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+
+// Populated once; the hour a reminder fires is whole-hour by design, matching
+// the scheduler's hourly tick.
+for (let hour = 0; hour < 24; hour++) {
+  const option = document.createElement("option");
+  option.value = String(hour);
+  option.textContent = `${String(hour).padStart(2, "0")}:00`;
+  settingsReminderHour.appendChild(option);
+}
+
+function showPushError(message) {
+  pushErrorEl.textContent = message;
+  pushErrorEl.hidden = false;
+}
+
+/** The VAPID public key arrives base64url; PushManager wants raw bytes. */
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
+async function currentPushSubscription() {
+  if (!pushSupported) return null;
+  const registration = await navigator.serviceWorker.getRegistration();
+  if (!registration) return null;
+  return registration.pushManager.getSubscription();
+}
+
+async function refreshPushUi() {
+  pushUnsupported.hidden = pushSupported;
+  pushControls.hidden = !pushSupported;
+  if (!pushSupported) return;
+
+  pushErrorEl.hidden = true;
+  const subscription = await currentPushSubscription();
+  const subscribedHere = subscription !== null;
+
+  pushEnableBtn.hidden = subscribedHere;
+  pushTestBtn.hidden = !subscribedHere;
+
+  if (Notification.permission === "denied") {
+    pushStatusEl.textContent =
+      "Notifications are blocked for this site — you'll need to allow them in your browser settings.";
+    pushEnableBtn.hidden = true;
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/push/status");
+    if (!res.ok) throw new Error();
+    const { deviceCount } = await res.json();
+    if (subscribedHere) {
+      const others = deviceCount - 1;
+      pushStatusEl.textContent =
+        others > 0
+          ? `On for this device, and ${others} other${others === 1 ? "" : "s"}.`
+          : "On for this device.";
+    } else {
+      pushStatusEl.textContent =
+        deviceCount > 0
+          ? `Not on for this device (on for ${deviceCount} other${deviceCount === 1 ? "" : "s"}).`
+          : "Not on yet.";
+    }
+  } catch {
+    pushStatusEl.textContent = subscribedHere ? "On for this device." : "Not on yet.";
+  }
+}
+
+pushEnableBtn.addEventListener("click", async () => {
+  pushErrorEl.hidden = true;
+  pushEnableBtn.disabled = true;
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      showPushError("Notifications need permission — nothing was changed.");
+      return;
+    }
+
+    const registration = await navigator.serviceWorker.ready;
+    const keyRes = await fetch("/api/push/public-key");
+    if (!keyRes.ok) throw new Error("Couldn't fetch the notification key.");
+    const { publicKey } = await keyRes.json();
+
+    const subscription = await registration.pushManager.subscribe({
+      // Web push requires this to be true: every message must be shown to the
+      // user, no silent background pings.
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    });
+
+    const res = await fetch("/api/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(subscription.toJSON()),
+    });
+    if (!res.ok) throw new Error("Couldn't register this device.");
+
+    await refreshPushUi();
+  } catch (error) {
+    showPushError(error.message || "Couldn't turn notifications on.");
+  } finally {
+    pushEnableBtn.disabled = false;
+  }
+});
+
+pushTestBtn.addEventListener("click", async () => {
+  pushErrorEl.hidden = true;
+  pushTestBtn.disabled = true;
+  try {
+    const res = await fetch("/api/push/test", { method: "POST" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(typeof body.error === "string" ? body.error : "Couldn't send a test.");
+    }
+    pushStatusEl.textContent = "Test sent — it should arrive in a moment.";
+  } catch (error) {
+    showPushError(error.message);
+  } finally {
+    pushTestBtn.disabled = false;
+  }
+});
+
+// ── First-run wizard ────────────────────────────────────────────────────────
+// Shown once, after the first sign-up. It only collects what materially
+// changes the app's output: units (everything is displayed in them), the week
+// boundary (the whole app is organised around it), and body stats (they feed
+// the fallback burn estimate). Everything else waits until it's needed.
+const ONBOARDED_KEY = "onboarded";
+const onboardingScreen = document.getElementById("onboarding-screen");
+const onboardingNext = document.getElementById("onboarding-next");
+const onboardingSkip = document.getElementById("onboarding-skip");
+const onboardingError = document.getElementById("onboarding-error");
+const onboardingWeekday = document.getElementById("onboarding-weekday");
+const onboardingWeight = document.getElementById("onboarding-weight");
+const onboardingGoalWeight = document.getElementById("onboarding-goal-weight");
+const onboardingHeight = document.getElementById("onboarding-height");
+const onboardingAge = document.getElementById("onboarding-age");
+const onboardingUnitsMetric = document.getElementById("onboarding-units-metric");
+const onboardingUnitsImperial = document.getElementById("onboarding-units-imperial");
+const onboardingWeightLabel = document.getElementById("onboarding-weight-label");
+const onboardingGoalWeightLabel = document.getElementById("onboarding-goal-weight-label");
+
+const ONBOARDING_LAST_STEP = 2;
+let onboardingStep = 0;
+
+function applyOnboardingUnits() {
+  onboardingUnitsMetric.classList.toggle("meal-kind-btn--active", !useImperial);
+  onboardingUnitsImperial.classList.toggle("meal-kind-btn--active", useImperial);
+  onboardingWeightLabel.textContent = useImperial ? "Current weight (lbs)" : "Current weight (kg)";
+  onboardingGoalWeightLabel.textContent = useImperial ? "Goal weight (lbs)" : "Goal weight (kg)";
+  onboardingWeight.placeholder = useImperial ? "e.g. 210" : "e.g. 95";
+  onboardingGoalWeight.placeholder = useImperial ? "e.g. 187" : "e.g. 85";
+}
+
+function setOnboardingUnits(imperial) {
+  useImperial = imperial;
+  localStorage.setItem("units", imperial ? "imperial" : "metric");
+  applyUnitPreference();
+  applyOnboardingUnits();
+}
+
+onboardingUnitsMetric.addEventListener("click", () => setOnboardingUnits(false));
+onboardingUnitsImperial.addEventListener("click", () => setOnboardingUnits(true));
+
+function showOnboardingStep(step) {
+  onboardingStep = step;
+  for (const section of onboardingScreen.querySelectorAll(".onboarding-step")) {
+    section.hidden = Number(section.dataset.step) !== step;
+  }
+  for (const dot of onboardingScreen.querySelectorAll(".onboarding-dot")) {
+    dot.classList.toggle("onboarding-dot--active", Number(dot.dataset.step) <= step);
+  }
+  onboardingNext.textContent = step === ONBOARDING_LAST_STEP ? "Start logging" : "Next";
+  onboardingSkip.hidden = step === ONBOARDING_LAST_STEP;
+}
+
+function openOnboarding() {
+  authScreen.hidden = true;
+  appShell.hidden = true;
+  onboardingScreen.hidden = false;
+  onboardingError.hidden = true;
+  applyOnboardingUnits();
+  showOnboardingStep(0);
+}
+
+function finishOnboarding() {
+  localStorage.setItem(ONBOARDED_KEY, "1");
+  onboardingScreen.hidden = true;
+  appShell.hidden = false;
+}
+
+/** Sends only the fields the user actually filled in, so a skipped question
+ *  stays unset rather than being written as a zero. */
+async function saveOnboarding() {
+  const lbsToKg = (v) => +(v / 2.20462).toFixed(2);
+  const payload = { weekStartWeekday: Number(onboardingWeekday.value) };
+
+  const weight = onboardingWeight.value ? Number(onboardingWeight.value) : null;
+  if (weight) payload.weightKg = useImperial ? lbsToKg(weight) : weight;
+  const goalWeight = onboardingGoalWeight.value ? Number(onboardingGoalWeight.value) : null;
+  if (goalWeight) payload.goalWeightKg = useImperial ? lbsToKg(goalWeight) : goalWeight;
+  const height = onboardingHeight.value ? Number(onboardingHeight.value) : null;
+  if (height) payload.heightCm = height;
+  const age = onboardingAge.value ? Number(onboardingAge.value) : null;
+  if (age) payload.ageYears = age;
+
+  const res = await fetch("/api/auth/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("Couldn't save that — you can set it in Settings instead.");
+  populateSettings(await res.json());
+}
+
+onboardingNext.addEventListener("click", async () => {
+  onboardingError.hidden = true;
+
+  // Everything collected is saved at the end of the stats step, so closing
+  // the app on the last screen doesn't lose it.
+  if (onboardingStep === 1) {
+    onboardingNext.disabled = true;
+    try {
+      await saveOnboarding();
+    } catch (error) {
+      onboardingError.textContent = error.message;
+      onboardingError.hidden = false;
+      return;
+    } finally {
+      onboardingNext.disabled = false;
+    }
+  }
+
+  if (onboardingStep === ONBOARDING_LAST_STEP) {
+    finishOnboarding();
+    await loadWeek();
+    return;
+  }
+  showOnboardingStep(onboardingStep + 1);
+});
+
+onboardingSkip.addEventListener("click", () => {
+  finishOnboarding();
+  loadWeek();
+});

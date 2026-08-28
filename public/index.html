@@ -67,6 +67,11 @@
       </header>
 
       <main>
+        <div id="offline-banner" class="offline-banner" role="status" hidden>
+          <svg class="icon" viewBox="0 0 24 24"><path d="M1 1l22 22"/><path d="M16.7 13.3A5 5 0 0 0 18 10a6 6 0 0 0-9.3-5"/><path d="M5 8a6 6 0 0 0-.7 8.7"/><path d="M8 20h9a4 4 0 0 0 2.4-.8"/></svg>
+          <span id="offline-banner-text"></span>
+        </div>
+
         <p id="week-note" class="muted" hidden>Viewing a past week — go to the current week to log new entries.</p>
 
         <section id="quick-add" class="card quick-add" hidden>
@@ -221,6 +226,83 @@
       </main>
     </div>
 
+    <div id="onboarding-screen" class="onboarding-screen" hidden>
+      <div class="card onboarding-card">
+        <div class="onboarding-progress">
+          <span class="onboarding-dot onboarding-dot--active" data-step="0"></span>
+          <span class="onboarding-dot" data-step="1"></span>
+          <span class="onboarding-dot" data-step="2"></span>
+        </div>
+
+        <section class="onboarding-step" data-step="0">
+          <h2>Welcome</h2>
+          <p class="muted">
+            Two quick questions and you're logging. Everything here can be changed later in
+            Settings.
+          </p>
+          <label for="onboarding-units">Which units do you think in?</label>
+          <div class="meal-kind-btns">
+            <button type="button" id="onboarding-units-metric" class="meal-kind-btn meal-kind-btn--active">kg</button>
+            <button type="button" id="onboarding-units-imperial" class="meal-kind-btn">st / lb</button>
+          </div>
+          <label for="onboarding-weekday">Your week runs from</label>
+          <select id="onboarding-weekday">
+            <option value="0">Monday</option>
+            <option value="1">Tuesday</option>
+            <option value="2">Wednesday</option>
+            <option value="3">Thursday</option>
+            <option value="4">Friday</option>
+            <option value="5">Saturday</option>
+            <option value="6">Sunday</option>
+          </select>
+        </section>
+
+        <section class="onboarding-step" data-step="1" hidden>
+          <h2>About you</h2>
+          <p class="muted">
+            Used to estimate what you burn on days your tracker can't tell us. Skip any of it and
+            the app just leans on your actual weigh-ins instead.
+          </p>
+          <div class="settings-row">
+            <div class="settings-field">
+              <label id="onboarding-weight-label" for="onboarding-weight">Current weight</label>
+              <input type="number" id="onboarding-weight" step="0.1" placeholder="e.g. 95" />
+            </div>
+            <div class="settings-field">
+              <label id="onboarding-goal-weight-label" for="onboarding-goal-weight">Goal weight</label>
+              <input type="number" id="onboarding-goal-weight" step="0.1" placeholder="e.g. 85" />
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-field">
+              <label for="onboarding-height">Height (cm)</label>
+              <input type="number" id="onboarding-height" step="1" placeholder="e.g. 178" />
+            </div>
+            <div class="settings-field">
+              <label for="onboarding-age">Age</label>
+              <input type="number" id="onboarding-age" step="1" placeholder="e.g. 38" />
+            </div>
+          </div>
+        </section>
+
+        <section class="onboarding-step" data-step="2" hidden>
+          <h2>You're set</h2>
+          <p class="muted">Two optional extras, both changeable later.</p>
+          <ul class="onboarding-list">
+            <li><strong>Connect WHOOP</strong> — replaces the estimated burn with what you actually burned.</li>
+            <li><strong>Daily reminder</strong> — a nudge if you haven't logged by a time you choose.</li>
+          </ul>
+          <p class="muted">Both live in Settings, behind the cog in the top corner.</p>
+        </section>
+
+        <div class="result-actions">
+          <button type="button" id="onboarding-next">Next</button>
+          <button type="button" id="onboarding-skip" class="ghost">Skip for now</button>
+        </div>
+        <p id="onboarding-error" class="error" hidden></p>
+      </div>
+    </div>
+
     <div id="settings-screen" hidden>
       <header class="banner">
         <button id="settings-back" type="button" class="library-back" aria-label="Back">
@@ -317,6 +399,30 @@
             <p id="whoop-unconfigured-note" class="muted" hidden>
               WHOOP isn't set up on this server yet.
             </p>
+          </fieldset>
+
+          <fieldset class="settings-fieldset">
+            <legend>Reminders</legend>
+            <p id="push-unsupported" class="muted" hidden>
+              This browser can't do notifications. On an iPhone they only work once the app is
+              added to the home screen.
+            </p>
+            <div id="push-controls" hidden>
+              <div class="settings-row">
+                <div class="settings-field">
+                  <label for="settings-reminder-hour">Nudge me if I haven't logged by</label>
+                  <select id="settings-reminder-hour">
+                    <option value="">Never</option>
+                  </select>
+                </div>
+              </div>
+              <p id="push-status" class="muted"></p>
+              <div class="export-row">
+                <button type="button" id="push-enable-btn" class="ghost-sm">Enable on this device</button>
+                <button type="button" id="push-test-btn" class="ghost-sm" hidden>Send a test</button>
+              </div>
+              <p id="push-error" class="error" hidden></p>
+            </div>
           </fieldset>
 
           <fieldset class="settings-fieldset">

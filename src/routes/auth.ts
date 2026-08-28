@@ -27,6 +27,8 @@ const settingsSchema = z.object({
   activityLevel: z.enum(["sedentary", "light", "moderate", "active"]).nullable().optional(),
   weeklyGoalKg: z.number().min(0.1).max(1.5).nullable().optional(),
   goalWeightKg: z.number().min(30).max(700).nullable().optional(),
+  // Null turns the daily reminder off entirely.
+  reminderHour: z.number().int().min(0).max(23).nullable().optional(),
 });
 
 const googleSchema = z.object({
@@ -49,6 +51,7 @@ function toPublicUser(user: {
   activityLevel?: string | null;
   weeklyGoalKg?: number | null;
   goalWeightKg?: number | null;
+  reminderHour?: number | null;
 }) {
   return {
     id: user.id,
@@ -62,6 +65,7 @@ function toPublicUser(user: {
     activityLevel: user.activityLevel ?? null,
     weeklyGoalKg: user.weeklyGoalKg ?? null,
     goalWeightKg: user.goalWeightKg ?? null,
+    reminderHour: user.reminderHour ?? null,
   };
 }
 

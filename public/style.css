@@ -2252,3 +2252,81 @@ tr.has-tooltip:active {
     font-size: 1.1rem;
   }
 }
+
+/* ── Offline ── */
+.offline-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-md);
+  background: rgba(217, 119, 6, 0.1);
+  border: 1px solid rgba(217, 119, 6, 0.3);
+  color: var(--amber);
+  font-size: 0.83rem;
+  line-height: 1.35;
+  animation: fadeInUp 0.3s var(--ease);
+}
+.offline-banner .icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+/* Work is safely stored and on its way out — reassurance, not a warning. */
+.offline-banner--waiting {
+  background: rgba(31, 157, 82, 0.09);
+  border-color: rgba(31, 157, 82, 0.28);
+  color: var(--pitch-dark);
+}
+
+/* ── First-run wizard ── */
+.onboarding-screen:not([hidden]) {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background:
+    radial-gradient(circle at 15% 10%, rgba(31, 157, 82, 0.1), transparent 45%),
+    radial-gradient(circle at 85% 90%, rgba(217, 119, 6, 0.09), transparent 45%),
+    var(--bg);
+}
+.onboarding-card {
+  width: 100%;
+  max-width: 460px;
+}
+.onboarding-progress {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+.onboarding-dot {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--hairline);
+  transition: background 0.25s var(--ease);
+}
+.onboarding-dot--active {
+  background: var(--pitch);
+}
+.onboarding-step h2 {
+  margin-top: 0;
+}
+.onboarding-step > .muted {
+  margin-bottom: 16px;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+.onboarding-list {
+  margin: 0 0 14px;
+  padding-left: 18px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.onboarding-list li {
+  margin-bottom: 8px;
+}
+.onboarding-list strong {
+  color: var(--pitch-dark);
+}
