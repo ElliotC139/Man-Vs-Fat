@@ -167,7 +167,10 @@
           <div id="week-net-summary" class="week-net-summary" hidden></div>
           <div id="daily-totals" class="day-totals"></div>
           <p id="pending-note" class="error" hidden></p>
-          <a id="export-pdf" class="button-link" href="/api/match-weeks/current/report.pdf">Export PDF</a>
+          <div class="summary-actions">
+            <button type="button" id="open-review-btn" class="ghost-sm">Weekly review</button>
+            <a id="export-pdf" class="button-link" href="/api/match-weeks/current/report.pdf">Export PDF</a>
+          </div>
         </section>
 
         <section id="budget-widget" class="card budget-widget" hidden>
@@ -303,6 +306,71 @@
       </div>
     </div>
 
+    <div id="review-screen" hidden>
+      <header class="banner">
+        <button id="review-back" type="button" class="library-back" aria-label="Back">
+          <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <h1 class="brand"><img src="/icons/mark.png" alt="" class="brand-mark" width="24" height="24" /><span class="brand-word">Weekly Review</span></h1>
+        <nav class="desktop-nav" aria-label="Main">
+          <button type="button" class="desktop-nav-btn" data-nav="diary">Diary</button>
+          <button type="button" class="desktop-nav-btn" data-nav="food-library">Food Library</button>
+          <button type="button" class="desktop-nav-btn" data-nav="stats">Stats</button>
+          <button type="button" class="desktop-nav-btn" data-nav="settings">Settings</button>
+        </nav>
+      </header>
+
+      <main>
+        <p id="review-range" class="muted review-range"></p>
+
+        <section class="card">
+          <div class="balance-grid">
+            <div class="balance-cell balance-cell--accent">
+              <span id="review-total" class="balance-number">—</span>
+              <span class="balance-caption">kcal logged</span>
+            </div>
+            <div class="balance-cell">
+              <span id="review-average" class="balance-number">—</span>
+              <span class="balance-caption">kcal/day avg</span>
+            </div>
+            <div class="balance-cell">
+              <span id="review-days" class="balance-number">—</span>
+              <span class="balance-caption">days logged</span>
+            </div>
+            <div class="balance-cell">
+              <span id="review-exercise" class="balance-number">—</span>
+              <span class="balance-caption">kcal exercise</span>
+            </div>
+          </div>
+          <p id="review-comparison" class="muted review-comparison" hidden></p>
+        </section>
+
+        <section id="review-highlights-card" class="card" hidden>
+          <h2>This week's shape</h2>
+          <div id="review-highlights"></div>
+        </section>
+
+        <section id="review-insights-card" class="card" hidden>
+          <h2>Your review</h2>
+          <div id="review-insights"></div>
+        </section>
+
+        <section id="review-generate-card" class="card">
+          <p id="review-generate-note" class="muted">
+            A written review of the week — what went well, what slipped, and what you probably
+            didn't notice — read from what you actually logged.
+          </p>
+          <button type="button" id="review-generate-btn">Write my review</button>
+          <p id="review-error" class="error" hidden></p>
+        </section>
+
+        <section class="card">
+          <p class="muted">Prefer it as a file? The PDF has the same review plus the full diary.</p>
+          <a id="review-pdf-link" class="button-link" href="/api/match-weeks/current/report.pdf">Export PDF</a>
+        </section>
+      </main>
+    </div>
+
     <div id="settings-screen" hidden>
       <header class="banner">
         <button id="settings-back" type="button" class="library-back" aria-label="Back">
@@ -399,6 +467,16 @@
             <p id="whoop-unconfigured-note" class="muted" hidden>
               WHOOP isn't set up on this server yet.
             </p>
+          </fieldset>
+
+          <fieldset class="settings-fieldset">
+            <legend>Appearance</legend>
+            <span class="field-label">Theme</span>
+            <div class="meal-kind-btns">
+              <button type="button" id="theme-system" class="meal-kind-btn meal-kind-btn--active">System</button>
+              <button type="button" id="theme-light" class="meal-kind-btn">Light</button>
+              <button type="button" id="theme-dark" class="meal-kind-btn">Dark</button>
+            </div>
           </fieldset>
 
           <fieldset class="settings-fieldset">

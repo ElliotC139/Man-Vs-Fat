@@ -10,9 +10,10 @@ import {
   weightedDaysLogged,
 } from "../matchWeek";
 import { generateMatchWeekReport } from "../pdf/generateReport";
-import { generateWeekInsights } from "../insights";
+import { getWeekInsights, previousWeekNumbers } from "../weekReview";
 import { uploadReportToDrive } from "../drive/uploadToDrive";
 import { getWhoopWeekBudget } from "../whoop/sync";
+import { normalizeLabel } from "./foods";
 
 export const matchWeeksRouter = Router();
 matchWeeksRouter.use(requireAuth);
@@ -102,6 +103,102 @@ matchWeeksRouter.get("/current", async (req, res) => {
   });
 });
 
+/**
+ * The same end-of-week review the PDF carries, as JSON, so it can be read in
+ * the app without downloading a file. `refresh=1` forces a regeneration of a
+ * week still in progress; without it a cached review is served as-is.
+ */
+matchWeeksRouter.get("/current/review", async (req, res) => {
+  const weeksAgo = parseWeeksAgo(req.query.weeksAgo);
+  const weekStart = await getUserWeekStart(req.userId!);
+  const { start, end } = getMatchWeekBoundariesForWeeksAgo(new Date(), weeksAgo, config.TIMEZONE, weekStart);
+
+  const week = await prisma.matchWeek.findUnique({
+    where: { userId_startsAt_endsAt: { userId: req.userId!, startsAt: start, endsAt: end } },
+    include: { entries: { orderBy: { timestamp: "asc" } }, exercises: true },
+  });
+
+  if (!week || week.entries.length === 0) {
+    res.json({
+      startsAt: start.toISOString(),
+      endsAt: end.toISOString(),
+      totalKcal: 0,
+      dailyAverage: 0,
+      daysLogged: 0,
+      exerciseTotalKcal: 0,
+      topFoods: [],
+      busiestDay: null,
+      insights: null,
+      previousWeek: null,
+      weekIsOver: end.getTime() <= Date.now(),
+    });
+    return;
+  }
+
+  const { totalKcal, exerciseTotalKcal, daysLogged, dailyAverage } = summarize(
+    start,
+    week.entries,
+    week.exercises ?? [],
+  );
+
+  // The model call is skipped unless asked for, so opening the review is
+  // instant and the user decides when to spend one.
+  const insights = await getWeekInsights(week, {
+    entries: week.entries,
+    totalKcal,
+    dailyAverage,
+    daysLogged,
+    cachedOnly: req.query.refresh !== "1",
+  });
+
+  res.json({
+    startsAt: start.toISOString(),
+    endsAt: end.toISOString(),
+    totalKcal,
+    dailyAverage,
+    daysLogged,
+    exerciseTotalKcal,
+    topFoods: topFoodsOf(week.entries),
+    busiestDay: busiestDayOf(week.entries),
+    insights,
+    previousWeek: await previousWeekNumbers(req.userId!, start),
+    weekIsOver: end.getTime() <= Date.now(),
+  });
+});
+
+/** The three foods logged most often, with what they cost across the week. */
+function topFoodsOf(entries: { label: string; kcal: number | null }[]) {
+  const byKey = new Map<string, { label: string; count: number; totalKcal: number }>();
+  for (const entry of entries) {
+    const key = normalizeLabel(entry.label);
+    if (!key) continue;
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.count += 1;
+      existing.totalKcal += entry.kcal ?? 0;
+    } else {
+      byKey.set(key, { label: entry.label.trim(), count: 1, totalKcal: entry.kcal ?? 0 });
+    }
+  }
+  return Array.from(byKey.values())
+    .sort((a, b) => b.count - a.count || b.totalKcal - a.totalKcal)
+    .slice(0, 3);
+}
+
+/** The heaviest day of the week, which is usually the one worth talking about. */
+function busiestDayOf(entries: { kcal: number | null; timestamp: Date }[]) {
+  const byDay = new Map<string, number>();
+  for (const entry of entries) {
+    const key = localDayKey(entry.timestamp, config.TIMEZONE);
+    byDay.set(key, (byDay.get(key) ?? 0) + (entry.kcal ?? 0));
+  }
+  let best: { date: string; kcal: number } | null = null;
+  for (const [date, kcal] of byDay) {
+    if (!best || kcal > best.kcal) best = { date, kcal };
+  }
+  return best;
+}
+
 matchWeeksRouter.get("/current/report.pdf", async (req, res) => {
   const weeksAgo = parseWeeksAgo(req.query.weeksAgo);
   const weekStart = await getUserWeekStart(req.userId!);
@@ -123,17 +220,18 @@ matchWeeksRouter.get("/current/report.pdf", async (req, res) => {
     reportGeneratedAt: null,
     reportDriveFileId: null,
     reportDriveUrl: null,
+    insightsJson: null,
+    insightsAt: null,
     entries: [],
   };
 
   try {
     const { totalKcal, daysLogged, dailyAverage } = summarize(start, weekForPdf.entries, []);
-    const insights = await generateWeekInsights({
+    const insights = await getWeekInsights(weekForPdf, {
       entries: weekForPdf.entries,
       totalKcal,
       dailyAverage,
       daysLogged,
-      timeZone: config.TIMEZONE,
     });
     const pdfBuffer = await generateMatchWeekReport(weekForPdf, config.TIMEZONE, insights);
     const fileName = `${localDayKey(start, config.TIMEZONE)}.pdf`;
@@ -156,12 +254,11 @@ matchWeeksRouter.post("/:id/generate-report", async (req, res) => {
 
   try {
     const { totalKcal, daysLogged, dailyAverage } = summarize(week.startsAt, week.entries, week.exercises ?? []);
-    const insights = await generateWeekInsights({
+    const insights = await getWeekInsights(week, {
       entries: week.entries,
       totalKcal,
       dailyAverage,
       daysLogged,
-      timeZone: config.TIMEZONE,
     });
     const pdfBuffer = await generateMatchWeekReport(week, config.TIMEZONE, insights);
     const fileName = `${localDayKey(week.startsAt, config.TIMEZONE)}.pdf`;

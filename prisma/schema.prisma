@@ -169,6 +169,15 @@ model MatchWeek {
   reportGeneratedAt DateTime?
   reportDriveFileId String?
   reportDriveUrl    String?
+  // The AI end-of-week review, as the JSON that src/insights.ts produces.
+  // Cached here because generating it costs a model call: the in-app review
+  // and the PDF are the same four sections, and re-deriving them on every
+  // view would bill for the same paragraphs repeatedly.
+  insightsJson      String?
+  // When the cached review was generated, so a week still being logged can
+  // have a stale review refreshed rather than being stuck with the version
+  // written after its first two entries.
+  insightsAt        DateTime?
   entries           Entry[]
   exercises         Exercise[]
 
