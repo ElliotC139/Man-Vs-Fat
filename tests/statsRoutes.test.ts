@@ -171,7 +171,6 @@ interface SummaryResponse {
   avgKcalPerDay: number | null;
   weightPace: { kgPerWeek: number; goalKgPerWeek: number; onTrack: boolean } | null;
   weightTrend: { kgPerWeek: number; projectedWeightKg4wk: number } | null;
-  loggingStreakDays: number;
 }
 
 async function fetchSummary(cookie: string): Promise<SummaryResponse> {
@@ -243,26 +242,6 @@ describe("GET /api/stats/summary", () => {
     expect(body.weightPace!.onTrack).toBe(false);
   });
 
-  it("counts a logging streak of consecutive days, allowing today to be unlogged so far", async () => {
-    const { cookie, userId } = await signUp("alice");
-    state.entries.push(
-      { userId, timestamp: daysAgo(1), kcal: 500 },
-      { userId, timestamp: daysAgo(2), kcal: 500 },
-      { userId, timestamp: daysAgo(3), kcal: 500 },
-      { userId, timestamp: daysAgo(5), kcal: 500 }, // breaks the streak — gap at day 4
-    );
-
-    const body = await fetchSummary(cookie);
-    expect(body.loggingStreakDays).toBe(3);
-  });
-
-  it("returns a streak of 0 when neither today nor yesterday was logged", async () => {
-    const { cookie, userId } = await signUp("alice");
-    state.entries.push({ userId, timestamp: daysAgo(5), kcal: 500 });
-
-    const body = await fetchSummary(cookie);
-    expect(body.loggingStreakDays).toBe(0);
-  });
 
   it("returns a weightTrend independent of whether a weekly goal is set", async () => {
     const { cookie, userId } = await signUp("alice");

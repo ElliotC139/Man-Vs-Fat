@@ -113,7 +113,6 @@ const statRecovery = document.getElementById("stat-recovery");
 const statSleep = document.getElementById("stat-sleep");
 const whoopStatsAvg = document.getElementById("whoop-stats-avg");
 const statAvgKcal = document.getElementById("stat-avg-kcal");
-const statStreak = document.getElementById("stat-streak");
 const insightsCard = document.getElementById("insights-card");
 const insightsList = document.getElementById("insights-list");
 const balanceTrendCard = document.getElementById("balance-trend-card");
@@ -1772,14 +1771,12 @@ async function loadStatsSummary() {
     renderStatsSummary(await res.json());
   } catch {
     statAvgKcal.textContent = "—";
-    statStreak.textContent = "—";
     weighinPaceCell.hidden = true;
   }
 }
 
 function renderStatsSummary(data) {
   statAvgKcal.textContent = data.avgKcalPerDay !== null && data.avgKcalPerDay !== undefined ? String(data.avgKcalPerDay) : "—";
-  statStreak.textContent = String(data.loggingStreakDays ?? 0);
 
   if (data.weightPace) {
     const { kgPerWeek, onTrack } = data.weightPace;
@@ -1813,6 +1810,7 @@ let activeTooltipTarget = null;
 
 function hideTooltip() {
   if (activeTooltipEl) activeTooltipEl.remove();
+  if (activeTooltipTarget) activeTooltipTarget.classList.remove("tooltip-active");
   activeTooltipEl = null;
   activeTooltipTarget = null;
 }
@@ -1824,15 +1822,28 @@ function showTooltip(target) {
   document.body.appendChild(tip);
 
   const rect = target.getBoundingClientRect();
-  tip.style.top = `${rect.bottom + 6}px`;
-  tip.style.left = `${rect.left + rect.width / 2}px`;
-
   const tipRect = tip.getBoundingClientRect();
-  const overflowRight = tipRect.right - (window.innerWidth - 4);
-  const overflowLeft = 4 - tipRect.left;
-  if (overflowRight > 0) tip.style.left = `${rect.left + rect.width / 2 - overflowRight}px`;
-  else if (overflowLeft > 0) tip.style.left = `${rect.left + rect.width / 2 + overflowLeft}px`;
+  const anchorX = rect.left + rect.width / 2;
 
+  // Prefer sitting above the point (so the tooltip never covers the data
+  // you just tapped), flipping below only when there isn't room.
+  let top = rect.top - tipRect.height - 10;
+  let placement = "top";
+  if (top < 8) {
+    top = rect.bottom + 10;
+    placement = "bottom";
+  }
+  tip.classList.add(`app-tooltip--${placement}`);
+  tip.style.top = `${top}px`;
+
+  // Keep the box on screen, then slide the caret back the other way by
+  // however far the box had to move, so it still points at the point.
+  const half = tipRect.width / 2;
+  const clampedX = Math.min(Math.max(anchorX, half + 8), window.innerWidth - half - 8);
+  tip.style.left = `${clampedX}px`;
+  tip.style.setProperty("--caret-offset", `${anchorX - clampedX}px`);
+
+  target.classList.add("tooltip-active");
   activeTooltipEl = tip;
   activeTooltipTarget = target;
 }
@@ -1965,39 +1976,64 @@ function renderBalanceTrend(data, animate = true) {
   const xFor = (i) => padLeft + (i / (plotDays.length - 1)) * (w - padLeft - padRight);
   const yFor = (v) => h - padY - ((v - min) / range) * (h - padY * 2);
 
-  function pathFor(field) {
+  const animateCls = animate ? " chart-animate" : "";
+
+  function seriesPoints(field) {
     const pts = [];
     plotDays.forEach((d, i) => {
       if (d[field] === null) return;
-      pts.push({ x: xFor(i), y: yFor(d[field]) });
+      pts.push({ x: xFor(i), y: yFor(d[field]), day: d });
     });
-    return smoothPathD(pts);
+    return pts;
   }
+  const inPoints = seriesPoints("kcalIn");
+  const outPoints = seriesPoints("kcalOut");
 
-  const gridlines =
-    `<line x1="${padLeft}" y1="${yFor(max).toFixed(1)}" x2="${w - padRight}" y2="${yFor(max).toFixed(1)}" class="weighin-chart-grid" />` +
-    `<line x1="${padLeft}" y1="${yFor(min).toFixed(1)}" x2="${w - padRight}" y2="${yFor(min).toFixed(1)}" class="weighin-chart-grid" />`;
-  const labels =
-    `<text x="0" y="${(yFor(max) + 3).toFixed(1)}" class="weighin-chart-label">${Math.round(max)}</text>` +
-    `<text x="0" y="${(yFor(min) + 3).toFixed(1)}" class="weighin-chart-label">${Math.round(min)}</text>`;
+  const midValue = (min + max) / 2;
+  const gridlines = [max, midValue, min]
+    .map(
+      (v) =>
+        `<line x1="${padLeft}" y1="${yFor(v).toFixed(1)}" x2="${w - padRight}" y2="${yFor(v).toFixed(1)}" class="weighin-chart-grid" />`,
+    )
+    .join("");
+  const labels = [max, midValue, min]
+    .map(
+      (v) =>
+        `<text x="0" y="${(yFor(v) + 3).toFixed(1)}" class="weighin-chart-label">${Math.round(v).toLocaleString()}</text>`,
+    )
+    .join("");
 
-  const pointMarkers = plotDays
-    .map((d, i) => {
-      const ys = [d.kcalIn, d.kcalOut].filter((v) => v !== null).map((v) => yFor(v));
-      if (ys.length === 0) return "";
-      const y = ys.reduce((a, b) => a + b, 0) / ys.length;
-      return (
-        `<circle cx="${xFor(i).toFixed(1)}" cy="${y.toFixed(1)}" r="7" class="balance-trend-point has-tooltip" ` +
-        `tabindex="0" data-tooltip="${escapeAttr(balancePointTooltip(d))}" />`
-      );
-    })
+  const dots = (pts, cls) => {
+    const spec = dotSpecFor(pts.length);
+    return pts
+      .map(
+        (p, i) =>
+          `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${spec.r}" class="chart-dot ${cls}${spec.cls}${animateCls}"` +
+          ` style="animation-delay:${(i * 10).toFixed(0)}ms" />`,
+      )
+      .join("");
+  };
+
+  // Tap targets sit on each real data point (not, as before, at the
+  // midpoint between the two lines — which put the marker in empty space
+  // between them and made the tooltip look unrelated to either value).
+  // Both series show the same combined figures, so tapping either line's
+  // dot for a given day reads the same, anchored where you actually tapped.
+  const hitTargets = [...inPoints, ...outPoints]
+    .map(
+      (p) =>
+        `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="9" class="chart-hit has-tooltip"` +
+        ` tabindex="0" data-tooltip="${escapeAttr(balancePointTooltip(p.day))}" />`,
+    )
     .join("");
 
   balanceTrendChart.innerHTML =
     `${gridlines}${labels}` +
-    `<path d="${pathFor("kcalIn")}" class="balance-trend-line balance-trend-line--in chart-draw" />` +
-    `<path d="${pathFor("kcalOut")}" class="balance-trend-line balance-trend-line--out chart-draw" />` +
-    pointMarkers;
+    `<path d="${smoothPathD(inPoints)}" class="balance-trend-line balance-trend-line--in chart-draw" />` +
+    `<path d="${smoothPathD(outPoints)}" class="balance-trend-line balance-trend-line--out chart-draw" />` +
+    dots(inPoints, "chart-dot--in") +
+    dots(outPoints, "chart-dot--out") +
+    hitTargets;
 
   if (animate) animateChartIn(balanceTrendChart);
   // Reads the latest cached data at resize time (not the `data` this
@@ -2148,25 +2184,76 @@ function watchChartResize(svgEl, render) {
   chartResizeObservers.set(svgEl, ro);
 }
 
-/** A smooth cubic-bezier curve through every point (Catmull-Rom-derived control points), as an SVG path `d` string. */
+/**
+ * A smooth curve through every point, as an SVG path `d` string, using
+ * monotone cubic interpolation (Fritsch–Carlson).
+ *
+ * The obvious choice here is a Catmull-Rom spline, but its control points
+ * are derived from the *neighbouring* points, so around a peak or trough
+ * the curve bulges past the data — a line whose highest value is the top
+ * gridline visibly arcs above that gridline, and past its own axis label.
+ * That reads as the chart being misaligned with its own labels. Monotone
+ * interpolation damps the tangent at every local extreme instead, so the
+ * curve is guaranteed to stay within the data's own min/max.
+ */
 function smoothPathD(points) {
-  if (points.length === 0) return "";
-  if (points.length < 3) {
+  const n = points.length;
+  if (n === 0) return "";
+  if (n < 3) {
     return points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
   }
+
+  // Secant slope of each segment.
+  const dx = [];
+  const slope = [];
+  for (let i = 0; i < n - 1; i++) {
+    dx[i] = points[i + 1].x - points[i].x;
+    slope[i] = dx[i] === 0 ? 0 : (points[i + 1].y - points[i].y) / dx[i];
+  }
+
+  // Tangent at each point: the average of its two neighbouring slopes,
+  // but flattened to 0 wherever the direction reverses (a local peak or
+  // trough) — that flattening is what prevents the overshoot.
+  const m = [slope[0]];
+  for (let i = 1; i < n - 1; i++) {
+    m[i] = slope[i - 1] * slope[i] <= 0 ? 0 : (slope[i - 1] + slope[i]) / 2;
+  }
+  m[n - 1] = slope[n - 2];
+
+  // Fritsch–Carlson damping: keeps each segment monotone even where the
+  // averaged tangent above would still be too steep for the segment.
+  for (let i = 0; i < n - 1; i++) {
+    if (slope[i] === 0) {
+      m[i] = 0;
+      m[i + 1] = 0;
+      continue;
+    }
+    const a = m[i] / slope[i];
+    const b = m[i + 1] / slope[i];
+    const s = a * a + b * b;
+    if (s > 9) {
+      const tau = 3 / Math.sqrt(s);
+      m[i] = tau * a * slope[i];
+      m[i + 1] = tau * b * slope[i];
+    }
+  }
+
   let d = `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[i - 1] ?? points[i];
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const p3 = points[i + 2] ?? p2;
-    const c1x = p1.x + (p2.x - p0.x) / 6;
-    const c1y = p1.y + (p2.y - p0.y) / 6;
-    const c2x = p2.x - (p3.x - p1.x) / 6;
-    const c2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const c1x = points[i].x + dx[i] / 3;
+    const c1y = points[i].y + (m[i] * dx[i]) / 3;
+    const c2x = points[i + 1].x - dx[i] / 3;
+    const c2y = points[i + 1].y - (m[i + 1] * dx[i]) / 3;
+    d +=
+      ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)}` +
+      ` ${points[i + 1].x.toFixed(1)},${points[i + 1].y.toFixed(1)}`;
   }
   return d;
+}
+
+/** Marker radius/treatment for a series of `count` points — see .chart-dot--dense. */
+function dotSpecFor(count) {
+  return count > 16 ? { r: 2, cls: " chart-dot--dense" } : { r: 3, cls: "" };
 }
 
 /** Draws every `.chart-draw` path on in, left to right, instead of popping in fully formed. */
@@ -2183,6 +2270,16 @@ function animateChartIn(svgEl) {
       path.style.strokeDashoffset = "0";
     });
   });
+}
+
+function weighinPointTooltip(entry) {
+  const index = weighIns.indexOf(entry);
+  const prev = index > 0 ? weighIns[index - 1] : null;
+  const label = `${dateFmt.format(new Date(`${entry.date}T00:00:00`))}: ${kgToDisplay(entry.weightKg)} ${weightUnit()}`;
+  if (!prev) return label;
+  const deltaKg = entry.weightKg - prev.weightKg;
+  const sign = deltaKg <= 0 ? "−" : "+";
+  return `${label} · ${sign}${kgToDisplay(Math.abs(deltaKg))} ${weightUnit()}`;
 }
 
 function renderWeighinChart(animate = true) {
@@ -2213,21 +2310,33 @@ function renderWeighinChart(animate = true) {
   const animateCls = animate ? " chart-animate" : "";
   const gradientId = "weighin-area-gradient";
   const areaD = `${smoothPathD(points)} L${points[points.length - 1].x.toFixed(1)},${(h - padY).toFixed(1)} L${points[0].x.toFixed(1)},${(h - padY).toFixed(1)} Z`;
+  const dotSpec = dotSpecFor(points.length);
   const circles = points
     .map(
       (p, i) =>
-        `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" class="chart-point weighin-chart-point${animateCls}" style="animation-delay:${(i * 12).toFixed(0)}ms" />`,
+        `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${dotSpec.r}" class="chart-dot chart-dot--weight${dotSpec.cls}${animateCls}" style="animation-delay:${(i * 10).toFixed(0)}ms" />`,
+    )
+    .join("");
+  const hitTargets = points
+    .map(
+      (p, i) =>
+        `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="9" class="chart-hit has-tooltip"` +
+        ` tabindex="0" data-tooltip="${escapeAttr(weighinPointTooltip(weighIns[i]))}" />`,
     )
     .join("");
 
-  const maxY = yFor(max);
-  const minY = yFor(min);
-  const gridlines =
-    `<line x1="${padLeft}" y1="${maxY.toFixed(1)}" x2="${w - padRight}" y2="${maxY.toFixed(1)}" class="weighin-chart-grid" />` +
-    `<line x1="${padLeft}" y1="${minY.toFixed(1)}" x2="${w - padRight}" y2="${minY.toFixed(1)}" class="weighin-chart-grid" />`;
-  const labels =
-    `<text x="0" y="${(maxY + 3).toFixed(1)}" class="weighin-chart-label">${kgToDisplay(max)}${weightUnit()}</text>` +
-    `<text x="0" y="${(minY + 3).toFixed(1)}" class="weighin-chart-label">${kgToDisplay(min)}${weightUnit()}</text>`;
+  const midKg = (min + max) / 2;
+  const gridlines = [max, midKg, min]
+    .map(
+      (v) =>
+        `<line x1="${padLeft}" y1="${yFor(v).toFixed(1)}" x2="${w - padRight}" y2="${yFor(v).toFixed(1)}" class="weighin-chart-grid" />`,
+    )
+    .join("");
+  const labels = [max, midKg, min]
+    .map(
+      (v) => `<text x="0" y="${(yFor(v) + 3).toFixed(1)}" class="weighin-chart-label">${kgToDisplay(v)}${weightUnit()}</text>`,
+    )
+    .join("");
 
   // Trailing 7-calendar-day moving average, smoothing out day-to-day noise
   // in the raw line above. Only drawn once there's enough history to differ
@@ -2251,7 +2360,8 @@ function renderWeighinChart(animate = true) {
     `<path d="${areaD}" fill="url(#${gradientId})" class="chart-area${animateCls}" />` +
     `${movingAvgLine}` +
     `<path d="${smoothPathD(points)}" class="weighin-chart-line chart-draw" />` +
-    circles;
+    circles +
+    hitTargets;
 
   if (animate) animateChartIn(weighinChart);
   // animate:false — see the matching comment in renderBalanceTrend.

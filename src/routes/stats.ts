@@ -66,40 +66,12 @@ function computeWeightTrend(weighIns: { date: string; weightKg: number }[]): Wei
   return { kgPerWeek, latestWeightKg: last.weightKg, projectedWeightKg4wk };
 }
 
-/** Consecutive days (ending today or yesterday) with at least one food entry logged. */
-async function loggingStreak(userId: number): Promise<number> {
-  const entries = await prisma.entry.findMany({
-    where: { matchWeek: { userId } },
-    select: { timestamp: true },
-    orderBy: { timestamp: "desc" },
-  });
-  const loggedDays = new Set(entries.map((e) => localDayKey(e.timestamp, config.TIMEZONE)));
-
-  const today = new Date();
-  let cursor = localDayKey(today, config.TIMEZONE);
-  if (!loggedDays.has(cursor)) {
-    // Today not logged yet — that's fine, check whether the streak is still
-    // alive as of yesterday rather than treating it as already broken.
-    cursor = localDayKey(new Date(today.getTime() - 24 * 60 * 60 * 1000), config.TIMEZONE);
-    if (!loggedDays.has(cursor)) return 0;
-  }
-
-  let streak = 0;
-  let cursorDate = new Date(`${cursor}T12:00:00Z`);
-  while (loggedDays.has(localDayKey(cursorDate, config.TIMEZONE))) {
-    streak += 1;
-    cursorDate = new Date(cursorDate.getTime() - 24 * 60 * 60 * 1000);
-  }
-  return streak;
-}
-
 statsRouter.get("/summary", async (req, res) => {
   const userId = req.userId!;
   const since = localDayKey(new Date(Date.now() - WEIGHT_TREND_WINDOW_DAYS * 24 * 60 * 60 * 1000), config.TIMEZONE);
 
-  const [avgKcal, streak, user, weighIns] = await Promise.all([
+  const [avgKcal, user, weighIns] = await Promise.all([
     avgKcalPerDay(userId),
-    loggingStreak(userId),
     prisma.user.findUnique({ where: { id: userId }, select: { weeklyGoalKg: true } }),
     prisma.weighIn.findMany({ where: { userId, date: { gte: since } }, orderBy: { date: "asc" } }),
   ]);
@@ -118,7 +90,6 @@ statsRouter.get("/summary", async (req, res) => {
     avgKcalPerDay: avgKcal,
     weightPace,
     weightTrend: trend ? { kgPerWeek: trend.kgPerWeek, projectedWeightKg4wk: trend.projectedWeightKg4wk } : null,
-    loggingStreakDays: streak,
   });
 });
 

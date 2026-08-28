@@ -845,6 +845,9 @@ h2::before {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
+.balance-grid--single {
+  grid-template-columns: 1fr;
+}
 .balance-cell {
   text-align: center;
   background: var(--bg);
@@ -1062,7 +1065,7 @@ h2::before {
 /* ── Stats / weigh-ins ── */
 #weighin-chart {
   width: 100%;
-  height: 120px;
+  height: 150px;
   display: block;
 }
 .weighin-chart-line {
@@ -1073,10 +1076,47 @@ h2::before {
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
-.weighin-chart-point {
-  fill: var(--pitch-dark);
+/* Every line chart marks its actual data points, so it reads as measured
+   readings joined by a line rather than an anonymous continuous squiggle.
+   The visible dot is inert; a larger invisible circle on top of it is the
+   tap target, so a fingertip doesn't have to land on a ~3px dot. */
+.chart-dot {
+  pointer-events: none;
   stroke: var(--card);
-  stroke-width: 1.5;
+  stroke-width: 1.4;
+}
+/* Once points are packed tightly (a 30-day daily view), the card-coloured
+   ring around each one punches through the line between them and the
+   series reads as a dashed bead chain rather than a line with markers.
+   Dense series drop the ring and shrink, so the points still read as
+   discrete readings without breaking the line they sit on. */
+.chart-dot--dense {
+  stroke: none;
+}
+.chart-dot--weight {
+  fill: var(--pitch-dark);
+}
+.chart-dot--in {
+  fill: var(--pitch);
+}
+.chart-dot--out {
+  fill: var(--amber);
+}
+.chart-hit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: pointer;
+  transition: fill 0.12s var(--ease);
+}
+/* The browser's default focus ring on an SVG circle draws as a hard black
+   rectangle over the chart. The active/focus fill below is the affordance
+   instead — a soft round halo that actually follows the marker's shape. */
+.chart-hit:focus {
+  outline: none;
+}
+.chart-hit.tooltip-active,
+.chart-hit:focus-visible {
+  fill: rgba(20, 30, 24, 0.13);
 }
 .weighin-chart-grid {
   stroke: var(--hairline);
@@ -1095,11 +1135,11 @@ h2::before {
   opacity: 0;
   animation: chart-fade 0.5s var(--ease) 0.35s forwards;
 }
-.chart-point {
+.chart-dot {
   transform-box: fill-box;
   transform-origin: center;
 }
-.chart-point.chart-animate {
+.chart-dot.chart-animate {
   opacity: 0;
   animation: chart-point-in 0.35s var(--spring) 0.4s forwards;
 }
@@ -1269,7 +1309,8 @@ tr.has-tooltip:active {
   position: fixed;
   z-index: 100;
   transform: translateX(-50%);
-  max-width: 240px;
+  max-width: 260px;
+  width: max-content;
   background: var(--ink);
   color: #fff;
   font-size: 0.78rem;
@@ -1280,6 +1321,24 @@ tr.has-tooltip:active {
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
   pointer-events: none;
   animation: tooltip-in 0.12s ease-out;
+}
+/* Caret pointing back at the tapped point. --caret-offset is set in JS to
+   however far the box had to slide to stay on screen, so the caret keeps
+   pointing at the point even when the box itself is nudged sideways. */
+.app-tooltip::after {
+  content: "";
+  position: absolute;
+  left: calc(50% + var(--caret-offset, 0px));
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+}
+.app-tooltip--top::after {
+  top: 100%;
+  border-top-color: var(--ink);
+}
+.app-tooltip--bottom::after {
+  bottom: 100%;
+  border-bottom-color: var(--ink);
 }
 @keyframes tooltip-in {
   from {
@@ -1293,7 +1352,7 @@ tr.has-tooltip:active {
 }
 #balance-trend-chart {
   width: 100%;
-  height: 120px;
+  height: 150px;
   display: block;
 }
 .balance-trend-line {
@@ -1308,11 +1367,6 @@ tr.has-tooltip:active {
 }
 .balance-trend-line--out {
   stroke: var(--amber);
-}
-.balance-trend-point {
-  fill: transparent;
-  pointer-events: all;
-  cursor: pointer;
 }
 #balance-trend-caption {
   margin: 10px 6px 0;
