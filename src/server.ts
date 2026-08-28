@@ -6,6 +6,7 @@ import { config } from "./config";
 import { ensureUploadsDir, UPLOADS_DIR } from "./lib/storage";
 import { ensureSessionSecret } from "./auth";
 import { authRouter } from "./routes/auth";
+import { dataRouter } from "./routes/dataExport";
 import { entriesRouter } from "./routes/entries";
 import { exercisesRouter } from "./routes/exercises";
 import { foodsRouter } from "./routes/foods";
@@ -26,6 +27,7 @@ app.use("/uploads", express.static(UPLOADS_DIR));
 app.use(express.static(path.join(process.cwd(), "public")));
 
 app.use("/api/auth", authRouter);
+app.use("/api/data", dataRouter);
 app.use("/api/entries", entriesRouter);
 app.use("/api/exercises", exercisesRouter);
 app.use("/api/foods", foodsRouter);

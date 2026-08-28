@@ -125,6 +125,7 @@ describe("POST /api/auth/signup", () => {
       ageYears: null,
       activityLevel: null,
       weeklyGoalKg: null,
+      goalWeightKg: null,
     });
     expect(sessionCookieFrom(res)).toMatch(/^session=/);
   });

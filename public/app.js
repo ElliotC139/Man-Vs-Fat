@@ -49,6 +49,8 @@ const goalLabel = document.getElementById("goal-label");
 const settingsAge = document.getElementById("settings-age");
 const settingsActivity = document.getElementById("settings-activity");
 const settingsGoal = document.getElementById("settings-goal");
+const settingsGoalWeight = document.getElementById("settings-goal-weight");
+const goalWeightLabel = document.getElementById("goal-weight-label");
 const unitsMetricBtn = document.getElementById("units-metric");
 const unitsImperialBtn = document.getElementById("units-imperial");
 const settingsSave = document.getElementById("settings-save");
@@ -124,6 +126,22 @@ const breakdownWeightBody = document.getElementById("breakdown-weight-body");
 const breakdownCaloriesCard = document.getElementById("breakdown-calories-card");
 const breakdownCaloriesBody = document.getElementById("breakdown-calories-body");
 const breakdownRecoveryCard = document.getElementById("breakdown-recovery-card");
+const trendHero = document.getElementById("trend-hero");
+const trendWeightEl = document.getElementById("trend-weight");
+const trendHeroNote = document.getElementById("trend-hero-note");
+const goalProgress = document.getElementById("goal-progress");
+const goalProgressLabel = document.getElementById("goal-progress-label");
+const goalProgressEta = document.getElementById("goal-progress-eta");
+const goalProgressFill = document.getElementById("goal-progress-fill");
+const tdeeCard = document.getElementById("tdee-card");
+const tdeeValue = document.getElementById("tdee-value");
+const tdeeConfidence = document.getElementById("tdee-confidence");
+const tdeeExplain = document.getElementById("tdee-explain");
+const tdeeUnderlogging = document.getElementById("tdee-underlogging");
+const tdeePendingCard = document.getElementById("tdee-pending-card");
+const tdeePendingText = document.getElementById("tdee-pending-text");
+const importFile = document.getElementById("import-file");
+const importStatus = document.getElementById("import-status");
 const breakdownRecoveryBody = document.getElementById("breakdown-recovery-body");
 const statsTabBtns = document.querySelectorAll(".stats-tab-btn");
 const statsTabPanels = {
@@ -735,6 +753,8 @@ settingsSave.addEventListener("click", async () => {
     const activityVal = settingsActivity.value || null;
     const rawGoal = settingsGoal.value ? Number(settingsGoal.value) : null;
     const goalVal = rawGoal === null ? null : useImperial ? +(rawGoal / 2.20462).toFixed(3) : rawGoal;
+    const rawGoalWeight = settingsGoalWeight.value ? Number(settingsGoalWeight.value) : null;
+    const goalWeightVal = rawGoalWeight === null ? null : useImperial ? +(rawGoalWeight / 2.20462).toFixed(2) : rawGoalWeight;
     const res = await fetch("/api/auth/me", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -747,6 +767,7 @@ settingsSave.addEventListener("click", async () => {
         ageYears: ageVal,
         activityLevel: activityVal,
         weeklyGoalKg: goalVal,
+        goalWeightKg: goalWeightVal,
       }),
     });
     const body = await res.json().catch(() => ({}));
@@ -797,6 +818,11 @@ function populateSettings(user) {
     settingsGoal.value = useImperial ? +(user.weeklyGoalKg * 2.20462).toFixed(2) : user.weeklyGoalKg;
   } else {
     settingsGoal.value = "";
+  }
+  if (user.goalWeightKg) {
+    settingsGoalWeight.value = useImperial ? +(user.goalWeightKg * 2.20462).toFixed(1) : user.goalWeightKg;
+  } else {
+    settingsGoalWeight.value = "";
   }
 }
 
@@ -1090,6 +1116,10 @@ function applyUnitPreference() {
     goalLabel.textContent = "Target loss (lbs/week)";
     settingsGoal.placeholder = "e.g. 1.0";
     settingsGoal.max = "6";
+    goalWeightLabel.textContent = "Goal weight (lbs)";
+    settingsGoalWeight.placeholder = "e.g. 187";
+    settingsGoalWeight.min = "66";
+    settingsGoalWeight.max = "1540";
     heightCmWrap.hidden = true;
     heightFtWrap.hidden = false;
   } else {
@@ -1102,6 +1132,10 @@ function applyUnitPreference() {
     goalLabel.textContent = "Target loss (kg/week)";
     settingsGoal.placeholder = "e.g. 0.5";
     settingsGoal.max = "3";
+    goalWeightLabel.textContent = "Goal weight (kg)";
+    settingsGoalWeight.placeholder = "e.g. 85";
+    settingsGoalWeight.min = "30";
+    settingsGoalWeight.max = "700";
     heightCmWrap.hidden = false;
     heightFtWrap.hidden = true;
   }
@@ -1650,6 +1684,7 @@ function openStats() {
   loadInsights();
   loadBalanceTrend();
   loadWeeklyBreakdown();
+  loadTdee();
 }
 
 function closeStats() {
@@ -1791,13 +1826,135 @@ function renderStatsSummary(data) {
   }
 
   if (data.weightTrend) {
-    const { kgPerWeek, projectedWeightKg4wk } = data.weightTrend;
+    const { kgPerWeek, projectedWeightKg4wk, trendWeightKg } = data.weightTrend;
     const verb = kgPerWeek <= 0 ? "losing" : "gaining";
     weighinTrendCaption.textContent =
       `At this pace (${verb} ${kgToDisplay(Math.abs(kgPerWeek))} ${weightUnit()}/wk), ` +
       `you'd be around ${kgToDisplay(projectedWeightKg4wk)} ${weightUnit()} in 4 weeks.`;
+
+    // Trend weight leads, because a single day's scale reading swings on
+    // water and food volume and says almost nothing about fat lost.
+    trendHero.hidden = false;
+    trendWeightEl.textContent = `${kgToDisplay(trendWeightKg)} ${weightUnit()}`;
+    const latest = weighIns.length ? weighIns[weighIns.length - 1].weightKg : null;
+    trendHeroNote.textContent =
+      latest === null
+        ? ""
+        : `Smoothed — your scale said ${kgToDisplay(latest)} ${weightUnit()} last time.`;
   } else {
     weighinTrendCaption.textContent = "";
+    trendHero.hidden = true;
+  }
+
+  renderGoalProgress(data.goalProjection);
+}
+
+function renderGoalProgress(projection) {
+  if (!projection) {
+    goalProgress.hidden = true;
+    return;
+  }
+  goalProgress.hidden = false;
+
+  const { goalWeightKg, remainingKg, projectedDate, movingTowardGoal } = projection;
+  const startKg = weighIns.length ? weighIns[0].weightKg : null;
+
+  if (Math.abs(remainingKg) <= 0.05 || remainingKg <= 0) {
+    goalProgressLabel.textContent = `Goal reached — ${kgToDisplay(goalWeightKg)} ${weightUnit()}`;
+    goalProgressEta.textContent = "";
+    goalProgressFill.style.width = "100%";
+    return;
+  }
+
+  goalProgressLabel.textContent = `${kgToDisplay(remainingKg)} ${weightUnit()} to go`;
+  goalProgressEta.textContent = movingTowardGoal && projectedDate
+    ? dateFmt.format(new Date(`${projectedDate}T00:00:00`))
+    : "no ETA at current pace";
+
+  // Progress is measured from the first weigh-in on record to the goal, so
+  // the bar reflects the whole journey rather than just the recent window.
+  const totalKg = startKg !== null ? startKg - goalWeightKg : null;
+  const pct = totalKg && totalKg > 0 ? Math.max(0, Math.min(100, ((totalKg - remainingKg) / totalKg) * 100)) : 0;
+  goalProgressFill.style.width = `${pct.toFixed(1)}%`;
+}
+
+// ── Data import ──────────────────────────────────────────────────────────
+importFile?.addEventListener("change", async () => {
+  const file = importFile.files?.[0];
+  if (!file) return;
+  importStatus.hidden = false;
+  importStatus.textContent = "Restoring…";
+  try {
+    const payload = JSON.parse(await file.text());
+    const res = await fetch("/api/data/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : "Import failed.");
+    const c = body.imported;
+    importStatus.textContent =
+      `Restored ${c.entries} food ${c.entries === 1 ? "entry" : "entries"}, ${c.weighIns} weigh-ins, ` +
+      `${c.favorites} favourites.` + (c.skipped ? ` ${c.skipped} already present, skipped.` : "");
+    await checkAuth();
+    loadWeek();
+  } catch (error) {
+    importStatus.textContent = error instanceof Error ? error.message : "Couldn't read that file.";
+  } finally {
+    importFile.value = "";
+  }
+});
+
+// ── Adaptive TDEE ────────────────────────────────────────────────────────
+const TDEE_PENDING_COPY = {
+  "no-weigh-ins": "Log a few weigh-ins and keep your food diary going — after about two weeks this works out what you actually burn each day.",
+  "too-few-weigh-ins": "Nearly there — a couple more weigh-ins and this can work out what you actually burn each day.",
+  "too-short-a-span": "Your weigh-ins don't span enough time yet. About two weeks between your first and latest lets this measure your real burn rate.",
+  "not-enough-logging": "There are too many unlogged days in this stretch to work this out reliably. Keep logging and it'll appear.",
+  "no-intake": "No food logged in this period yet — that's the other half of the sum.",
+};
+
+async function loadTdee() {
+  try {
+    const res = await fetch("/api/stats/tdee");
+    if (!res.ok) throw new Error();
+    renderTdee(await res.json());
+  } catch {
+    tdeeCard.hidden = true;
+    tdeePendingCard.hidden = true;
+  }
+}
+
+function renderTdee(data) {
+  if (data.kcalPerDay === null) {
+    tdeeCard.hidden = true;
+    tdeePendingCard.hidden = false;
+    tdeePendingText.textContent = TDEE_PENDING_COPY[data.reason] ?? TDEE_PENDING_COPY["no-weigh-ins"];
+    return;
+  }
+
+  tdeePendingCard.hidden = true;
+  tdeeCard.hidden = false;
+  tdeeValue.textContent = data.kcalPerDay.toLocaleString();
+
+  tdeeConfidence.textContent = `${data.confidence} confidence`;
+  tdeeConfidence.className = `confidence-pill confidence-pill--${data.confidence}`;
+
+  const pct = Math.round(data.completeness * 100);
+  const direction = data.trendChangeKg <= 0 ? "lost" : "gained";
+  tdeeExplain.textContent =
+    `Worked out from what you actually ate and the ${kgToDisplay(Math.abs(data.trendChangeKg))} ${weightUnit()} you ` +
+    `${direction} over ${data.windowDays} days (${pct}% of days logged). This is your real burn rate, not a formula.`;
+
+  if (data.underLoggingKcalPerDay) {
+    tdeeUnderlogging.hidden = false;
+    tdeeUnderlogging.textContent =
+      `WHOOP measures about ${data.whoopKcalPerDay.toLocaleString()} kcal/day burned — ` +
+      `${data.underLoggingKcalPerDay.toLocaleString()} more than your food and weight change imply. ` +
+      `That usually means some food isn't making it into the diary.`;
+  } else {
+    tdeeUnderlogging.hidden = true;
   }
 }
 
