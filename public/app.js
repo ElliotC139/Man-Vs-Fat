@@ -1626,6 +1626,12 @@ function applyWeighinUnitFields() {
 function switchStatsTab(name) {
   for (const [key, panel] of Object.entries(statsTabPanels)) panel.hidden = key !== name;
   statsTabBtns.forEach((btn) => btn.classList.toggle("stats-tab-btn--active", btn.dataset.statsTab === name));
+
+  // A chart in a tab that was hidden has a 0×0 box and can't size or
+  // animate itself correctly — re-render whichever chart just became
+  // visible now that it actually has real layout dimensions.
+  if (name === "weight") renderWeighinChart();
+  if (name === "calories" && balanceTrendRaw) renderBalanceTrend(balanceTrendRaw);
 }
 
 statsTabBtns.forEach((btn) => btn.addEventListener("click", () => switchStatsTab(btn.dataset.statsTab)));
@@ -1932,7 +1938,7 @@ function balancePointTooltip(d) {
   return `${label}: ${inText} · ${outText}`;
 }
 
-function renderBalanceTrend(data) {
+function renderBalanceTrend(data, animate = true) {
   const fullDays = data.days ?? [];
   const plotDays = (balanceGranularity === "weekly" ? bucketWeekly(fullDays) : fullDays.slice(-30)).filter(
     (d) => d.kcalIn !== null || d.kcalOut !== null,
@@ -1944,26 +1950,28 @@ function renderBalanceTrend(data) {
   }
   balanceTrendCard.hidden = false;
 
+  const box = measureChart(balanceTrendChart);
+  if (!box) return; // hidden (e.g. a background Stats tab) — re-rendered when it becomes visible
+  const { w, h } = box;
+
   const allValues = plotDays.flatMap((d) => [d.kcalIn, d.kcalOut]).filter((v) => v !== null);
   const min = Math.min(...allValues);
   const max = Math.max(...allValues, min + 1);
   const range = max - min || 1;
   const padLeft = 42;
-  const padRight = 8;
-  const padY = 14;
-  const w = 300;
-  const h = 120;
+  const padRight = 10;
+  const padY = 16;
 
   const xFor = (i) => padLeft + (i / (plotDays.length - 1)) * (w - padLeft - padRight);
   const yFor = (v) => h - padY - ((v - min) / range) * (h - padY * 2);
 
-  function polylineFor(field) {
+  function pathFor(field) {
     const pts = [];
     plotDays.forEach((d, i) => {
       if (d[field] === null) return;
-      pts.push(`${xFor(i).toFixed(1)},${yFor(d[field]).toFixed(1)}`);
+      pts.push({ x: xFor(i), y: yFor(d[field]) });
     });
-    return pts.join(" ");
+    return smoothPathD(pts);
   }
 
   const gridlines =
@@ -1987,9 +1995,21 @@ function renderBalanceTrend(data) {
 
   balanceTrendChart.innerHTML =
     `${gridlines}${labels}` +
-    `<polyline points="${polylineFor("kcalIn")}" class="balance-trend-line balance-trend-line--in" />` +
-    `<polyline points="${polylineFor("kcalOut")}" class="balance-trend-line balance-trend-line--out" />` +
+    `<path d="${pathFor("kcalIn")}" class="balance-trend-line balance-trend-line--in chart-draw" />` +
+    `<path d="${pathFor("kcalOut")}" class="balance-trend-line balance-trend-line--out chart-draw" />` +
     pointMarkers;
+
+  if (animate) animateChartIn(balanceTrendChart);
+  // Reads the latest cached data at resize time (not the `data` this
+  // particular render was called with) — watchChartResize only attaches
+  // its observer once, so this closure must stay valid across every later
+  // re-render, including ones triggered by a fresh fetch. animate is
+  // false here: a resize (window resize, orientation change, even a
+  // fullscreen-screenshot tool briefly resizing the viewport) should just
+  // redraw the geometry at its new size, not replay the whole draw-in —
+  // hiding a settled chart and redrawing it from scratch mid-resize would
+  // be a jarring flash, not the animation this was meant to add.
+  watchChartResize(balanceTrendChart, () => balanceTrendRaw && renderBalanceTrend(balanceTrendRaw, false));
 
   const recent = fullDays.filter((d) => d.balance !== null).slice(-7);
   if (recent.length) {
@@ -2091,7 +2111,81 @@ function renderWeeklyBreakdown(data) {
   }
 }
 
-function renderWeighinChart() {
+// ── Shared line-chart rendering ─────────────────────────────────────────
+// Used by both the weight trend and calorie balance charts. Two things
+// separate a hand-rolled debug chart from one that reads as a native part
+// of a considered app: the coordinate space actually matching the pixels
+// it's drawn into (rather than a fixed viewBox stretched — and its text
+// and stroke widths distorted — to fill whatever width the card happens
+// to be), and curves instead of straight polyline segments between points.
+
+const chartResizeObservers = new WeakMap();
+
+/** The chart's real rendered size in CSS pixels, or null while hidden (e.g. a background Stats tab — 0×0 until it's shown). */
+function measureChart(svgEl) {
+  const rect = svgEl.getBoundingClientRect();
+  if (rect.width < 1 || rect.height < 1) return null;
+  const w = Math.round(rect.width);
+  const h = Math.round(rect.height);
+  svgEl.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  return { w, h };
+}
+
+/** Re-runs `render` when the chart's container is resized (window resize, breakpoint change, orientation change) — debounced to one call per animation frame. */
+function watchChartResize(svgEl, render) {
+  let existing = chartResizeObservers.get(svgEl);
+  if (existing) return; // already watching this element
+  let pending = false;
+  const ro = new ResizeObserver(() => {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      render();
+    });
+  });
+  ro.observe(svgEl);
+  chartResizeObservers.set(svgEl, ro);
+}
+
+/** A smooth cubic-bezier curve through every point (Catmull-Rom-derived control points), as an SVG path `d` string. */
+function smoothPathD(points) {
+  if (points.length === 0) return "";
+  if (points.length < 3) {
+    return points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  }
+  let d = `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] ?? points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] ?? p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
+/** Draws every `.chart-draw` path on in, left to right, instead of popping in fully formed. */
+function animateChartIn(svgEl) {
+  svgEl.querySelectorAll(".chart-draw").forEach((path) => {
+    const len = path.getTotalLength();
+    if (!len) return;
+    path.style.transition = "none";
+    path.style.strokeDasharray = `${len}`;
+    path.style.strokeDashoffset = `${len}`;
+    path.getBoundingClientRect(); // flush the styles above before re-enabling the transition, so it actually animates
+    path.style.transition = "stroke-dashoffset 0.65s cubic-bezier(0.4, 0, 0.2, 1)";
+    requestAnimationFrame(() => {
+      path.style.strokeDashoffset = "0";
+    });
+  });
+}
+
+function renderWeighinChart(animate = true) {
   if (weighIns.length < 2) {
     weighinChartCard.hidden = true;
     weighinChart.innerHTML = "";
@@ -2099,26 +2193,31 @@ function renderWeighinChart() {
   }
   weighinChartCard.hidden = false;
 
-  const weights = weighIns.map((w) => w.weightKg);
+  const box = measureChart(weighinChart);
+  if (!box) return; // hidden (e.g. a background Stats tab) — re-rendered when it becomes visible
+
+  const { w, h } = box;
+  const weights = weighIns.map((entry) => entry.weightKg);
   const min = Math.min(...weights);
   const max = Math.max(...weights);
   const range = max - min || 1;
-  const padLeft = 38; // room for the min/max value labels
-  const padRight = 8;
-  const padY = 16;
-  const w = 300;
-  const h = 120;
+  const padLeft = 42;
+  const padRight = 10;
+  const padY = 18;
 
   const yFor = (kg) => h - padY - ((kg - min) / range) * (h - padY * 2);
+  const xFor = (i) => padLeft + (i / (weighIns.length - 1)) * (w - padLeft - padRight);
 
-  const points = weighIns.map((entry, i) => ({
-    x: padLeft + (i / (weighIns.length - 1)) * (w - padLeft - padRight),
-    y: yFor(entry.weightKg),
-  }));
+  const points = weighIns.map((entry, i) => ({ x: xFor(i), y: yFor(entry.weightKg) }));
 
-  const linePoints = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const animateCls = animate ? " chart-animate" : "";
+  const gradientId = "weighin-area-gradient";
+  const areaD = `${smoothPathD(points)} L${points[points.length - 1].x.toFixed(1)},${(h - padY).toFixed(1)} L${points[0].x.toFixed(1)},${(h - padY).toFixed(1)} Z`;
   const circles = points
-    .map((p) => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5" class="weighin-chart-point" />`)
+    .map(
+      (p, i) =>
+        `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" class="chart-point weighin-chart-point${animateCls}" style="animation-delay:${(i * 12).toFixed(0)}ms" />`,
+    )
     .join("");
 
   const maxY = yFor(max);
@@ -2139,12 +2238,24 @@ function renderWeighinChart() {
       const cutoff = Date.parse(entry.date) - 6 * 24 * 60 * 60 * 1000;
       const window = weighIns.filter((w) => Date.parse(w.date) >= cutoff && Date.parse(w.date) <= Date.parse(entry.date));
       const avgKg = window.reduce((sum, w) => sum + w.weightKg, 0) / window.length;
-      return `${points[i].x.toFixed(1)},${yFor(avgKg).toFixed(1)}`;
+      return { x: points[i].x, y: yFor(avgKg) };
     });
-    movingAvgLine = `<polyline points="${avgPoints.join(" ")}" class="weighin-chart-avg-line" />`;
+    movingAvgLine = `<path d="${smoothPathD(avgPoints)}" class="weighin-chart-avg-line chart-fade-in${animateCls}" />`;
   }
 
-  weighinChart.innerHTML = `${gridlines}${labels}${movingAvgLine}<polyline points="${linePoints}" class="weighin-chart-line" />${circles}`;
+  weighinChart.innerHTML =
+    `<defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1">` +
+    `<stop offset="0%" stop-color="var(--pitch)" stop-opacity="0.22" />` +
+    `<stop offset="100%" stop-color="var(--pitch)" stop-opacity="0" /></linearGradient></defs>` +
+    `${gridlines}${labels}` +
+    `<path d="${areaD}" fill="url(#${gradientId})" class="chart-area${animateCls}" />` +
+    `${movingAvgLine}` +
+    `<path d="${smoothPathD(points)}" class="weighin-chart-line chart-draw" />` +
+    circles;
+
+  if (animate) animateChartIn(weighinChart);
+  // animate:false — see the matching comment in renderBalanceTrend.
+  watchChartResize(weighinChart, () => renderWeighinChart(false));
 }
 
 function renderWeighinList() {
