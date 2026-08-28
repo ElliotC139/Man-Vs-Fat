@@ -2514,3 +2514,20 @@ tr.has-tooltip:active {
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) { color-scheme: dark; }
 }
+
+/* ── Health export help ── */
+.health-help {
+  margin-bottom: 12px;
+}
+.health-help summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--pitch-dark);
+  padding: 4px 0;
+}
+.health-help p {
+  margin: 8px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
