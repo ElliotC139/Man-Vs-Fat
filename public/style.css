@@ -24,6 +24,19 @@
   --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
   --font-heading: "Poppins", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  /* The raised "selected" pill shared by the stats tabs, the daily/weekly
+     toggle and the units switch. A token because all three were the same
+     hardcoded white gradient, which stayed white in dark mode. */
+  --pill-active-bg: linear-gradient(160deg, #ffffff, #eefbf3);
+  --pill-active-ink: var(--pitch-dark);
+  --pill-active-shadow: 0 2px 6px rgba(18, 96, 47, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+
+  /* The tooltip is a deliberate inversion of the page, so it can't just use
+     --ink for its ground: in dark mode that's near-white, and the white text
+     on it disappeared. */
+  --tooltip-bg: var(--ink);
+  --tooltip-ink: #fff;
 }
 
 * {
@@ -408,8 +421,10 @@ button.ghost:active {
 }
 
 .button-link:active {
-  background: var(--pitch-dark);
-  color: white;
+  /* --pitch rather than --pitch-dark: the latter inverts to a pale green in
+     dark mode, which left white press text almost unreadable. */
+  background: var(--pitch);
+  color: #fff;
   transform: scale(0.98);
 }
 
@@ -1258,9 +1273,9 @@ h2::before {
   transition: transform 0.18s var(--spring), background 0.15s var(--ease), color 0.15s var(--ease), box-shadow 0.15s var(--ease);
 }
 .granularity-btn--active {
-  background: linear-gradient(160deg, #ffffff, #eefbf3);
-  color: var(--pitch-dark);
-  box-shadow: 0 2px 5px rgba(18, 96, 47, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  background: var(--pill-active-bg);
+  color: var(--pill-active-ink);
+  box-shadow: var(--pill-active-shadow);
 }
 .granularity-btn:active {
   transform: scale(0.94);
@@ -1291,9 +1306,9 @@ h2::before {
   transition: transform 0.18s var(--spring), background 0.15s var(--ease), color 0.15s var(--ease), box-shadow 0.15s var(--ease);
 }
 .stats-tab-btn--active {
-  background: linear-gradient(160deg, #ffffff, #eefbf3);
-  color: var(--pitch-dark);
-  box-shadow: 0 3px 8px rgba(18, 96, 47, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  background: var(--pill-active-bg);
+  color: var(--pill-active-ink);
+  box-shadow: var(--pill-active-shadow);
 }
 .stats-tab-btn:active {
   transform: scale(0.96);
@@ -1326,8 +1341,8 @@ tr.has-tooltip:active {
   transform: translateX(-50%);
   max-width: 260px;
   width: max-content;
-  background: var(--ink);
-  color: #fff;
+  background: var(--tooltip-bg);
+  color: var(--tooltip-ink);
   font-size: 0.78rem;
   font-weight: 500;
   line-height: 1.35;
@@ -1349,11 +1364,11 @@ tr.has-tooltip:active {
 }
 .app-tooltip--top::after {
   top: 100%;
-  border-top-color: var(--ink);
+  border-top-color: var(--tooltip-bg);
 }
 .app-tooltip--bottom::after {
   bottom: 100%;
-  border-bottom-color: var(--ink);
+  border-bottom-color: var(--tooltip-bg);
 }
 @keyframes tooltip-in {
   from {
@@ -1509,9 +1524,9 @@ tr.has-tooltip:active {
   transition: transform 0.18s var(--spring), background 0.15s var(--ease), color 0.15s var(--ease), box-shadow 0.15s var(--ease);
 }
 .units-btn--active {
-  background: linear-gradient(160deg, #ffffff, #eefbf3);
-  color: var(--pitch-dark);
-  box-shadow: 0 2px 6px rgba(18, 96, 47, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  background: var(--pill-active-bg);
+  color: var(--pill-active-ink);
+  box-shadow: var(--pill-active-shadow);
 }
 .units-btn:active {
   transform: scale(0.95);
@@ -2329,4 +2344,173 @@ tr.has-tooltip:active {
 }
 .onboarding-list strong {
   color: var(--pitch-dark);
+}
+
+/* ── Weekly review ── */
+.summary-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.summary-actions .ghost-sm,
+.summary-actions .button-link {
+  width: auto;
+}
+.review-range {
+  text-align: center;
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+}
+.review-comparison {
+  margin: 12px 0 0;
+  text-align: center;
+  font-size: 0.83rem;
+  line-height: 1.4;
+}
+.review-highlight {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.review-highlight:last-child {
+  border-bottom: none;
+}
+.review-highlight-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.review-highlight-value {
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: right;
+}
+.review-section {
+  padding: 0 0 4px 12px;
+  margin-bottom: 16px;
+  /* A coloured rule rather than a coloured block: four tinted panels in a
+     row would fight each other, a rule just labels the section. */
+  border-left: 3px solid var(--hairline);
+}
+.review-section:last-child {
+  margin-bottom: 0;
+}
+.review-section h3 {
+  margin: 0 0 6px;
+  font-family: var(--font-heading);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.review-section ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.review-section li {
+  margin-bottom: 6px;
+}
+.review-section li:last-child {
+  margin-bottom: 0;
+}
+.review-section--good { border-left-color: var(--pitch); }
+.review-section--warn { border-left-color: var(--amber); }
+.review-section--note { border-left-color: var(--muted); }
+.review-section--win  { border-left-color: var(--pitch-light); }
+
+/* ── Focus ── */
+/* Keyboard users need to see where they are; a mouse click shouldn't leave a
+   ring behind. :focus-visible draws that line for us. */
+:focus-visible {
+  outline: 3px solid var(--pitch);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.banner :focus-visible,
+.desktop-nav-btn:focus-visible {
+  outline-color: #fff;
+}
+
+/* ── Reduced motion ── */
+/* Honours the OS-level setting rather than animating regardless. Durations
+   go to near-zero instead of zero so transitionend listeners still fire. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Dark ── */
+/* Only the tokens are redefined; every rule above is written against them,
+   so nothing else needs a dark variant. Two selectors, because the theme has
+   three states: "system" sets no attribute and follows the media query,
+   while an explicit choice stamps data-theme and must win either way. */
+:root[data-theme="dark"] {
+  --pitch: #35b96a;
+  --pitch-light: #4fd684;
+  /* Inverted from light mode: "dark" has to read as *lighter* here, since it
+     is used for text and icons sitting on a dark ground. */
+  --pitch-dark: #7fe3a8;
+  --ink: #e8ecea;
+  --muted: #9aa5a0;
+  --bg: #121614;
+  --card: #1b211e;
+  --hairline: #2c342f;
+  --danger: #f87171;
+  --amber: #fbbf24;
+  --amber-light: #fcd34d;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.55);
+  --pill-active-bg: linear-gradient(160deg, #2f3a34, #24312a);
+  --pill-active-ink: #9fe9bf;
+  --pill-active-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --tooltip-bg: #f2f5f3;
+  --tooltip-ink: #14181a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --pitch: #35b96a;
+    --pitch-light: #4fd684;
+    --pitch-dark: #7fe3a8;
+    --ink: #e8ecea;
+    --muted: #9aa5a0;
+    --bg: #121614;
+    --card: #1b211e;
+    --hairline: #2c342f;
+    --danger: #f87171;
+    --amber: #fbbf24;
+    --amber-light: #fcd34d;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.55);
+
+    --pill-active-bg: linear-gradient(160deg, #2f3a34, #24312a);
+    --pill-active-ink: #9fe9bf;
+    --pill-active-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    --tooltip-bg: #f2f5f3;
+    --tooltip-ink: #14181a;
+  }
+}
+
+/* Tells the browser to draw its own furniture (scrollbars, form controls,
+   the space beyond the page) to match. */
+:root[data-theme="dark"] { color-scheme: dark; }
+:root[data-theme="light"] { color-scheme: light; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { color-scheme: dark; }
 }

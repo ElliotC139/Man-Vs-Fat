@@ -593,6 +593,7 @@ form.addEventListener("submit", async (event) => {
         kind: "entry",
         payload: { text, photo: photo ?? null, photoName: photo?.name ?? null, lastWeek: logToLastWeek },
       });
+      haptic();
       form.reset();
       photoStatus.textContent = "Add a photo (optional)";
       logToLastWeek = false;
@@ -613,6 +614,7 @@ form.addEventListener("submit", async (event) => {
       resultWarning.hidden = true;
     }
     resultCard.hidden = false;
+    haptic();
 
     form.reset();
     photoStatus.textContent = "Add a photo (optional)";
@@ -2682,6 +2684,7 @@ statsBack.addEventListener("click", closeStats);
 // mobile corner icons — every screen carries an identical copy of it, wired
 // to the same open/close functions the icons already use.
 function navTo(target) {
+  if (!reviewScreen.hidden) closeReview();
   if (!settingsScreen.hidden && target !== "settings") closeSettings();
   if (!foodLibraryScreen.hidden && target !== "food-library") closeFoodLibrary();
   if (!statsScreen.hidden && target !== "stats") closeStats();
@@ -2833,6 +2836,7 @@ async function quickLogFood(food) {
     });
     if (!res.ok) throw new Error();
     quickAddError.hidden = true;
+    haptic();
     await loadWeek();
   } catch {
     showQuickAddError(`Couldn't log ${food.label} — please try again.`);
@@ -2860,6 +2864,7 @@ async function logSavedMeal(meal) {
     });
     if (!res.ok) throw new Error();
     quickAddError.hidden = true;
+    haptic();
     await loadWeek();
   } catch {
     showQuickAddError(`Couldn't log ${meal.name} — please try again.`);
@@ -3748,3 +3753,240 @@ onboardingSkip.addEventListener("click", () => {
   finishOnboarding();
   loadWeek();
 });
+
+// ── Weekly review ───────────────────────────────────────────────────────────
+// The same four-section review the PDF carries, readable without downloading
+// a file, plus the week's own shape and how it compares to the last one.
+const reviewScreen = document.getElementById("review-screen");
+const reviewBack = document.getElementById("review-back");
+const openReviewBtn = document.getElementById("open-review-btn");
+const reviewRange = document.getElementById("review-range");
+const reviewTotal = document.getElementById("review-total");
+const reviewAverage = document.getElementById("review-average");
+const reviewDays = document.getElementById("review-days");
+const reviewExercise = document.getElementById("review-exercise");
+const reviewComparison = document.getElementById("review-comparison");
+const reviewHighlightsCard = document.getElementById("review-highlights-card");
+const reviewHighlights = document.getElementById("review-highlights");
+const reviewInsightsCard = document.getElementById("review-insights-card");
+const reviewInsights = document.getElementById("review-insights");
+const reviewGenerateCard = document.getElementById("review-generate-card");
+const reviewGenerateNote = document.getElementById("review-generate-note");
+const reviewGenerateBtn = document.getElementById("review-generate-btn");
+const reviewError = document.getElementById("review-error");
+const reviewPdfLink = document.getElementById("review-pdf-link");
+
+const INSIGHT_SECTIONS = [
+  { key: "wentWell", title: "Went well", cls: "review-section--good" },
+  { key: "couldImprove", title: "Could have gone better", cls: "review-section--warn" },
+  { key: "noticed", title: "Things you might not have noticed", cls: "review-section--note" },
+  { key: "easyWins", title: "Easy wins", cls: "review-section--win" },
+];
+
+function openReview() {
+  appShell.hidden = true;
+  reviewScreen.hidden = false;
+  loadReview();
+}
+
+function closeReview() {
+  reviewScreen.hidden = true;
+  appShell.hidden = false;
+}
+
+openReviewBtn.addEventListener("click", openReview);
+reviewBack.addEventListener("click", closeReview);
+
+async function loadReview({ refresh = false } = {}) {
+  reviewError.hidden = true;
+  const query = `weeksAgo=${weeksAgo}${refresh ? "&refresh=1" : ""}`;
+  reviewPdfLink.href = `/api/match-weeks/current/report.pdf?weeksAgo=${weeksAgo}`;
+
+  try {
+    const res = await fetch(`/api/match-weeks/current/review?${query}`);
+    if (!res.ok) throw new Error("Couldn't load this week's review.");
+    renderReview(await res.json());
+  } catch (error) {
+    reviewError.textContent = error.message;
+    reviewError.hidden = false;
+  }
+}
+
+function renderReview(data) {
+  reviewRange.textContent = `${dateFmt.format(new Date(data.startsAt))} – ${dateFmt.format(
+    new Date(new Date(data.endsAt).getTime() - 1000),
+  )}`;
+
+  reviewTotal.textContent = data.totalKcal.toLocaleString();
+  reviewAverage.textContent = data.dailyAverage.toLocaleString();
+  reviewDays.textContent = data.daysLogged;
+  reviewExercise.textContent = data.exerciseTotalKcal.toLocaleString();
+
+  renderReviewComparison(data.previousWeek, data.dailyAverage);
+  renderReviewHighlights(data);
+  renderReviewInsights(data);
+}
+
+function renderReviewComparison(previous, dailyAverage) {
+  if (!previous || previous.dailyAverage === null || dailyAverage === 0) {
+    reviewComparison.hidden = true;
+    return;
+  }
+  const delta = dailyAverage - previous.dailyAverage;
+  // Within 25 kcal/day is noise, not a change worth reporting as one.
+  if (Math.abs(delta) < 25) {
+    reviewComparison.textContent = `About the same daily average as last week (${previous.dailyAverage.toLocaleString()} kcal/day).`;
+  } else {
+    const direction = delta < 0 ? "below" : "above";
+    reviewComparison.textContent = `${Math.abs(delta).toLocaleString()} kcal/day ${direction} last week's average of ${previous.dailyAverage.toLocaleString()}.`;
+  }
+  reviewComparison.hidden = false;
+}
+
+function renderReviewHighlights(data) {
+  reviewHighlights.innerHTML = "";
+  const rows = [];
+
+  if (data.busiestDay) {
+    const date = new Date(`${data.busiestDay.date}T12:00:00`);
+    rows.push({
+      label: "Heaviest day",
+      value: `${dayFmt.format(date)} · ${data.busiestDay.kcal.toLocaleString()} kcal`,
+    });
+  }
+  for (const food of data.topFoods ?? []) {
+    rows.push({
+      label: food.count === 1 ? "Logged once" : `Logged ${food.count}×`,
+      value: food.totalKcal > 0 ? `${food.label} · ${food.totalKcal.toLocaleString()} kcal` : food.label,
+    });
+  }
+
+  if (rows.length === 0) {
+    reviewHighlightsCard.hidden = true;
+    return;
+  }
+  for (const row of rows) {
+    const el = document.createElement("div");
+    el.className = "review-highlight";
+    const label = document.createElement("span");
+    label.className = "review-highlight-label";
+    label.textContent = row.label;
+    const value = document.createElement("span");
+    value.className = "review-highlight-value";
+    value.textContent = row.value;
+    el.append(label, value);
+    reviewHighlights.appendChild(el);
+  }
+  reviewHighlightsCard.hidden = false;
+}
+
+function renderReviewInsights(data) {
+  reviewInsights.innerHTML = "";
+  const insights = data.insights;
+  const hasAny =
+    insights && INSIGHT_SECTIONS.some(({ key }) => (insights[key] ?? []).length > 0);
+
+  if (!hasAny) {
+    reviewInsightsCard.hidden = true;
+    reviewGenerateCard.hidden = false;
+    reviewGenerateNote.textContent =
+      data.daysLogged === 0
+        ? "Log a few meals and there'll be something here to review."
+        : "A written review of the week — what went well, what slipped, and what you probably didn't notice — read from what you actually logged.";
+    reviewGenerateBtn.hidden = data.daysLogged === 0;
+    reviewGenerateBtn.textContent = "Write my review";
+    return;
+  }
+
+  for (const { key, title, cls } of INSIGHT_SECTIONS) {
+    const points = insights[key] ?? [];
+    if (points.length === 0) continue;
+
+    const section = document.createElement("div");
+    section.className = `review-section ${cls}`;
+    const heading = document.createElement("h3");
+    heading.textContent = title;
+    const list = document.createElement("ul");
+    for (const point of points) {
+      const li = document.createElement("li");
+      li.textContent = point;
+      list.appendChild(li);
+    }
+    section.append(heading, list);
+    reviewInsights.appendChild(section);
+  }
+  reviewInsightsCard.hidden = false;
+
+  // A finished week can't change, so there's nothing to refresh; one still
+  // running can be re-read once more has been logged.
+  reviewGenerateCard.hidden = data.weekIsOver;
+  reviewGenerateNote.textContent = "Logged more since? Read the week again.";
+  reviewGenerateBtn.textContent = "Refresh the review";
+  reviewGenerateBtn.hidden = false;
+}
+
+reviewGenerateBtn.addEventListener("click", async () => {
+  reviewGenerateBtn.disabled = true;
+  const original = reviewGenerateBtn.textContent;
+  reviewGenerateBtn.textContent = "Reading your week…";
+  try {
+    await loadReview({ refresh: true });
+    // The endpoint answers 200 with insights: null when the model call
+    // failed. Without this the button would just settle back and look like
+    // nothing had been asked of it.
+    if (reviewInsightsCard.hidden && reviewError.hidden) {
+      reviewError.textContent = "Couldn't write the review just now — try again in a moment.";
+      reviewError.hidden = false;
+    }
+  } finally {
+    reviewGenerateBtn.disabled = false;
+    if (reviewGenerateBtn.textContent === "Reading your week…") reviewGenerateBtn.textContent = original;
+  }
+});
+
+// ── Theme ───────────────────────────────────────────────────────────────────
+// Three states, not two: "system" follows the device, which is what most
+// people actually want, and is the default.
+const THEME_KEY = "theme";
+const themeButtons = {
+  system: document.getElementById("theme-system"),
+  light: document.getElementById("theme-light"),
+  dark: document.getElementById("theme-dark"),
+};
+
+function applyTheme(theme) {
+  if (theme === "system") {
+    delete document.documentElement.dataset.theme;
+  } else {
+    document.documentElement.dataset.theme = theme;
+  }
+  for (const [name, button] of Object.entries(themeButtons)) {
+    button.classList.toggle("meal-kind-btn--active", name === theme);
+  }
+}
+
+function setTheme(theme) {
+  localStorage.setItem(THEME_KEY, theme);
+  applyTheme(theme);
+}
+
+for (const [name, button] of Object.entries(themeButtons)) {
+  button.addEventListener("click", () => setTheme(name));
+}
+
+applyTheme(localStorage.getItem(THEME_KEY) ?? "system");
+
+// ── Haptics ─────────────────────────────────────────────────────────────────
+// A short buzz to confirm something landed, on the handful of actions where
+// the user is looking away from the screen. Android only in practice — iOS
+// Safari has no Vibration API — and silently absent everywhere else.
+function haptic(pattern = 12) {
+  if (typeof navigator.vibrate !== "function") return;
+  // Respect a system-level preference for less motion/feedback.
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  try {
+    navigator.vibrate(pattern);
+  } catch {
+    // Some browsers throw if the page hasn't been interacted with yet.
+  }
+}
