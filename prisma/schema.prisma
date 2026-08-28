@@ -11,29 +11,35 @@ datasource db {
 // (weekday + time) so e.g. one user's week can run Mon 17:00 -> Mon 17:00
 // while another's runs Wed 09:00 -> Wed 09:00.
 model User {
-  id               Int      @id @default(autoincrement())
-  username         String   @unique
+  id               Int              @id @default(autoincrement())
+  username         String           @unique
   // Null for accounts created via "Sign in with Google" that never set a password.
   passwordHash     String?
   // Set once an account is created or signed into via Google.
-  googleId         String?  @unique
-  email            String?  @unique
+  googleId         String?          @unique
+  email            String?          @unique
   // 0 = Monday .. 6 = Sunday, matching WEEKDAYS_MON_FIRST in matchWeek.ts.
-  weekStartWeekday Int      @default(0)
-  weekStartHour    Int      @default(17)
-  weekStartMinute  Int      @default(0)
+  weekStartWeekday Int              @default(0)
+  weekStartHour    Int              @default(17)
+  weekStartMinute  Int              @default(0)
   // Body stats and goal for calorie budget calculation.
   weightKg         Float?
   heightCm         Float?
   ageYears         Int?
   activityLevel    String?
   weeklyGoalKg     Float?
-  createdAt        DateTime @default(now())
+  // Target weight. weeklyGoalKg is the desired *rate*; this is the
+  // destination, which is what makes a projected arrival date possible.
+  goalWeightKg     Float?
+  createdAt        DateTime         @default(now())
   matchWeeks       MatchWeek[]
   whoopConnection  WhoopConnection?
   whoopCycles      WhoopCycle[]
+  whoopSleeps      WhoopSleep[]
+  whoopRecoveries  WhoopRecovery[]
   foodFavorites    FoodFavorite[]
   foodTags         FoodTag[]
+  weighIns         WeighIn[]
 }
 
 // A starred food, keyed by the entry label normalized (trimmed, lowercased)
@@ -67,19 +73,24 @@ model FoodTag {
 // as needed (see src/whoop/sync.ts); refreshToken only changes if WHOOP
 // rotates it on refresh.
 model WhoopConnection {
-  id           Int       @id @default(autoincrement())
-  userId       Int       @unique
-  user         User      @relation(fields: [userId], references: [id])
+  id               Int       @id @default(autoincrement())
+  userId           Int       @unique
+  user             User      @relation(fields: [userId], references: [id])
   // WHOOP's own numeric user id, captured from the first synced cycle's
   // user_id field (not requested via a dedicated profile scope) — lets the
   // webhook, which is keyed by WHOOP user id, resolve back to our userId.
-  whoopUserId  BigInt?
-  accessToken  String
-  refreshToken String
-  expiresAt    DateTime
-  lastSyncedAt DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  whoopUserId      BigInt?
+  accessToken      String
+  refreshToken     String
+  expiresAt        DateTime
+  lastSyncedAt     DateTime?
+  // Set once a wider one-time historical sync has pulled cycles/workouts/
+  // sleep/recovery as far back as DEEP_BACKFILL_DAYS (see src/whoop/sync.ts)
+  // instead of the normal short trailing window — null means that hasn't
+  // run yet, including for connections that predate this field.
+  deepBackfilledAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 }
 
 // A WHOOP physiological cycle (roughly one per day, wake-to-wake), used as
@@ -99,14 +110,54 @@ model WhoopCycle {
   @@index([userId, start])
 }
 
+// A WHOOP sleep (one per night, occasionally a nap). Sleep ids are UUID
+// strings like workout ids, not numeric like cycle ids.
+model WhoopSleep {
+  id                 Int      @id @default(autoincrement())
+  userId             Int
+  user               User     @relation(fields: [userId], references: [id])
+  whoopSleepId       String   @unique
+  start              DateTime
+  end                DateTime
+  // Null until WHOOP finalizes ("SCORED") the sleep — see scoreState.
+  performancePercent Int?
+  timeAsleepMin      Int?
+  scoreState         String
+  updatedAt          DateTime @updatedAt
+
+  @@index([userId, start])
+}
+
+// A WHOOP recovery — one per cycle, scored from the following sleep's HRV
+// and resting heart rate. Keyed by the cycle it belongs to, same as
+// WhoopCycle.whoopCycleId, since WHOOP relates recovery to a cycle 1:1.
+model WhoopRecovery {
+  id               Int      @id @default(autoincrement())
+  userId           Int
+  user             User     @relation(fields: [userId], references: [id])
+  whoopCycleId     BigInt   @unique
+  // Local calendar day this recovery applies to (see localDayKey in
+  // matchWeek.ts) — lets the Stats screen look up "today's" recovery
+  // without re-deriving it from the cycle's start/end each time.
+  date             String
+  // Null until WHOOP finalizes ("SCORED") the recovery — see scoreState.
+  recoveryScore    Int?
+  restingHeartRate Int?
+  hrvMilli         Float?
+  scoreState       String
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId, date])
+}
+
 // A single week-start -> following week-start boundary, per user. First-class
 // so reports, averages and the PDF all key off the same definition of "week".
 // userId is nullable only to let pre-multi-user rows exist; the first-ever
 // signup claims them (see routes/auth.ts).
 model MatchWeek {
-  id                Int       @id @default(autoincrement())
+  id                Int        @id @default(autoincrement())
   userId            Int?
-  user              User?     @relation(fields: [userId], references: [id])
+  user              User?      @relation(fields: [userId], references: [id])
   startsAt          DateTime
   endsAt            DateTime
   reportGeneratedAt DateTime?
@@ -155,6 +206,23 @@ model Entry {
   updatedAt   DateTime  @updatedAt
 
   @@index([matchWeekId])
+}
+
+// A single weigh-in for a calendar day. date is a local "YYYY-MM-DD" key
+// (see localDayKey in matchWeek.ts) rather than a DateTime — a weigh-in is
+// inherently one value per calendar day, and the unique constraint below
+// lets logging a weight for a date that already has one just overwrite it.
+model WeighIn {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  date      String
+  weightKg  Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
 }
 
 // Small persistent key/value store for things like the cached Drive folder id.

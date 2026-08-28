@@ -26,6 +26,7 @@ const settingsSchema = z.object({
   ageYears: z.number().int().min(10).max(120).nullable().optional(),
   activityLevel: z.enum(["sedentary", "light", "moderate", "active"]).nullable().optional(),
   weeklyGoalKg: z.number().min(0.1).max(1.5).nullable().optional(),
+  goalWeightKg: z.number().min(30).max(700).nullable().optional(),
 });
 
 const googleSchema = z.object({
@@ -47,6 +48,7 @@ function toPublicUser(user: {
   ageYears?: number | null;
   activityLevel?: string | null;
   weeklyGoalKg?: number | null;
+  goalWeightKg?: number | null;
 }) {
   return {
     id: user.id,
@@ -59,6 +61,7 @@ function toPublicUser(user: {
     ageYears: user.ageYears ?? null,
     activityLevel: user.activityLevel ?? null,
     weeklyGoalKg: user.weeklyGoalKg ?? null,
+    goalWeightKg: user.goalWeightKg ?? null,
   };
 }
 

@@ -4,7 +4,7 @@
   --pitch-dark: #12602f;
   --ink: #14181a;
   --muted: #6b7280;
-  --bg: #f2f6f3;
+  --bg: #f7f7f5;
   --card: #ffffff;
   --hairline: #e6ece8;
   --danger: #dc2626;
@@ -91,18 +91,28 @@ body {
 .banner {
   position: relative;
   background:
-    radial-gradient(circle at 15% -20%, rgba(255, 255, 255, 0.16), transparent 55%),
-    radial-gradient(circle at 100% 120%, rgba(217, 119, 6, 0.35), transparent 60%),
+    radial-gradient(circle at 15% -30%, rgba(255, 255, 255, 0.3), transparent 50%),
+    radial-gradient(circle at 100% 120%, rgba(217, 119, 6, 0.4), transparent 60%),
     linear-gradient(135deg, var(--pitch-light), var(--pitch) 45%, var(--pitch-dark));
   color: white;
   padding: 30px 20px 24px;
   text-align: center;
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-lg), inset 0 -14px 22px -16px rgba(0, 0, 0, 0.3);
   overflow: hidden;
+}
+/* A thin glass highlight along the very top edge — the difference between
+   a flat color fill and something that reads as a lit, raised panel. */
+.banner::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.4);
 }
 
 .settings-toggle,
 .library-toggle,
+.stats-toggle,
 .library-back {
   position: absolute;
   top: 14px;
@@ -111,26 +121,61 @@ body {
   min-height: 38px;
   padding: 0;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.16);
-  border: 1px solid rgba(255, 255, 255, 0.32);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.1));
+  border: 1px solid rgba(255, 255, 255, 0.38);
   backdrop-filter: blur(6px);
   color: white;
   font-size: 1.3rem;
-  box-shadow: none;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.22s var(--spring), background 0.15s var(--ease);
+  transition: transform 0.22s var(--spring), background 0.15s var(--ease), box-shadow 0.15s var(--ease);
 }
 .settings-toggle:active,
 .library-toggle:active,
+.stats-toggle:active,
 .library-back:active {
   transform: scale(0.9);
-  background: rgba(255, 255, 255, 0.28);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.18));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 .settings-toggle { right: 14px; }
-.library-toggle { right: 60px; }
+.stats-toggle { right: 60px; }
+.library-toggle { right: 106px; }
 .library-back { left: 14px; }
+
+/* Desktop nav bar: replaces the corner icon buttons/back chevron at wide
+   widths (see the ≥1024px block below) — same four destinations, wired to
+   the same open/close functions in app.js, just shown as labelled tabs
+   instead of small floating circles once there's room for them. */
+.desktop-nav {
+  display: none;
+  gap: 4px;
+}
+.desktop-nav-btn {
+  width: auto;
+  min-height: 38px;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  border: none;
+  border-radius: 999px;
+  box-shadow: none;
+  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+}
+.desktop-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+.desktop-nav-btn--active {
+  background: var(--amber);
+  color: #201200;
+}
+.desktop-nav-btn--active:hover {
+  background: var(--amber);
+}
 
 .banner h1 {
   margin: 0 0 4px;
@@ -140,9 +185,43 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* Three header icons on the main app-shell banner (food library, stats,
+   settings) need more clearance than the single-icon screens below it. */
+/* The generic centered/symmetric-padding title above assumes clearance is
+   needed on both sides. app-shell's icons are only ever on the right, so
+   reserving 144px on the left too (to keep the text visually centered) was
+   starving the title of width on a narrow phone and forcing it onto 3-4
+   lines, ballooning the banner's height. Left-aligning with clearance only
+   where the icons actually are fixes that. */
+#app-shell .banner h1 {
+  padding: 0 144px 0 4px;
+  text-align: left;
+}
+
 .banner .muted {
   color: #d7ecdf;
   margin: 0;
+}
+
+/* Header wordmark: the same plate/fork/knife mark used as the home-screen
+   app icon, reused as a small badge next to the title on every screen —
+   gives the header an actual brand identity instead of plain bold text. */
+.banner h1.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+#app-shell .banner h1.brand {
+  justify-content: flex-start;
+}
+.brand-mark {
+  display: block;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  padding: 4px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  flex-shrink: 0;
 }
 
 .week-nav {
@@ -164,20 +243,21 @@ body {
   padding: 4px 12px;
   font-size: 1.1rem;
   line-height: 1;
-  background: rgba(255, 255, 255, 0.08);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.08));
   color: white;
   border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: 8px;
-  box-shadow: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.4);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s var(--ease), transform 0.22s var(--spring);
+  transition: background 0.15s var(--ease), transform 0.22s var(--spring), box-shadow 0.15s var(--ease);
 }
 
 .week-nav button:active {
   transform: scale(0.92);
-  background: rgba(255, 255, 255, 0.22);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.16));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
 .week-nav button:disabled {
@@ -211,6 +291,7 @@ input[type="text"],
 input[type="number"],
 input[type="password"],
 input[type="time"],
+input[type="date"],
 input[type="search"],
 select {
   width: 100%;
@@ -232,6 +313,20 @@ select:focus {
   outline: none;
   border-color: var(--pitch);
   box-shadow: 0 0 0 3px rgba(31, 157, 82, 0.15);
+}
+
+/* Native <select> chrome (the dropdown arrow) is the one input style that
+   couldn't inherit the shared text-input look above — appearance:none
+   strips it so a custom chevron (matching the app's inline-icon style)
+   can take its place. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 34px;
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-size: 18px;
 }
 
 .photo-label {
@@ -441,6 +536,18 @@ h2 {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   margin: 0 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+h2::before {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 13px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--pitch-light), var(--pitch-dark));
+  flex-shrink: 0;
 }
 
 .day-group {
@@ -583,11 +690,31 @@ h2 {
   align-items: center;
   justify-content: center;
   padding: 20px;
+  background:
+    radial-gradient(circle at 15% 10%, rgba(31, 157, 82, 0.1), transparent 45%),
+    radial-gradient(circle at 85% 90%, rgba(217, 119, 6, 0.09), transparent 45%),
+    var(--bg);
 }
 
 .auth-card {
   width: 100%;
   max-width: 360px;
+  position: relative;
+  overflow: hidden;
+}
+.auth-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 5px;
+  background: linear-gradient(90deg, var(--pitch-light), var(--pitch), var(--amber));
+}
+
+.auth-brand-mark {
+  display: block;
+  margin: 0 auto 14px;
+  border-radius: 18px;
+  box-shadow: var(--shadow-md);
 }
 
 .auth-title {
@@ -718,6 +845,9 @@ h2 {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
+.balance-grid--single {
+  grid-template-columns: 1fr;
+}
 .balance-cell {
   text-align: center;
   background: var(--bg);
@@ -750,6 +880,12 @@ h2 {
 }
 .balance-cell--gain .balance-number {
   color: var(--danger);
+}
+.balance-cell--accent {
+  background: rgba(217, 119, 6, 0.12);
+}
+.balance-cell--accent .balance-number {
+  color: var(--amber);
 }
 
 /* ── Exercise section ── */
@@ -809,6 +945,14 @@ h2 {
 }
 #exercise-list:empty::after {
   content: "No exercise logged this week.";
+  display: block;
+  text-align: center;
+  color: var(--muted);
+  padding: 16px;
+  font-size: 0.9rem;
+}
+#entry-list:empty::after {
+  content: "Nothing logged yet this week.";
   display: block;
   text-align: center;
   color: var(--muted);
@@ -918,6 +1062,407 @@ h2 {
   font-size: 0.9rem;
 }
 
+/* ── Stats / weigh-ins ── */
+#weighin-chart {
+  width: 100%;
+  height: 150px;
+  display: block;
+}
+.weighin-chart-line {
+  fill: none;
+  stroke: var(--pitch);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+/* Every line chart marks its actual data points, so it reads as measured
+   readings joined by a line rather than an anonymous continuous squiggle.
+   The visible dot is inert; a larger invisible circle on top of it is the
+   tap target, so a fingertip doesn't have to land on a ~3px dot. */
+.chart-dot {
+  pointer-events: none;
+  stroke: var(--card);
+  stroke-width: 1.4;
+}
+/* Once points are packed tightly (a 30-day daily view), the card-coloured
+   ring around each one punches through the line between them and the
+   series reads as a dashed bead chain rather than a line with markers.
+   Dense series drop the ring and shrink, so the points still read as
+   discrete readings without breaking the line they sit on. */
+.chart-dot--dense {
+  stroke: none;
+}
+.chart-dot--weight {
+  fill: var(--pitch-dark);
+}
+.chart-dot--in {
+  fill: var(--pitch);
+}
+.chart-dot--out {
+  fill: var(--amber);
+}
+.chart-hit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: pointer;
+  transition: fill 0.12s var(--ease);
+}
+/* The browser's default focus ring on an SVG circle draws as a hard black
+   rectangle over the chart. The active/focus fill below is the affordance
+   instead — a soft round halo that actually follows the marker's shape. */
+.chart-hit:focus {
+  outline: none;
+}
+.chart-hit.tooltip-active,
+.chart-hit:focus-visible {
+  fill: rgba(20, 30, 24, 0.13);
+}
+.weighin-chart-grid {
+  stroke: var(--hairline);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.weighin-chart-label {
+  font-size: 10px;
+  font-family: "Inter", sans-serif;
+  fill: var(--muted);
+}
+.chart-area {
+  stroke: none;
+}
+.chart-area.chart-animate {
+  opacity: 0;
+  animation: chart-fade 0.5s var(--ease) 0.35s forwards;
+}
+.chart-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.chart-dot.chart-animate {
+  opacity: 0;
+  animation: chart-point-in 0.35s var(--spring) 0.4s forwards;
+}
+.chart-fade-in.chart-animate {
+  opacity: 0;
+  animation: chart-fade 0.5s var(--ease) 0.55s forwards;
+}
+@keyframes chart-fade {
+  to {
+    opacity: 1;
+  }
+}
+@keyframes chart-point-in {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.weighin-row {
+  align-items: center;
+}
+.weighin-del {
+  flex-shrink: 0;
+}
+#weighin-trend-caption {
+  margin: 10px 6px 0;
+}
+
+/* ── Calorie balance trend ── */
+.card-heading-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  row-gap: 8px;
+  margin: 0 6px 10px;
+}
+.card-heading-row h2 {
+  margin: 0;
+  white-space: nowrap;
+}
+.chart-legend {
+  display: flex;
+  gap: 12px;
+}
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.chart-legend-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.chart-legend-swatch--in {
+  background: var(--pitch);
+}
+.chart-legend-swatch--out {
+  background: var(--amber);
+}
+.balance-trend-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.granularity-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 2px;
+  box-shadow: inset 0 1px 2px rgba(20, 30, 24, 0.07);
+}
+.granularity-btn {
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  min-height: 26px;
+  width: auto;
+  cursor: pointer;
+  transition: transform 0.18s var(--spring), background 0.15s var(--ease), color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+.granularity-btn--active {
+  background: linear-gradient(160deg, #ffffff, #eefbf3);
+  color: var(--pitch-dark);
+  box-shadow: 0 2px 5px rgba(18, 96, 47, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+.granularity-btn:active {
+  transform: scale(0.94);
+}
+
+/* ── Stats tabs ── */
+.stats-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg);
+  border-radius: 12px;
+  padding: 4px;
+  margin: 0 0 14px;
+  box-shadow: inset 0 1px 3px rgba(20, 30, 24, 0.07);
+}
+.stats-tab-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  border-radius: 9px;
+  padding: 9px 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--muted);
+  min-height: 38px;
+  width: auto;
+  cursor: pointer;
+  transition: transform 0.18s var(--spring), background 0.15s var(--ease), color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+.stats-tab-btn--active {
+  background: linear-gradient(160deg, #ffffff, #eefbf3);
+  color: var(--pitch-dark);
+  box-shadow: 0 3px 8px rgba(18, 96, 47, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+.stats-tab-btn:active {
+  transform: scale(0.96);
+}
+.stats-tab-panel > * + * {
+  margin-top: 14px;
+}
+
+/* ── Tooltips ── */
+.has-tooltip {
+  cursor: pointer;
+}
+/* The whole breakdown-table row is the tappable target now, not just the
+   date cell — the dotted underline stays on the date as the visual cue
+   for "this row has more detail", and a press highlight makes the wider
+   hit area obvious the first time it's tapped. */
+tr.has-tooltip td:first-child {
+  text-decoration: underline dotted var(--muted);
+  text-underline-offset: 3px;
+}
+tr.has-tooltip {
+  transition: background 0.12s var(--ease);
+}
+tr.has-tooltip:active {
+  background: var(--bg);
+}
+.app-tooltip {
+  position: fixed;
+  z-index: 100;
+  transform: translateX(-50%);
+  max-width: 260px;
+  width: max-content;
+  background: var(--ink);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.35;
+  padding: 8px 11px;
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+  animation: tooltip-in 0.12s ease-out;
+}
+/* Caret pointing back at the tapped point. --caret-offset is set in JS to
+   however far the box had to slide to stay on screen, so the caret keeps
+   pointing at the point even when the box itself is nudged sideways. */
+.app-tooltip::after {
+  content: "";
+  position: absolute;
+  left: calc(50% + var(--caret-offset, 0px));
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+}
+.app-tooltip--top::after {
+  top: 100%;
+  border-top-color: var(--ink);
+}
+.app-tooltip--bottom::after {
+  bottom: 100%;
+  border-bottom-color: var(--ink);
+}
+@keyframes tooltip-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+#balance-trend-chart {
+  width: 100%;
+  height: 150px;
+  display: block;
+}
+.balance-trend-line {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.balance-trend-line--in {
+  stroke: var(--pitch);
+}
+.balance-trend-line--out {
+  stroke: var(--amber);
+}
+#balance-trend-caption {
+  margin: 10px 6px 0;
+}
+
+/* ── Insights ── */
+.insights-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.insights-list li {
+  position: relative;
+  padding: 10px 12px 10px 30px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+.insights-list li::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 13px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--amber);
+}
+
+/* ── Weekly breakdown ── */
+.table-scroll {
+  overflow-x: auto;
+  margin: 0 -2px;
+}
+.breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  white-space: nowrap;
+}
+.breakdown-table th {
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  padding: 0 10px 8px;
+}
+.breakdown-table td {
+  padding: 9px 10px;
+  border-top: 1px solid var(--hairline);
+  font-variant-numeric: tabular-nums;
+}
+.breakdown-table tbody tr:first-child td {
+  border-top: none;
+}
+.breakdown-loss {
+  color: var(--pitch-dark);
+  font-weight: 700;
+}
+.breakdown-gain {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+/* Hero stats: real hierarchy for the numbers that matter most (recovery,
+   sleep) instead of every figure being the same tile size — a large,
+   confident number with a small tracked-letter-spacing caption underneath,
+   the same pattern premium fitness apps (Oura, WHOOP's own app) use. */
+.hero-row {
+  display: flex;
+  justify-content: space-around;
+  gap: 16px;
+  text-align: center;
+}
+.stat-hero-number {
+  display: block;
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: clamp(2.2rem, 9vw, 3rem);
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.stat-hero-caption {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.stat-hero--good .stat-hero-number { color: var(--pitch-dark); }
+.stat-hero--fair .stat-hero-number { color: var(--amber); }
+.stat-hero--poor .stat-hero-number { color: var(--danger); }
+
 /* ── Units toggle ── */
 .units-toggle {
   display: flex;
@@ -925,6 +1470,7 @@ h2 {
   background: var(--bg);
   border-radius: 10px;
   padding: 3px;
+  box-shadow: inset 0 1px 3px rgba(20, 30, 24, 0.07);
 }
 .units-btn {
   flex: 1;
@@ -938,11 +1484,15 @@ h2 {
   min-height: 32px;
   width: auto;
   cursor: pointer;
+  transition: transform 0.18s var(--spring), background 0.15s var(--ease), color 0.15s var(--ease), box-shadow 0.15s var(--ease);
 }
 .units-btn--active {
-  background: var(--card);
-  color: var(--ink);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  background: linear-gradient(160deg, #ffffff, #eefbf3);
+  color: var(--pitch-dark);
+  box-shadow: 0 2px 6px rgba(18, 96, 47, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+.units-btn:active {
+  transform: scale(0.95);
 }
 .ft-in-row {
   display: flex;
@@ -1107,7 +1657,226 @@ h2 {
 }
 #exercise-list:empty::after,
 #food-all-list:empty::after,
-#food-favorites-list:empty::after {
+#food-favorites-list:empty::after,
+#entry-list:empty::after {
   border: 1.5px dashed var(--hairline);
   border-radius: var(--radius-md);
+}
+
+/* ── Responsive layout ──────────────────────────────────────────────────────
+   Everything above this point was written mobile-only (no @media queries
+   anywhere in the file). These two breakpoints keep every screen exactly as
+   it is below 720px and progressively give it room to breathe above that,
+   without changing the one-screen-at-a-time navigation model. */
+@media (min-width: 720px) {
+  main {
+    max-width: 640px;
+  }
+}
+
+@media (min-width: 1024px) {
+  main {
+    max-width: 900px;
+  }
+
+  /* The corner icon buttons/back chevron only make sense as a compact
+     mobile affordance — at desktop width they're replaced by .desktop-nav,
+     a real labelled tab bar wired to the same open/close functions. */
+  .settings-toggle,
+  .stats-toggle,
+  .library-toggle,
+  .library-back {
+    display: none;
+  }
+  .desktop-nav {
+    display: flex;
+  }
+
+  .banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    text-align: left;
+    padding: 18px 32px;
+    gap: 16px 24px;
+  }
+  .banner h1,
+  #app-shell .banner h1 {
+    padding: 0;
+    margin: 0;
+    flex-shrink: 0;
+  }
+  .week-nav {
+    margin: 0;
+    order: 3;
+    flex-basis: 100%;
+    justify-content: flex-start;
+  }
+
+  /* Settings: the fieldsets are already flat siblings inside one card, so a
+     grid here lets them flow two-up without touching the markup — the
+     account line, save button, error and logout stay full-width. */
+  #settings-card {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 24px;
+    align-items: start;
+  }
+  #settings-card > .muted,
+  #settings-card > #settings-save,
+  #settings-card > #settings-error,
+  #settings-card > #logout-btn {
+    grid-column: 1 / -1;
+  }
+
+  /* Food library and food diary: same trick — the row/group containers
+     already hold nothing but repeated same-shaped children. */
+  #food-favorites-list,
+  #food-all-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+  }
+  #food-favorites-list .food-row,
+  #food-all-list .food-row {
+    margin-bottom: 0;
+  }
+  #entry-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 24px;
+    align-items: start;
+  }
+
+  /* Stats: summary tiles + trend chart sit side by side. */
+  .stats-top-row {
+    display: grid;
+    grid-template-columns: 1fr 1.3fr;
+    gap: 16px;
+    align-items: start;
+  }
+  .stats-top-row .card {
+    margin-bottom: 0;
+  }
+}
+
+/* ── Current weight hero ── */
+.weight-hero {
+  text-align: center;
+  padding: 4px 0 16px;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 14px;
+}
+.weight-hero-number {
+  display: block;
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: clamp(2.4rem, 11vw, 3.4rem);
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--pitch-dark);
+}
+.weight-hero-caption {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--muted);
+}
+.weight-hero-note {
+  display: block;
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* ── Goal progress ── */
+.goal-progress {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hairline);
+}
+.goal-progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.goal-progress-label {
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+.goal-progress-eta {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.goal-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  box-shadow: inset 0 1px 2px rgba(20, 30, 24, 0.09);
+  overflow: hidden;
+}
+.goal-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--pitch-light), var(--pitch));
+  transition: width 0.6s var(--ease);
+}
+
+/* ── Adaptive TDEE ── */
+.confidence-pill {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.confidence-pill--high {
+  background: rgba(31, 157, 82, 0.14);
+  color: var(--pitch-dark);
+}
+.confidence-pill--medium {
+  background: rgba(217, 119, 6, 0.14);
+  color: var(--amber);
+}
+.confidence-pill--low {
+  background: rgba(107, 114, 128, 0.14);
+  color: var(--muted);
+}
+#tdee-explain {
+  margin: 10px 6px 0;
+}
+.tdee-warning {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(217, 119, 6, 0.1);
+  border-left: 3px solid var(--amber);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+/* ── Data export/import ── */
+.export-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 14px;
+}
+.export-row .button-link {
+  margin-top: 0;
+  font-size: 0.85rem;
+  padding: 8px 14px;
+}
+.import-label {
+  display: block;
+  margin-bottom: 6px;
 }

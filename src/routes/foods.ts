@@ -24,7 +24,7 @@ const STOPWORDS = new Set([
 // key without needing another AI call. Conservative on purpose (no
 // stemming/synonyms beyond a trailing-s check) to avoid merging genuinely
 // different foods.
-function normalizeLabel(label: string): string {
+export function normalizeLabel(label: string): string {
   const words = label
     .toLowerCase()
     .replace(/&/g, " and ")

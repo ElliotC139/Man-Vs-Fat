@@ -5,7 +5,7 @@ import { config, whoopConfigured } from "../config";
 import { requireAuth } from "../auth";
 import { localDayKey } from "../matchWeek";
 import { buildAuthorizeUrl, exchangeCodeForTokens } from "../whoop/client";
-import { syncUser } from "../whoop/sync";
+import { getRecentSleepRecovery, syncUser } from "../whoop/sync";
 
 export const whoopRouter = Router();
 
@@ -83,8 +83,23 @@ whoopRouter.get("/status", requireAuth, async (req, res) => {
 
 whoopRouter.post("/disconnect", requireAuth, async (req, res) => {
   await prisma.whoopCycle.deleteMany({ where: { userId: req.userId! } });
+  await prisma.whoopSleep.deleteMany({ where: { userId: req.userId! } });
+  await prisma.whoopRecovery.deleteMany({ where: { userId: req.userId! } });
   await prisma.whoopConnection.deleteMany({ where: { userId: req.userId! } });
   res.status(204).end();
+});
+
+// Recent recovery + sleep for the Stats screen. `days` is capped so a
+// mistaken huge value can't turn this into an unbounded query.
+whoopRouter.get("/recent", requireAuth, async (req, res) => {
+  const conn = await prisma.whoopConnection.findUnique({ where: { userId: req.userId! } });
+  if (!conn) {
+    res.json({ connected: false, days: [] });
+    return;
+  }
+  const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 90);
+  const recent = await getRecentSleepRecovery(req.userId!, days);
+  res.json({ connected: true, days: recent });
 });
 
 // Temporary diagnostic — shows the raw cycle data WHOOP actually returned,

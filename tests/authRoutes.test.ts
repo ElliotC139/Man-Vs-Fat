@@ -112,7 +112,21 @@ describe("POST /api/auth/signup", () => {
 
     expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body).toEqual({ id: 1, username: "alice", weekStartWeekday: 0, weekStartHour: 17, weekStartMinute: 0 });
+    // The body-stat fields (added later, for the calorie budget) come back
+    // null on a fresh account — this assertion predates them.
+    expect(body).toEqual({
+      id: 1,
+      username: "alice",
+      weekStartWeekday: 0,
+      weekStartHour: 17,
+      weekStartMinute: 0,
+      weightKg: null,
+      heightCm: null,
+      ageYears: null,
+      activityLevel: null,
+      weeklyGoalKg: null,
+      goalWeightKg: null,
+    });
     expect(sessionCookieFrom(res)).toMatch(/^session=/);
   });
 

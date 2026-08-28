@@ -49,6 +49,8 @@ const goalLabel = document.getElementById("goal-label");
 const settingsAge = document.getElementById("settings-age");
 const settingsActivity = document.getElementById("settings-activity");
 const settingsGoal = document.getElementById("settings-goal");
+const settingsGoalWeight = document.getElementById("settings-goal-weight");
+const goalWeightLabel = document.getElementById("goal-weight-label");
 const unitsMetricBtn = document.getElementById("units-metric");
 const unitsImperialBtn = document.getElementById("units-imperial");
 const settingsSave = document.getElementById("settings-save");
@@ -80,6 +82,73 @@ const foodFavoritesSection = document.getElementById("food-favorites-section");
 const foodFavoritesList = document.getElementById("food-favorites-list");
 const foodAllList = document.getElementById("food-all-list");
 const foodLibraryError = document.getElementById("food-library-error");
+
+const statsToggle = document.getElementById("stats-toggle");
+const statsScreen = document.getElementById("stats-screen");
+const statsBack = document.getElementById("stats-back");
+const weighinSummary = document.getElementById("weighin-summary");
+const weighinCurrent = document.getElementById("weighin-current");
+const weighinStart = document.getElementById("weighin-start");
+const weighinChangeCell = document.getElementById("weighin-change-cell");
+const weighinChange = document.getElementById("weighin-change");
+const weighinChangeCaption = document.getElementById("weighin-change-caption");
+const weighinBmiCell = document.getElementById("weighin-bmi-cell");
+const weighinBmi = document.getElementById("weighin-bmi");
+const weighinPaceCell = document.getElementById("weighin-pace-cell");
+const weighinPace = document.getElementById("weighin-pace");
+const weighinPaceCaption = document.getElementById("weighin-pace-caption");
+const weighinChartCard = document.getElementById("weighin-chart-card");
+const weighinChart = document.getElementById("weighin-chart");
+const weighinTrendCaption = document.getElementById("weighin-trend-caption");
+const weighinForm = document.getElementById("weighin-form");
+const weighinDate = document.getElementById("weighin-date");
+const weighinWeight = document.getElementById("weighin-weight");
+const weighinWeightLabel = document.getElementById("weighin-weight-label");
+const weighinSave = document.getElementById("weighin-save");
+const weighinError = document.getElementById("weighin-error");
+const weighinList = document.getElementById("weighin-list");
+
+const whoopStatsCard = document.getElementById("whoop-stats-card");
+const whoopStatsPrompt = document.getElementById("whoop-stats-prompt");
+const statRecoveryHero = document.getElementById("stat-recovery-hero");
+const statRecovery = document.getElementById("stat-recovery");
+const statSleep = document.getElementById("stat-sleep");
+const whoopStatsAvg = document.getElementById("whoop-stats-avg");
+const statAvgKcal = document.getElementById("stat-avg-kcal");
+const insightsCard = document.getElementById("insights-card");
+const insightsList = document.getElementById("insights-list");
+const balanceTrendCard = document.getElementById("balance-trend-card");
+const balanceTrendChart = document.getElementById("balance-trend-chart");
+const balanceTrendCaption = document.getElementById("balance-trend-caption");
+const granularityBtns = document.querySelectorAll(".granularity-btn");
+const breakdownWeightCard = document.getElementById("breakdown-weight-card");
+const breakdownWeightBody = document.getElementById("breakdown-weight-body");
+const breakdownCaloriesCard = document.getElementById("breakdown-calories-card");
+const breakdownCaloriesBody = document.getElementById("breakdown-calories-body");
+const breakdownRecoveryCard = document.getElementById("breakdown-recovery-card");
+const weightHero = document.getElementById("weight-hero");
+const weightHeroValue = document.getElementById("weight-hero-value");
+const weightHeroNote = document.getElementById("weight-hero-note");
+const goalProgress = document.getElementById("goal-progress");
+const goalProgressLabel = document.getElementById("goal-progress-label");
+const goalProgressEta = document.getElementById("goal-progress-eta");
+const goalProgressFill = document.getElementById("goal-progress-fill");
+const tdeeCard = document.getElementById("tdee-card");
+const tdeeValue = document.getElementById("tdee-value");
+const tdeeConfidence = document.getElementById("tdee-confidence");
+const tdeeExplain = document.getElementById("tdee-explain");
+const tdeeUnderlogging = document.getElementById("tdee-underlogging");
+const tdeePendingCard = document.getElementById("tdee-pending-card");
+const tdeePendingText = document.getElementById("tdee-pending-text");
+const importFile = document.getElementById("import-file");
+const importStatus = document.getElementById("import-status");
+const breakdownRecoveryBody = document.getElementById("breakdown-recovery-body");
+const statsTabBtns = document.querySelectorAll(".stats-tab-btn");
+const statsTabPanels = {
+  weight: document.getElementById("stats-tab-weight"),
+  calories: document.getElementById("stats-tab-calories"),
+  recovery: document.getElementById("stats-tab-recovery"),
+};
 
 const exerciseToggle = document.getElementById("exercise-toggle");
 const exerciseForm = document.getElementById("exercise-form");
@@ -321,7 +390,8 @@ function renderEntries(entries) {
   entryListEl.innerHTML = "";
 
   if (entries.length === 0) {
-    entryListEl.innerHTML = '<p class="empty-state">Nothing logged yet this week.</p>';
+    // Left empty on purpose — the message is supplied by
+    // #entry-list:empty::after in style.css, same as the exercise/food lists.
     return;
   }
 
@@ -683,6 +753,8 @@ settingsSave.addEventListener("click", async () => {
     const activityVal = settingsActivity.value || null;
     const rawGoal = settingsGoal.value ? Number(settingsGoal.value) : null;
     const goalVal = rawGoal === null ? null : useImperial ? +(rawGoal / 2.20462).toFixed(3) : rawGoal;
+    const rawGoalWeight = settingsGoalWeight.value ? Number(settingsGoalWeight.value) : null;
+    const goalWeightVal = rawGoalWeight === null ? null : useImperial ? +(rawGoalWeight / 2.20462).toFixed(2) : rawGoalWeight;
     const res = await fetch("/api/auth/me", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -695,6 +767,7 @@ settingsSave.addEventListener("click", async () => {
         ageYears: ageVal,
         activityLevel: activityVal,
         weeklyGoalKg: goalVal,
+        goalWeightKg: goalWeightVal,
       }),
     });
     const body = await res.json().catch(() => ({}));
@@ -745,6 +818,11 @@ function populateSettings(user) {
     settingsGoal.value = useImperial ? +(user.weeklyGoalKg * 2.20462).toFixed(2) : user.weeklyGoalKg;
   } else {
     settingsGoal.value = "";
+  }
+  if (user.goalWeightKg) {
+    settingsGoalWeight.value = useImperial ? +(user.goalWeightKg * 2.20462).toFixed(1) : user.goalWeightKg;
+  } else {
+    settingsGoalWeight.value = "";
   }
 }
 
@@ -1038,6 +1116,10 @@ function applyUnitPreference() {
     goalLabel.textContent = "Target loss (lbs/week)";
     settingsGoal.placeholder = "e.g. 1.0";
     settingsGoal.max = "6";
+    goalWeightLabel.textContent = "Goal weight (lbs)";
+    settingsGoalWeight.placeholder = "e.g. 187";
+    settingsGoalWeight.min = "66";
+    settingsGoalWeight.max = "1540";
     heightCmWrap.hidden = true;
     heightFtWrap.hidden = false;
   } else {
@@ -1050,6 +1132,10 @@ function applyUnitPreference() {
     goalLabel.textContent = "Target loss (kg/week)";
     settingsGoal.placeholder = "e.g. 0.5";
     settingsGoal.max = "3";
+    goalWeightLabel.textContent = "Goal weight (kg)";
+    settingsGoalWeight.placeholder = "e.g. 85";
+    settingsGoalWeight.min = "30";
+    settingsGoalWeight.max = "700";
     heightCmWrap.hidden = false;
     heightFtWrap.hidden = true;
   }
@@ -1086,6 +1172,7 @@ function switchUnits(imperial) {
     localStorage.setItem("units", imperial ? "imperial" : "metric");
     applyUnitPreference();
   }
+  if (!statsScreen.hidden) renderStats();
 }
 
 unitsMetricBtn.addEventListener("click", () => switchUnits(false));
@@ -1532,3 +1619,1017 @@ productRescanBtn.addEventListener("click", () => {
 
 scanBarcodeBtn.addEventListener("click", openScanner);
 scanCloseBtn.addEventListener("click", stopScanner);
+
+// ── Stats / weigh-ins ───────────────────────────────────────────────────────
+let weighIns = [];
+
+function todayDateValue() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function kgToDisplay(kg) {
+  return useImperial ? +(kg * 2.20462).toFixed(1) : +kg.toFixed(1);
+}
+
+function displayToKg(value) {
+  return useImperial ? +(value / 2.20462).toFixed(2) : +value;
+}
+
+function weightUnit() {
+  return useImperial ? "lbs" : "kg";
+}
+
+function applyWeighinUnitFields() {
+  weighinWeightLabel.textContent = `Weight (${weightUnit()})`;
+  if (useImperial) {
+    weighinWeight.min = "66";
+    weighinWeight.max = "1540";
+    weighinWeight.placeholder = "e.g. 210";
+  } else {
+    weighinWeight.min = "30";
+    weighinWeight.max = "700";
+    weighinWeight.placeholder = "e.g. 95";
+  }
+}
+
+function switchStatsTab(name) {
+  for (const [key, panel] of Object.entries(statsTabPanels)) panel.hidden = key !== name;
+  statsTabBtns.forEach((btn) => btn.classList.toggle("stats-tab-btn--active", btn.dataset.statsTab === name));
+
+  // A chart in a tab that was hidden has a 0×0 box and can't size or
+  // animate itself correctly — re-render whichever chart just became
+  // visible now that it actually has real layout dimensions.
+  if (name === "weight") renderWeighinChart();
+  if (name === "calories" && balanceTrendRaw) renderBalanceTrend(balanceTrendRaw);
+}
+
+statsTabBtns.forEach((btn) => btn.addEventListener("click", () => switchStatsTab(btn.dataset.statsTab)));
+
+function openStats() {
+  appShell.hidden = true;
+  statsScreen.hidden = false;
+  weighinError.hidden = true;
+  weighinDate.max = todayDateValue();
+  weighinDate.value = todayDateValue();
+  weighinWeight.value = "";
+  applyWeighinUnitFields();
+  switchStatsTab("weight");
+  loadWeighIns();
+  loadWhoopRecent();
+  loadStatsSummary();
+  loadInsights();
+  loadBalanceTrend();
+  loadWeeklyBreakdown();
+  loadTdee();
+}
+
+function closeStats() {
+  statsScreen.hidden = true;
+  appShell.hidden = false;
+}
+
+async function loadWeighIns() {
+  try {
+    const res = await fetch("/api/weigh-ins");
+    if (!res.ok) throw new Error();
+    weighIns = await res.json();
+    renderStats();
+  } catch {
+    weighinError.textContent = "Couldn't load your weigh-ins — please try again.";
+    weighinError.hidden = false;
+  }
+}
+
+function renderStats() {
+  applyWeighinUnitFields();
+  renderWeighinSummary();
+  renderWeighinChart();
+  renderWeighinList();
+}
+
+function renderWeighinSummary() {
+  if (weighIns.length === 0) {
+    weighinSummary.hidden = true;
+    return;
+  }
+  weighinSummary.hidden = false;
+
+  const starting = weighIns[0].weightKg;
+  const current = weighIns[weighIns.length - 1].weightKg;
+  const changeKg = current - starting;
+
+  weighinCurrent.textContent = `${kgToDisplay(current)} ${weightUnit()}`;
+  weighinStart.textContent = `${kgToDisplay(starting)} ${weightUnit()}`;
+
+  weighinChangeCell.classList.remove("balance-cell--loss", "balance-cell--gain");
+  if (changeKg <= 0) {
+    weighinChangeCell.classList.add("balance-cell--loss");
+    weighinChange.textContent = `-${kgToDisplay(Math.abs(changeKg))} ${weightUnit()}`;
+    weighinChangeCaption.textContent = "lost";
+  } else {
+    weighinChangeCell.classList.add("balance-cell--gain");
+    weighinChange.textContent = `+${kgToDisplay(changeKg)} ${weightUnit()}`;
+    weighinChangeCaption.textContent = "gained";
+  }
+
+  if (currentUser?.heightCm) {
+    const heightM = currentUser.heightCm / 100;
+    weighinBmiCell.hidden = false;
+    weighinBmi.textContent = (current / (heightM * heightM)).toFixed(1);
+  } else {
+    weighinBmiCell.hidden = true;
+  }
+}
+
+// ── Recovery, sleep & other stats ───────────────────────────────────────────
+function formatSleepDuration(minutes) {
+  if (minutes === null || minutes === undefined) return "—";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+async function loadWhoopRecent() {
+  try {
+    const res = await fetch("/api/whoop/recent?days=30");
+    if (!res.ok) throw new Error();
+    renderWhoopStats(await res.json());
+  } catch {
+    whoopStatsCard.hidden = true;
+    whoopStatsPrompt.hidden = true;
+  }
+}
+
+function renderWhoopStats(data) {
+  const days = data.connected ? (data.days ?? []) : [];
+  if (days.length === 0) {
+    whoopStatsCard.hidden = true;
+    whoopStatsPrompt.hidden = false;
+    return;
+  }
+  whoopStatsPrompt.hidden = true;
+  whoopStatsCard.hidden = false;
+
+  const latestRecovery = [...days].reverse().find((d) => d.recoveryScore !== null);
+  const latestSleep = [...days].reverse().find((d) => d.sleepMinutes !== null);
+
+  statRecoveryHero.classList.remove("stat-hero--good", "stat-hero--fair", "stat-hero--poor");
+  if (latestRecovery) {
+    statRecovery.textContent = `${latestRecovery.recoveryScore}%`;
+    const score = latestRecovery.recoveryScore;
+    statRecoveryHero.classList.add(score >= 67 ? "stat-hero--good" : score >= 34 ? "stat-hero--fair" : "stat-hero--poor");
+  } else {
+    statRecovery.textContent = "—";
+  }
+  statSleep.textContent = latestSleep ? formatSleepDuration(latestSleep.sleepMinutes) : "—";
+
+  const last7 = days.slice(-7);
+  const recoveryValues = last7.filter((d) => d.recoveryScore !== null).map((d) => d.recoveryScore);
+  const sleepValues = last7.filter((d) => d.sleepMinutes !== null).map((d) => d.sleepMinutes);
+  if (recoveryValues.length && sleepValues.length) {
+    const avgRecovery = Math.round(recoveryValues.reduce((a, b) => a + b, 0) / recoveryValues.length);
+    const avgSleep = Math.round(sleepValues.reduce((a, b) => a + b, 0) / sleepValues.length);
+    whoopStatsAvg.textContent = `7-day avg: ${avgRecovery}% recovery · ${formatSleepDuration(avgSleep)} sleep`;
+  } else {
+    whoopStatsAvg.textContent = "";
+  }
+}
+
+async function loadStatsSummary() {
+  try {
+    const res = await fetch("/api/stats/summary");
+    if (!res.ok) throw new Error();
+    renderStatsSummary(await res.json());
+  } catch {
+    statAvgKcal.textContent = "—";
+    weighinPaceCell.hidden = true;
+  }
+}
+
+function renderStatsSummary(data) {
+  statAvgKcal.textContent = data.avgKcalPerDay !== null && data.avgKcalPerDay !== undefined ? String(data.avgKcalPerDay) : "—";
+
+  if (data.weightPace) {
+    const { kgPerWeek, onTrack } = data.weightPace;
+    weighinPaceCell.hidden = false;
+    weighinPaceCell.classList.remove("balance-cell--loss", "balance-cell--gain");
+    weighinPaceCell.classList.add(onTrack ? "balance-cell--loss" : "balance-cell--gain");
+    const sign = kgPerWeek <= 0 ? "-" : "+";
+    weighinPace.textContent = `${sign}${kgToDisplay(Math.abs(kgPerWeek))} ${weightUnit()}`;
+    weighinPaceCaption.textContent = onTrack ? "on pace/wk" : "off pace/wk";
+  } else {
+    weighinPaceCell.hidden = true;
+  }
+
+  if (data.weightTrend) {
+    const { kgPerWeek, projectedWeightKg4wk, currentWeightKg } = data.weightTrend;
+    const verb = kgPerWeek <= 0 ? "losing" : "gaining";
+    weighinTrendCaption.textContent =
+      `At this pace (${verb} ${kgToDisplay(Math.abs(kgPerWeek))} ${weightUnit()}/wk), ` +
+      `you'd be around ${kgToDisplay(projectedWeightKg4wk)} ${weightUnit()} in 4 weeks.`;
+
+    weightHero.hidden = false;
+    weightHeroValue.textContent = `${kgToDisplay(currentWeightKg)} ${weightUnit()}`;
+    const last = weighIns.length ? weighIns[weighIns.length - 1] : null;
+    weightHeroNote.textContent = last
+      ? `Last weighed ${dateFmt.format(new Date(`${last.date}T00:00:00`))}`
+      : "";
+  } else {
+    weighinTrendCaption.textContent = "";
+    weightHero.hidden = true;
+  }
+
+  renderGoalProgress(data.goalProjection);
+}
+
+function renderGoalProgress(projection) {
+  if (!projection) {
+    goalProgress.hidden = true;
+    return;
+  }
+  goalProgress.hidden = false;
+
+  const { goalWeightKg, remainingKg, projectedDate, movingTowardGoal } = projection;
+  const startKg = weighIns.length ? weighIns[0].weightKg : null;
+
+  if (Math.abs(remainingKg) <= 0.05 || remainingKg <= 0) {
+    goalProgressLabel.textContent = `Goal reached — ${kgToDisplay(goalWeightKg)} ${weightUnit()}`;
+    goalProgressEta.textContent = "";
+    goalProgressFill.style.width = "100%";
+    return;
+  }
+
+  goalProgressLabel.textContent = `${kgToDisplay(remainingKg)} ${weightUnit()} to go`;
+  goalProgressEta.textContent = movingTowardGoal && projectedDate
+    ? dateFmt.format(new Date(`${projectedDate}T00:00:00`))
+    : "no ETA at current pace";
+
+  // Progress is measured from the first weigh-in on record to the goal, so
+  // the bar reflects the whole journey rather than just the recent window.
+  const totalKg = startKg !== null ? startKg - goalWeightKg : null;
+  const pct = totalKg && totalKg > 0 ? Math.max(0, Math.min(100, ((totalKg - remainingKg) / totalKg) * 100)) : 0;
+  goalProgressFill.style.width = `${pct.toFixed(1)}%`;
+}
+
+// ── Data import ──────────────────────────────────────────────────────────
+importFile?.addEventListener("change", async () => {
+  const file = importFile.files?.[0];
+  if (!file) return;
+  importStatus.hidden = false;
+  importStatus.textContent = "Restoring…";
+  try {
+    const payload = JSON.parse(await file.text());
+    const res = await fetch("/api/data/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : "Import failed.");
+    const c = body.imported;
+    importStatus.textContent =
+      `Restored ${c.entries} food ${c.entries === 1 ? "entry" : "entries"}, ${c.weighIns} weigh-ins, ` +
+      `${c.favorites} favourites.` + (c.skipped ? ` ${c.skipped} already present, skipped.` : "");
+    await checkAuth();
+    loadWeek();
+  } catch (error) {
+    importStatus.textContent = error instanceof Error ? error.message : "Couldn't read that file.";
+  } finally {
+    importFile.value = "";
+  }
+});
+
+// ── Adaptive TDEE ────────────────────────────────────────────────────────
+const TDEE_PENDING_COPY = {
+  "no-weigh-ins": "Log a few weigh-ins and keep your food diary going — after about two weeks this works out what you actually burn each day.",
+  "too-few-weigh-ins": "Nearly there — a couple more weigh-ins and this can work out what you actually burn each day.",
+  "too-short-a-span": "Your weigh-ins don't span enough time yet. About two weeks between your first and latest lets this measure your real burn rate.",
+  "not-enough-logging": "There are too many unlogged days in this stretch to work this out reliably. Keep logging and it'll appear.",
+  "no-intake": "No food logged in this period yet — that's the other half of the sum.",
+};
+
+async function loadTdee() {
+  try {
+    const res = await fetch("/api/stats/tdee");
+    if (!res.ok) throw new Error();
+    renderTdee(await res.json());
+  } catch {
+    tdeeCard.hidden = true;
+    tdeePendingCard.hidden = true;
+  }
+}
+
+function renderTdee(data) {
+  if (data.kcalPerDay === null) {
+    tdeeCard.hidden = true;
+    tdeePendingCard.hidden = false;
+    tdeePendingText.textContent = TDEE_PENDING_COPY[data.reason] ?? TDEE_PENDING_COPY["no-weigh-ins"];
+    return;
+  }
+
+  tdeePendingCard.hidden = true;
+  tdeeCard.hidden = false;
+  tdeeValue.textContent = data.kcalPerDay.toLocaleString();
+
+  tdeeConfidence.textContent = `${data.confidence} confidence`;
+  tdeeConfidence.className = `confidence-pill confidence-pill--${data.confidence}`;
+
+  const pct = Math.round(data.completeness * 100);
+  const direction = data.trendChangeKg <= 0 ? "lost" : "gained";
+  tdeeExplain.textContent =
+    `Worked out from what you actually ate and the ${kgToDisplay(Math.abs(data.trendChangeKg))} ${weightUnit()} you ` +
+    `${direction} over ${data.windowDays} days (${pct}% of days logged). This is your real burn rate, not a formula.`;
+
+  if (data.underLoggingKcalPerDay) {
+    tdeeUnderlogging.hidden = false;
+    tdeeUnderlogging.textContent =
+      `WHOOP measures about ${data.whoopKcalPerDay.toLocaleString()} kcal/day burned — ` +
+      `${data.underLoggingKcalPerDay.toLocaleString()} more than your food and weight change imply. ` +
+      `That usually means some food isn't making it into the diary.`;
+  } else {
+    tdeeUnderlogging.hidden = true;
+  }
+}
+
+// ── Tooltips ─────────────────────────────────────────────────────────────
+// Tap/click-driven (not hover-only) so this works on the phone this app is
+// mostly used on, not just with a mouse. Any element with data-tooltip and
+// the has-tooltip class becomes a trigger.
+let activeTooltipEl = null;
+let activeTooltipTarget = null;
+
+function hideTooltip() {
+  if (activeTooltipEl) activeTooltipEl.remove();
+  if (activeTooltipTarget) activeTooltipTarget.classList.remove("tooltip-active");
+  activeTooltipEl = null;
+  activeTooltipTarget = null;
+}
+
+function showTooltip(target) {
+  const tip = document.createElement("div");
+  tip.className = "app-tooltip";
+  tip.textContent = target.dataset.tooltip;
+  document.body.appendChild(tip);
+
+  const rect = target.getBoundingClientRect();
+  const tipRect = tip.getBoundingClientRect();
+  const anchorX = rect.left + rect.width / 2;
+
+  // Prefer sitting above the point (so the tooltip never covers the data
+  // you just tapped), flipping below only when there isn't room.
+  let top = rect.top - tipRect.height - 10;
+  let placement = "top";
+  if (top < 8) {
+    top = rect.bottom + 10;
+    placement = "bottom";
+  }
+  tip.classList.add(`app-tooltip--${placement}`);
+  tip.style.top = `${top}px`;
+
+  // Keep the box on screen, then slide the caret back the other way by
+  // however far the box had to move, so it still points at the point.
+  const half = tipRect.width / 2;
+  const clampedX = Math.min(Math.max(anchorX, half + 8), window.innerWidth - half - 8);
+  tip.style.left = `${clampedX}px`;
+  tip.style.setProperty("--caret-offset", `${anchorX - clampedX}px`);
+
+  target.classList.add("tooltip-active");
+  activeTooltipEl = tip;
+  activeTooltipTarget = target;
+}
+
+document.addEventListener("click", (e) => {
+  const trigger = e.target.closest(".has-tooltip");
+  if (trigger) {
+    e.stopPropagation();
+    if (trigger === activeTooltipTarget) hideTooltip();
+    else {
+      hideTooltip();
+      showTooltip(trigger);
+    }
+  } else {
+    hideTooltip();
+  }
+});
+window.addEventListener("scroll", hideTooltip, true);
+
+// ── Insights ─────────────────────────────────────────────────────────────
+async function loadInsights() {
+  try {
+    const res = await fetch("/api/stats/insights");
+    if (!res.ok) throw new Error();
+    renderInsights(await res.json());
+  } catch {
+    insightsCard.hidden = true;
+  }
+}
+
+function renderInsights(data) {
+  const insights = data.insights ?? [];
+  if (insights.length === 0) {
+    insightsCard.hidden = true;
+    return;
+  }
+  insightsCard.hidden = false;
+  insightsList.innerHTML = "";
+  for (const insight of insights) {
+    const li = document.createElement("li");
+    li.textContent = insight.text;
+    insightsList.appendChild(li);
+  }
+}
+
+// ── Calorie balance trend ───────────────────────────────────────────────
+let balanceTrendRaw = null;
+let balanceGranularity = "daily";
+
+granularityBtns.forEach((btn) =>
+  btn.addEventListener("click", () => {
+    balanceGranularity = btn.dataset.granularity;
+    granularityBtns.forEach((b) => b.classList.toggle("granularity-btn--active", b === btn));
+    if (balanceTrendRaw) renderBalanceTrend(balanceTrendRaw);
+  }),
+);
+
+async function loadBalanceTrend() {
+  try {
+    const res = await fetch("/api/stats/balance?days=90");
+    if (!res.ok) throw new Error();
+    balanceTrendRaw = await res.json();
+    renderBalanceTrend(balanceTrendRaw);
+  } catch {
+    balanceTrendCard.hidden = true;
+  }
+}
+
+// Groups a chronological daily array into consecutive 7-day buckets,
+// averaging each field across whatever days in the bucket have data. The
+// final bucket may hold fewer than 7 days if the range isn't a multiple of 7.
+function bucketWeekly(days) {
+  const buckets = [];
+  for (let i = 0; i < days.length; i += 7) buckets.push(days.slice(i, i + 7));
+  return buckets.map((chunk) => {
+    const ins = chunk.map((d) => d.kcalIn).filter((v) => v !== null);
+    const outs = chunk.map((d) => d.kcalOut).filter((v) => v !== null);
+    const kcalIn = ins.length ? Math.round(ins.reduce((a, b) => a + b, 0) / ins.length) : null;
+    const kcalOut = outs.length ? Math.round(outs.reduce((a, b) => a + b, 0) / outs.length) : null;
+    return {
+      date: chunk[0].date,
+      endDate: chunk[chunk.length - 1].date,
+      kcalIn,
+      kcalOut,
+      kcalOutSource: chunk.some((d) => d.kcalOutSource === "estimated") ? "estimated" : outs.length ? "whoop" : null,
+      balance: kcalIn !== null && kcalOut !== null ? kcalIn - kcalOut : null,
+    };
+  });
+}
+
+function escapeAttr(str) {
+  return str.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
+function balancePointTooltip(d) {
+  const label =
+    d.endDate && d.endDate !== d.date
+      ? `${dateFmt.format(new Date(`${d.date}T00:00:00`))} – ${dateFmt.format(new Date(`${d.endDate}T00:00:00`))}`
+      : dateFmt.format(new Date(`${d.date}T00:00:00`));
+  const inText = d.kcalIn !== null ? `${d.kcalIn.toLocaleString()} in` : "no food logged";
+  const outText =
+    d.kcalOut !== null ? `${d.kcalOut.toLocaleString()} out${d.kcalOutSource === "estimated" ? " (estimated)" : ""}` : "no burn data";
+  return `${label}: ${inText} · ${outText}`;
+}
+
+function renderBalanceTrend(data, animate = true) {
+  const fullDays = data.days ?? [];
+  const plotDays = (balanceGranularity === "weekly" ? bucketWeekly(fullDays) : fullDays.slice(-30)).filter(
+    (d) => d.kcalIn !== null || d.kcalOut !== null,
+  );
+  if (plotDays.length < 2) {
+    balanceTrendCard.hidden = true;
+    balanceTrendChart.innerHTML = "";
+    return;
+  }
+  balanceTrendCard.hidden = false;
+
+  const box = measureChart(balanceTrendChart);
+  if (!box) return; // hidden (e.g. a background Stats tab) — re-rendered when it becomes visible
+  const { w, h } = box;
+
+  const allValues = plotDays.flatMap((d) => [d.kcalIn, d.kcalOut]).filter((v) => v !== null);
+  const min = Math.min(...allValues);
+  const max = Math.max(...allValues, min + 1);
+  const range = max - min || 1;
+  const padLeft = 42;
+  const padRight = 10;
+  const padY = 16;
+
+  const xFor = (i) => padLeft + (i / (plotDays.length - 1)) * (w - padLeft - padRight);
+  const yFor = (v) => h - padY - ((v - min) / range) * (h - padY * 2);
+
+  const animateCls = animate ? " chart-animate" : "";
+
+  function seriesPoints(field) {
+    const pts = [];
+    plotDays.forEach((d, i) => {
+      if (d[field] === null) return;
+      pts.push({ x: xFor(i), y: yFor(d[field]), day: d });
+    });
+    return pts;
+  }
+  const inPoints = seriesPoints("kcalIn");
+  const outPoints = seriesPoints("kcalOut");
+
+  const midValue = (min + max) / 2;
+  const gridlines = [max, midValue, min]
+    .map(
+      (v) =>
+        `<line x1="${padLeft}" y1="${yFor(v).toFixed(1)}" x2="${w - padRight}" y2="${yFor(v).toFixed(1)}" class="weighin-chart-grid" />`,
+    )
+    .join("");
+  const labels = [max, midValue, min]
+    .map(
+      (v) =>
+        `<text x="0" y="${(yFor(v) + 3).toFixed(1)}" class="weighin-chart-label">${Math.round(v).toLocaleString()}</text>`,
+    )
+    .join("");
+
+  const dots = (pts, cls) => {
+    const spec = dotSpecFor(pts.length);
+    return pts
+      .map(
+        (p, i) =>
+          `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${spec.r}" class="chart-dot ${cls}${spec.cls}${animateCls}"` +
+          ` style="animation-delay:${(i * 10).toFixed(0)}ms" />`,
+      )
+      .join("");
+  };
+
+  // Tap targets sit on each real data point (not, as before, at the
+  // midpoint between the two lines — which put the marker in empty space
+  // between them and made the tooltip look unrelated to either value).
+  // Both series show the same combined figures, so tapping either line's
+  // dot for a given day reads the same, anchored where you actually tapped.
+  const hitTargets = [...inPoints, ...outPoints]
+    .map(
+      (p) =>
+        `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="9" class="chart-hit has-tooltip"` +
+        ` tabindex="0" data-tooltip="${escapeAttr(balancePointTooltip(p.day))}" />`,
+    )
+    .join("");
+
+  balanceTrendChart.innerHTML =
+    `${gridlines}${labels}` +
+    `<path d="${smoothPathD(inPoints)}" class="balance-trend-line balance-trend-line--in chart-draw" />` +
+    `<path d="${smoothPathD(outPoints)}" class="balance-trend-line balance-trend-line--out chart-draw" />` +
+    dots(inPoints, "chart-dot--in") +
+    dots(outPoints, "chart-dot--out") +
+    hitTargets;
+
+  if (animate) animateChartIn(balanceTrendChart);
+  // Reads the latest cached data at resize time (not the `data` this
+  // particular render was called with) — watchChartResize only attaches
+  // its observer once, so this closure must stay valid across every later
+  // re-render, including ones triggered by a fresh fetch. animate is
+  // false here: a resize (window resize, orientation change, even a
+  // fullscreen-screenshot tool briefly resizing the viewport) should just
+  // redraw the geometry at its new size, not replay the whole draw-in —
+  // hiding a settled chart and redrawing it from scratch mid-resize would
+  // be a jarring flash, not the animation this was meant to add.
+  watchChartResize(balanceTrendChart, () => balanceTrendRaw && renderBalanceTrend(balanceTrendRaw, false));
+
+  const recent = fullDays.filter((d) => d.balance !== null).slice(-7);
+  if (recent.length) {
+    const avgBalance = Math.round(recent.reduce((sum, d) => sum + d.balance, 0) / recent.length);
+    const usedEstimate = recent.some((d) => d.kcalOutSource === "estimated");
+    const verb = avgBalance <= 0 ? "deficit" : "surplus";
+    balanceTrendCaption.textContent =
+      `Averaging a ${Math.abs(avgBalance).toLocaleString()} kcal/day ${verb} over the last 7 days` +
+      (usedEstimate ? " (partly estimated where WHOOP data wasn't available)." : ".");
+  } else {
+    balanceTrendCaption.textContent = "";
+  }
+}
+
+// ── Weekly breakdown ─────────────────────────────────────────────────────
+async function loadWeeklyBreakdown() {
+  try {
+    const res = await fetch("/api/stats/weekly-breakdown?weeks=12");
+    if (!res.ok) throw new Error();
+    renderWeeklyBreakdown(await res.json());
+  } catch {
+    breakdownWeightCard.hidden = true;
+    breakdownCaloriesCard.hidden = true;
+    breakdownRecoveryCard.hidden = true;
+  }
+}
+
+function weekRangeLabel(week) {
+  const start = dateFmt.format(new Date(`${week.weekStart}T00:00:00`));
+  const end = dateFmt.format(new Date(`${week.weekEnd}T00:00:00`));
+  return `${start} – ${end}`;
+}
+
+function weekOfCell(week) {
+  const td = document.createElement("td");
+  td.textContent = dateFmt.format(new Date(`${week.weekStart}T00:00:00`));
+  return td;
+}
+
+// Applies the tooltip trigger to the whole row rather than just the date
+// cell, so tapping anywhere on a row — not just its first column — shows
+// the detail. Rows are otherwise inert (no click action), so this doesn't
+// compete with anything else the row might do.
+function makeRowTappable(row, week, extraDetail) {
+  row.className = "has-tooltip";
+  row.tabIndex = 0;
+  row.dataset.tooltip = extraDetail ? `${weekRangeLabel(week)} · ${extraDetail}` : weekRangeLabel(week);
+}
+
+function renderWeeklyBreakdown(data) {
+  const weeks = data.weeks ?? [];
+  const hasAny = (field) => weeks.some((w) => w[field] !== null && w[field] !== undefined && w[field] !== 0);
+
+  breakdownWeightCard.hidden = !hasAny("weightChangeKg");
+  breakdownCaloriesCard.hidden = !(hasAny("avgKcalPerDay") || hasAny("workoutCount"));
+  breakdownRecoveryCard.hidden = !hasAny("avgRecovery");
+
+  breakdownWeightBody.innerHTML = "";
+  breakdownCaloriesBody.innerHTML = "";
+  breakdownRecoveryBody.innerHTML = "";
+
+  for (let i = weeks.length - 1; i >= 0; i--) {
+    const week = weeks[i];
+
+    const weightRow = document.createElement("tr");
+    makeRowTappable(weightRow, week);
+    weightRow.appendChild(weekOfCell(week));
+    const weight = document.createElement("td");
+    if (week.weightChangeKg !== null) {
+      const sign = week.weightChangeKg <= 0 ? "-" : "+";
+      weight.textContent = `${sign}${kgToDisplay(Math.abs(week.weightChangeKg))} ${weightUnit()}`;
+      weight.className = week.weightChangeKg <= 0 ? "breakdown-loss" : "breakdown-gain";
+    } else {
+      weight.textContent = "—";
+    }
+    weightRow.appendChild(weight);
+    breakdownWeightBody.appendChild(weightRow);
+
+    const kcalDetail =
+      week.avgKcalPerDay !== null ? `logged ${week.daysWithEntries} of 7 days` : undefined;
+    const caloriesRow = document.createElement("tr");
+    makeRowTappable(caloriesRow, week, kcalDetail);
+    caloriesRow.appendChild(weekOfCell(week));
+    const kcal = document.createElement("td");
+    kcal.textContent = week.avgKcalPerDay !== null ? week.avgKcalPerDay.toLocaleString() : "—";
+    caloriesRow.appendChild(kcal);
+    const workouts = document.createElement("td");
+    workouts.textContent = String(week.workoutCount);
+    caloriesRow.appendChild(workouts);
+    breakdownCaloriesBody.appendChild(caloriesRow);
+
+    const recoveryRow = document.createElement("tr");
+    makeRowTappable(recoveryRow, week);
+    recoveryRow.appendChild(weekOfCell(week));
+    const recovery = document.createElement("td");
+    recovery.textContent = week.avgRecovery !== null ? `${week.avgRecovery}%` : "—";
+    recoveryRow.appendChild(recovery);
+    breakdownRecoveryBody.appendChild(recoveryRow);
+  }
+}
+
+// ── Shared line-chart rendering ─────────────────────────────────────────
+// Used by both the weight trend and calorie balance charts. Two things
+// separate a hand-rolled debug chart from one that reads as a native part
+// of a considered app: the coordinate space actually matching the pixels
+// it's drawn into (rather than a fixed viewBox stretched — and its text
+// and stroke widths distorted — to fill whatever width the card happens
+// to be), and curves instead of straight polyline segments between points.
+
+const chartResizeObservers = new WeakMap();
+
+/** The chart's real rendered size in CSS pixels, or null while hidden (e.g. a background Stats tab — 0×0 until it's shown). */
+function measureChart(svgEl) {
+  const rect = svgEl.getBoundingClientRect();
+  if (rect.width < 1 || rect.height < 1) return null;
+  const w = Math.round(rect.width);
+  const h = Math.round(rect.height);
+  svgEl.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  return { w, h };
+}
+
+/** Re-runs `render` when the chart's container is resized (window resize, breakpoint change, orientation change) — debounced to one call per animation frame. */
+function watchChartResize(svgEl, render) {
+  let existing = chartResizeObservers.get(svgEl);
+  if (existing) return; // already watching this element
+  let pending = false;
+  const ro = new ResizeObserver(() => {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      render();
+    });
+  });
+  ro.observe(svgEl);
+  chartResizeObservers.set(svgEl, ro);
+}
+
+/**
+ * A smooth curve through every point, as an SVG path `d` string, using
+ * monotone cubic interpolation (Fritsch–Carlson).
+ *
+ * The obvious choice here is a Catmull-Rom spline, but its control points
+ * are derived from the *neighbouring* points, so around a peak or trough
+ * the curve bulges past the data — a line whose highest value is the top
+ * gridline visibly arcs above that gridline, and past its own axis label.
+ * That reads as the chart being misaligned with its own labels. Monotone
+ * interpolation damps the tangent at every local extreme instead, so the
+ * curve is guaranteed to stay within the data's own min/max.
+ */
+function smoothPathD(points) {
+  const n = points.length;
+  if (n === 0) return "";
+  if (n < 3) {
+    return points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  }
+
+  // Secant slope of each segment.
+  const dx = [];
+  const slope = [];
+  for (let i = 0; i < n - 1; i++) {
+    dx[i] = points[i + 1].x - points[i].x;
+    slope[i] = dx[i] === 0 ? 0 : (points[i + 1].y - points[i].y) / dx[i];
+  }
+
+  // Tangent at each point: the average of its two neighbouring slopes,
+  // but flattened to 0 wherever the direction reverses (a local peak or
+  // trough) — that flattening is what prevents the overshoot.
+  const m = [slope[0]];
+  for (let i = 1; i < n - 1; i++) {
+    m[i] = slope[i - 1] * slope[i] <= 0 ? 0 : (slope[i - 1] + slope[i]) / 2;
+  }
+  m[n - 1] = slope[n - 2];
+
+  // Fritsch–Carlson damping: keeps each segment monotone even where the
+  // averaged tangent above would still be too steep for the segment.
+  for (let i = 0; i < n - 1; i++) {
+    if (slope[i] === 0) {
+      m[i] = 0;
+      m[i + 1] = 0;
+      continue;
+    }
+    const a = m[i] / slope[i];
+    const b = m[i + 1] / slope[i];
+    const s = a * a + b * b;
+    if (s > 9) {
+      const tau = 3 / Math.sqrt(s);
+      m[i] = tau * a * slope[i];
+      m[i + 1] = tau * b * slope[i];
+    }
+  }
+
+  let d = `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const c1x = points[i].x + dx[i] / 3;
+    const c1y = points[i].y + (m[i] * dx[i]) / 3;
+    const c2x = points[i + 1].x - dx[i] / 3;
+    const c2y = points[i + 1].y - (m[i + 1] * dx[i]) / 3;
+    d +=
+      ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)}` +
+      ` ${points[i + 1].x.toFixed(1)},${points[i + 1].y.toFixed(1)}`;
+  }
+  return d;
+}
+
+/** Marker radius/treatment for a series of `count` points — see .chart-dot--dense. */
+function dotSpecFor(count) {
+  return count > 16 ? { r: 2, cls: " chart-dot--dense" } : { r: 3, cls: "" };
+}
+
+/** Draws every `.chart-draw` path on in, left to right, instead of popping in fully formed. */
+function animateChartIn(svgEl) {
+  svgEl.querySelectorAll(".chart-draw").forEach((path) => {
+    const len = path.getTotalLength();
+    if (!len) return;
+    path.style.transition = "none";
+    path.style.strokeDasharray = `${len}`;
+    path.style.strokeDashoffset = `${len}`;
+    path.getBoundingClientRect(); // flush the styles above before re-enabling the transition, so it actually animates
+    path.style.transition = "stroke-dashoffset 0.65s cubic-bezier(0.4, 0, 0.2, 1)";
+    requestAnimationFrame(() => {
+      path.style.strokeDashoffset = "0";
+    });
+  });
+}
+
+function weighinPointTooltip(entry) {
+  const index = weighIns.indexOf(entry);
+  const prev = index > 0 ? weighIns[index - 1] : null;
+  const label = `${dateFmt.format(new Date(`${entry.date}T00:00:00`))}: ${kgToDisplay(entry.weightKg)} ${weightUnit()}`;
+  if (!prev) return label;
+  const deltaKg = entry.weightKg - prev.weightKg;
+  const sign = deltaKg <= 0 ? "−" : "+";
+  return `${label} · ${sign}${kgToDisplay(Math.abs(deltaKg))} ${weightUnit()}`;
+}
+
+function renderWeighinChart(animate = true) {
+  if (weighIns.length < 2) {
+    weighinChartCard.hidden = true;
+    weighinChart.innerHTML = "";
+    return;
+  }
+  weighinChartCard.hidden = false;
+
+  const box = measureChart(weighinChart);
+  if (!box) return; // hidden (e.g. a background Stats tab) — re-rendered when it becomes visible
+
+  const { w, h } = box;
+  const weights = weighIns.map((entry) => entry.weightKg);
+  const min = Math.min(...weights);
+  const max = Math.max(...weights);
+  const range = max - min || 1;
+  const padLeft = 42;
+  const padRight = 10;
+  const padY = 18;
+
+  const yFor = (kg) => h - padY - ((kg - min) / range) * (h - padY * 2);
+  const xFor = (i) => padLeft + (i / (weighIns.length - 1)) * (w - padLeft - padRight);
+
+  const points = weighIns.map((entry, i) => ({ x: xFor(i), y: yFor(entry.weightKg) }));
+
+  const animateCls = animate ? " chart-animate" : "";
+  const gradientId = "weighin-area-gradient";
+  const areaD = `${smoothPathD(points)} L${points[points.length - 1].x.toFixed(1)},${(h - padY).toFixed(1)} L${points[0].x.toFixed(1)},${(h - padY).toFixed(1)} Z`;
+  const dotSpec = dotSpecFor(points.length);
+  const circles = points
+    .map(
+      (p, i) =>
+        `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${dotSpec.r}" class="chart-dot chart-dot--weight${dotSpec.cls}${animateCls}" style="animation-delay:${(i * 10).toFixed(0)}ms" />`,
+    )
+    .join("");
+  const hitTargets = points
+    .map(
+      (p, i) =>
+        `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="9" class="chart-hit has-tooltip"` +
+        ` tabindex="0" data-tooltip="${escapeAttr(weighinPointTooltip(weighIns[i]))}" />`,
+    )
+    .join("");
+
+  const midKg = (min + max) / 2;
+  const gridlines = [max, midKg, min]
+    .map(
+      (v) =>
+        `<line x1="${padLeft}" y1="${yFor(v).toFixed(1)}" x2="${w - padRight}" y2="${yFor(v).toFixed(1)}" class="weighin-chart-grid" />`,
+    )
+    .join("");
+  const labels = [max, midKg, min]
+    .map(
+      (v) => `<text x="0" y="${(yFor(v) + 3).toFixed(1)}" class="weighin-chart-label">${kgToDisplay(v)}${weightUnit()}</text>`,
+    )
+    .join("");
+
+  weighinChart.innerHTML =
+    `<defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1">` +
+    `<stop offset="0%" stop-color="var(--pitch)" stop-opacity="0.22" />` +
+    `<stop offset="100%" stop-color="var(--pitch)" stop-opacity="0" /></linearGradient></defs>` +
+    `${gridlines}${labels}` +
+    `<path d="${areaD}" fill="url(#${gradientId})" class="chart-area${animateCls}" />` +
+    `<path d="${smoothPathD(points)}" class="weighin-chart-line chart-draw" />` +
+    circles +
+    hitTargets;
+
+  if (animate) animateChartIn(weighinChart);
+  // animate:false — see the matching comment in renderBalanceTrend.
+  watchChartResize(weighinChart, () => renderWeighinChart(false));
+}
+
+function renderWeighinList() {
+  weighinList.innerHTML = "";
+  if (weighIns.length === 0) {
+    weighinList.innerHTML = '<p class="empty-state">No weigh-ins logged yet.</p>';
+    return;
+  }
+
+  for (let ascIndex = weighIns.length - 1; ascIndex >= 0; ascIndex--) {
+    const entry = weighIns[ascIndex];
+    const prev = ascIndex > 0 ? weighIns[ascIndex - 1] : null;
+    weighinList.appendChild(renderWeighinRow(entry, prev));
+  }
+}
+
+function renderWeighinRow(entry, prev) {
+  const row = document.createElement("div");
+  row.className = "food-row weighin-row";
+
+  const info = document.createElement("div");
+  info.className = "food-info";
+
+  const dateEl = document.createElement("div");
+  dateEl.className = "food-label";
+  dateEl.textContent = dateFmt.format(new Date(`${entry.date}T00:00:00`));
+
+  const metaEl = document.createElement("div");
+  metaEl.className = "food-meta";
+  let metaText = `${kgToDisplay(entry.weightKg)} ${weightUnit()}`;
+  if (prev) {
+    const deltaKg = entry.weightKg - prev.weightKg;
+    const sign = deltaKg <= 0 ? "-" : "+";
+    metaText += ` · ${sign}${kgToDisplay(Math.abs(deltaKg))} ${weightUnit()}`;
+  }
+  metaEl.textContent = metaText;
+
+  info.append(dateEl, metaEl);
+
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.className = "food-log-btn";
+  editBtn.textContent = "Edit";
+  editBtn.addEventListener("click", () => {
+    weighinDate.value = entry.date;
+    weighinWeight.value = kgToDisplay(entry.weightKg);
+    weighinWeight.focus();
+  });
+
+  const delBtn = document.createElement("button");
+  delBtn.type = "button";
+  delBtn.className = "exercise-del weighin-del";
+  delBtn.textContent = "Delete";
+  delBtn.addEventListener("click", () => deleteWeighIn(entry.date));
+
+  row.append(info, editBtn, delBtn);
+  return row;
+}
+
+async function deleteWeighIn(date) {
+  try {
+    const res = await fetch(`/api/weigh-ins/${encodeURIComponent(date)}`, { method: "DELETE" });
+    if (!res.ok) throw new Error();
+    await loadWeighIns();
+    await loadStatsSummary();
+  } catch {
+    weighinError.textContent = "Couldn't delete that entry — please try again.";
+    weighinError.hidden = false;
+  }
+}
+
+weighinForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  weighinError.hidden = true;
+
+  const date = weighinDate.value;
+  const rawWeight = weighinWeight.value === "" ? null : Number(weighinWeight.value);
+  if (!date || rawWeight === null || Number.isNaN(rawWeight)) {
+    weighinError.textContent = "Enter a date and weight.";
+    weighinError.hidden = false;
+    return;
+  }
+
+  weighinSave.disabled = true;
+  try {
+    const res = await fetch("/api/weigh-ins", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date, weightKg: displayToKg(rawWeight) }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(typeof body.error === "string" ? body.error : "Couldn't save that weigh-in.");
+    }
+    weighinDate.value = todayDateValue();
+    weighinWeight.value = "";
+    await loadWeighIns();
+    // Pace-vs-goal depends on weigh-in data too, so it needs refreshing
+    // alongside the list rather than only once when the screen opens.
+    await loadStatsSummary();
+  } catch (error) {
+    weighinError.textContent = error.message;
+    weighinError.hidden = false;
+  } finally {
+    weighinSave.disabled = false;
+  }
+});
+
+statsToggle.addEventListener("click", openStats);
+statsBack.addEventListener("click", closeStats);
+
+// ── Desktop nav ─────────────────────────────────────────────────────────────
+// Wide-viewport tab bar (see .desktop-nav in style.css) that replaces the
+// mobile corner icons — every screen carries an identical copy of it, wired
+// to the same open/close functions the icons already use.
+function navTo(target) {
+  if (!settingsScreen.hidden && target !== "settings") closeSettings();
+  if (!foodLibraryScreen.hidden && target !== "food-library") closeFoodLibrary();
+  if (!statsScreen.hidden && target !== "stats") closeStats();
+
+  if (target === "food-library" && foodLibraryScreen.hidden) openFoodLibrary();
+  else if (target === "stats" && statsScreen.hidden) openStats();
+  else if (target === "settings" && settingsScreen.hidden) openSettings();
+}
+
+document.querySelectorAll(".desktop-nav-btn").forEach((btn) => {
+  btn.addEventListener("click", () => navTo(btn.dataset.nav));
+});
