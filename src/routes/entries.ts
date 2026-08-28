@@ -68,8 +68,11 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
     entryTimestamp = new Date(rolloverToday.getTime() - 60_000);
   }
 
-  // directKcal is supplied by the barcode scanner when Open Food Facts has
-  // nutrition data — skip AI estimation and use the known value directly.
+  // directKcal is supplied by the barcode scanner and food search when Open
+  // Food Facts has nutrition data — skip AI estimation and use the known
+  // value directly, and record that the figure came from a real database
+  // rather than a guess.
+  const source = directKcal ? "database" : "ai";
   const items = directKcal
     ? [{ label: text?.trim() || "Scanned item", kcal: directKcal }]
     : await estimateMeal({
@@ -92,6 +95,7 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
           kcal: item.kcal,
           imageUrl,
           mealType,
+          source,
           matchWeekId: matchWeek.id,
         },
       }),
@@ -137,10 +141,19 @@ entriesRouter.patch("/:id", async (req, res) => {
   const { date, hour, ...rest } = parsed.data;
 
   try {
-    const data: typeof rest & { edited: true; timestamp?: Date; matchWeekId?: number } = {
+    const data: typeof rest & {
+      edited: true;
+      source?: string;
+      timestamp?: Date;
+      matchWeekId?: number;
+    } = {
       ...rest,
       edited: true,
     };
+
+    // Typing a number over an estimate makes it the user's own figure, so it
+    // should stop being labelled as guessed.
+    if (rest.kcal !== undefined && rest.kcal !== null) data.source = "manual";
 
     if (date !== undefined || hour !== undefined) {
       const localTime = getLocalParts(existing.timestamp, config.TIMEZONE);
@@ -184,6 +197,9 @@ entriesRouter.post("/:id/repeat", async (req, res) => {
       kcal: existing.kcal,
       imageUrl: existing.imageUrl,
       mealType,
+      // A repeat is only as trustworthy as what it copies, so it inherits
+      // the original's provenance rather than claiming a fresh one.
+      source: existing.source,
       matchWeekId: matchWeek.id,
     },
   });

@@ -69,6 +69,15 @@
       <main>
         <p id="week-note" class="muted" hidden>Viewing a past week — go to the current week to log new entries.</p>
 
+        <section id="quick-add" class="card quick-add" hidden>
+          <div class="quick-add-header">
+            <span class="quick-add-title">Quick add</span>
+            <button type="button" id="quick-add-manage" class="ghost-sm">Manage meals</button>
+          </div>
+          <div id="quick-add-chips" class="quick-add-chips"></div>
+          <p id="quick-add-error" class="error" hidden></p>
+        </section>
+
         <form id="entry-form" class="card">
           <label for="text">What did you eat?</label>
           <textarea
@@ -84,10 +93,20 @@
             <input type="file" id="photo" name="photo" accept="image/*" />
           </label>
 
-          <button type="button" id="scan-barcode-btn" class="scan-barcode-btn">
-            <svg class="icon" viewBox="0 0 24 24"><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/><path d="M21 7.35V16.65a1.35 1.35 0 0 1-.68 1.17l-7.64 4.37a1.35 1.35 0 0 1-1.36 0l-7.64-4.37A1.35 1.35 0 0 1 3 16.65V7.35a1.35 1.35 0 0 1 .68-1.17l7.64-4.37a1.35 1.35 0 0 1 1.36 0l7.64 4.37A1.35 1.35 0 0 1 21 7.35Z"/></svg>
-            Scan barcode
-          </button>
+          <div class="capture-row">
+            <button type="button" id="scan-barcode-btn" class="capture-btn">
+              <svg class="icon" viewBox="0 0 24 24"><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/><path d="M21 7.35V16.65a1.35 1.35 0 0 1-.68 1.17l-7.64 4.37a1.35 1.35 0 0 1-1.36 0l-7.64-4.37A1.35 1.35 0 0 1 3 16.65V7.35a1.35 1.35 0 0 1 .68-1.17l7.64-4.37a1.35 1.35 0 0 1 1.36 0l7.64 4.37A1.35 1.35 0 0 1 21 7.35Z"/></svg>
+              Scan
+            </button>
+            <button type="button" id="food-search-btn" class="capture-btn">
+              <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              Search
+            </button>
+            <button type="button" id="voice-btn" class="capture-btn" hidden>
+              <svg class="icon" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></svg>
+              <span id="voice-btn-label">Speak</span>
+            </button>
+          </div>
 
           <div id="log-week-row" class="log-week-row" hidden>
             <span class="muted">Count toward</span>
@@ -99,6 +118,16 @@
           <button type="submit" id="submit-btn">Log it</button>
           <p id="form-error" class="error" hidden></p>
         </form>
+
+        <section id="food-search-card" class="card food-search-card" hidden>
+          <div class="quick-add-header">
+            <span class="quick-add-title">Search food database</span>
+            <button type="button" id="food-search-close" class="ghost-sm">Close</button>
+          </div>
+          <input type="search" id="food-search-query" placeholder="e.g. hobnobs, greek yoghurt…" autocomplete="off" />
+          <p id="food-search-status" class="muted" hidden></p>
+          <div id="food-search-results" class="food-search-results"></div>
+        </section>
 
         <section id="product-card" class="card product-card" hidden>
           <p class="muted product-card-eyebrow">Found product</p>
@@ -328,6 +357,42 @@
         <section class="card">
           <input type="search" id="food-search" placeholder="Search foods or tags…" />
           <p id="food-library-error" class="error" hidden></p>
+        </section>
+
+        <section id="meals-section">
+          <div class="section-header">
+            <h2>Meals &amp; recipes</h2>
+            <button type="button" id="meal-new-btn" class="ghost-sm">+ New</button>
+          </div>
+          <form id="meal-editor" class="card meal-editor" hidden>
+            <label for="meal-name">Name</label>
+            <input type="text" id="meal-name" maxlength="80" placeholder="e.g. Usual breakfast" />
+
+            <span class="field-label">Type</span>
+            <div class="meal-kind-btns">
+              <button type="button" id="meal-kind-template" class="meal-kind-btn meal-kind-btn--active">Meal</button>
+              <button type="button" id="meal-kind-recipe" class="meal-kind-btn">Recipe</button>
+            </div>
+            <p id="meal-kind-note" class="muted meal-kind-note">
+              A meal is eaten in one go and logs each item separately.
+            </p>
+
+            <div id="meal-servings-row" class="meal-servings-row" hidden>
+              <label for="meal-servings">Portions this makes</label>
+              <input type="number" id="meal-servings" min="0.5" step="0.5" value="4" />
+            </div>
+
+            <span class="field-label">Items</span>
+            <div id="meal-items"></div>
+            <button type="button" id="meal-add-item" class="ghost-sm meal-add-item">+ Add item</button>
+
+            <div class="result-actions">
+              <button type="submit" id="meal-save">Save</button>
+              <button type="button" id="meal-cancel" class="ghost">Cancel</button>
+            </div>
+            <p id="meal-editor-error" class="error" hidden></p>
+          </form>
+          <div id="meal-list"></div>
         </section>
 
         <section id="food-favorites-section" hidden>
