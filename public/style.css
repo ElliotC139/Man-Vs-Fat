@@ -642,6 +642,28 @@ h2::before {
   font-weight: 700;
   font-size: 0.95rem;
   flex-shrink: 0;
+  /* The provenance badge sits inside this cell, so it must never be split
+     onto its own line away from the number it describes. */
+  white-space: nowrap;
+}
+
+/* Icon-sized actions fit beside even a long label and a provenance badge on
+   a narrow phone, so the row stays a single line. No min-width: 0 on the
+   label — that would let it shrink past its longest word and break the text
+   one character per line. */
+.entry-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.entry-actions button.entry-action-icon {
+  width: 32px;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .entry-actions button {
@@ -1500,27 +1522,47 @@ tr.has-tooltip:active {
 }
 .ft-in-row input { flex: 1; margin: 0; }
 
-/* ── Barcode scanner ── */
-.scan-barcode-btn {
-  width: 100%;
+/* ── Capture shortcuts (scan / search / speak) ── */
+.capture-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.capture-btn {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   background: transparent;
   border: 2px dashed var(--hairline);
   color: var(--pitch-dark);
-  font-size: 0.9rem;
-  padding: 10px;
+  font-size: 0.85rem;
+  padding: 10px 6px;
   border-radius: 10px;
-  min-height: 42px;
+  min-height: 44px;
+  width: auto;
 }
-.scan-barcode-btn .icon {
-  font-size: 1.1rem;
+.capture-btn .icon {
+  font-size: 1rem;
+  flex-shrink: 0;
 }
-.scan-barcode-btn:hover {
+.capture-btn:hover {
   border-color: var(--pitch);
   background: rgba(31, 157, 82, 0.04);
+}
+/* Listening is a state the user needs to see at a glance, so it goes solid
+   and pulses rather than just changing its label. */
+.capture-btn--listening {
+  border-style: solid;
+  border-color: var(--danger);
+  color: var(--danger);
+  background: rgba(220, 38, 38, 0.06);
+  animation: listenPulse 1.4s ease-in-out infinite;
+}
+@keyframes listenPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.28); }
+  50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
 }
 
 .scan-modal {
@@ -1613,7 +1655,7 @@ tr.has-tooltip:active {
 .food-tag-pill button,
 .food-tag-add,
 .units-btn,
-.scan-barcode-btn,
+.capture-btn,
 .scan-close-btn,
 .entry-actions button {
   box-shadow: none;
@@ -1879,4 +1921,334 @@ tr.has-tooltip:active {
 .import-label {
   display: block;
   margin-bottom: 6px;
+}
+
+/* ── Quick add ── */
+.quick-add {
+  padding-bottom: 12px;
+}
+.quick-add-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.quick-add-title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.quick-add-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.quick-chip {
+  width: auto;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--card);
+  background-image: none;
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.85rem;
+  text-align: left;
+  transition: transform 0.2s var(--spring), box-shadow 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+/* Saved meals read as the deliberate, curated option; individual foods as
+   the quick one. The tint is the only thing separating them. */
+.quick-chip--meal {
+  border-color: rgba(31, 157, 82, 0.35);
+  background: rgba(31, 157, 82, 0.06);
+  color: var(--pitch-dark);
+}
+.quick-chip:hover {
+  border-color: var(--pitch);
+  box-shadow: var(--shadow-md);
+}
+.quick-chip:active {
+  transform: scale(0.95);
+}
+.quick-chip--busy {
+  opacity: 0.55;
+}
+.quick-chip-star {
+  color: var(--gold);
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.quick-chip-star .icon {
+  width: 13px;
+  height: 13px;
+}
+.quick-chip-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+}
+.quick-chip-label {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40vw;
+}
+.quick-chip-sub {
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Where a calorie figure came from ── */
+.entry-source {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 4px;
+  border-radius: 5px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+  cursor: help;
+}
+.entry-source--est {
+  background: rgba(217, 119, 6, 0.13);
+  color: var(--amber);
+}
+.entry-source--verified {
+  background: rgba(31, 157, 82, 0.13);
+  color: var(--pitch-dark);
+}
+
+/* ── Food database search ── */
+.food-search-card #food-search-query {
+  margin-bottom: 10px;
+}
+.food-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.food-search-result {
+  width: 100%;
+  text-align: left;
+  background: var(--bg);
+  background-image: none;
+  color: var(--ink);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  padding: 9px 12px;
+  min-height: 44px;
+  transition: background 0.12s var(--ease), border-color 0.12s var(--ease);
+}
+.food-search-result:hover {
+  border-color: var(--pitch);
+  background: rgba(31, 157, 82, 0.05);
+}
+.food-search-result-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.food-search-result-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.food-search-result-meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Saved meals & recipes ── */
+.meal-row {
+  background: var(--card);
+  border-radius: var(--radius-md);
+  padding: 11px 14px;
+  margin-bottom: 8px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  animation: fadeInUp 0.3s var(--ease);
+}
+.meal-info {
+  flex: 1;
+  min-width: 0;
+}
+.meal-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.meal-kind-pill {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+.meal-kind-pill--template {
+  background: rgba(31, 157, 82, 0.13);
+  color: var(--pitch-dark);
+}
+.meal-kind-pill--recipe {
+  background: rgba(217, 119, 6, 0.13);
+  color: var(--amber);
+}
+.meal-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.meal-items-line {
+  font-size: 0.76rem;
+  color: var(--muted);
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meal-actions {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.meal-actions button {
+  width: auto;
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  background: transparent;
+  background-image: none;
+  color: var(--muted);
+  border: 1px solid var(--hairline);
+  box-shadow: none;
+  transition: background 0.12s var(--ease), transform 0.2s var(--spring);
+}
+.meal-actions button:active {
+  background: var(--bg);
+  transform: scale(0.94);
+}
+
+.meal-editor .field-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.meal-kind-btns {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.meal-kind-btn {
+  flex: 1;
+  width: auto;
+  min-height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--hairline);
+  background: var(--card);
+  background-image: none;
+  color: var(--muted);
+  box-shadow: none;
+  font-size: 0.88rem;
+  font-weight: 600;
+  transition: color 0.12s var(--ease), border-color 0.12s var(--ease), background 0.12s var(--ease);
+}
+.meal-kind-btn--active {
+  border-color: var(--pitch);
+  background: rgba(31, 157, 82, 0.08);
+  color: var(--pitch-dark);
+}
+.meal-kind-note {
+  font-size: 0.78rem;
+  margin: 0 0 12px;
+}
+.meal-servings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.meal-servings-row label {
+  margin: 0;
+  font-size: 0.85rem;
+  flex: 1;
+}
+.meal-servings-row input[type="number"] {
+  margin: 0;
+  width: 90px;
+  flex-shrink: 0;
+}
+.meal-item-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.meal-item-row input[type="text"],
+.meal-item-row input[type="number"] {
+  margin: 0;
+}
+.meal-item-row input[type="text"].meal-item-label {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+.meal-item-row input[type="number"].meal-item-kcal {
+  width: 78px;
+  flex: 0 0 78px;
+}
+.meal-item-remove {
+  width: 34px;
+  min-height: 34px;
+  flex-shrink: 0;
+  padding: 0;
+  background: transparent;
+  background-image: none;
+  border: 1px solid var(--hairline);
+  color: var(--muted);
+  box-shadow: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.meal-add-item {
+  margin-bottom: 14px;
+}
+
+@media (max-width: 380px) {
+  /* Three capture buttons plus their labels won't fit side by side on the
+     narrowest phones, so the labels go and the icons carry the meaning. */
+  .capture-btn {
+    font-size: 0;
+    gap: 0;
+    padding: 10px 4px;
+  }
+  .capture-btn .icon {
+    font-size: 1.1rem;
+  }
 }

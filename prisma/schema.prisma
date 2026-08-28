@@ -40,6 +40,7 @@ model User {
   foodFavorites    FoodFavorite[]
   foodTags         FoodTag[]
   weighIns         WeighIn[]
+  savedMeals       SavedMeal[]
 }
 
 // A starred food, keyed by the entry label normalized (trimmed, lowercased)
@@ -199,6 +200,12 @@ model Entry {
   // Breakfast / lunch / dinner / snack — defaulted from local time-of-day at
   // creation (see inferMealType), editable afterwards via PATCH.
   mealType    String    @default("snack")
+  // Where the kcal figure came from, so the diary can be honest about how
+  // much to trust it: "ai" (estimated from text/photo), "database" (a real
+  // per-100g figure from Open Food Facts), "manual" (the user typed the
+  // number), "meal" (copied from a saved meal or recipe). Defaults to "ai"
+  // because every row that predates this column was AI-estimated.
+  source      String    @default("ai")
   edited      Boolean   @default(false)
   matchWeekId Int
   matchWeek   MatchWeek @relation(fields: [matchWeekId], references: [id])
@@ -206,6 +213,46 @@ model Entry {
   updatedAt   DateTime  @updatedAt
 
   @@index([matchWeekId])
+}
+
+// A named set of foods the user logs together. Two shapes share this table
+// because they differ only in how a portion is derived:
+//
+//   kind = "template" — foods eaten together on one occasion ("my usual
+//     breakfast"). Logging it writes one Entry per item, so any single item
+//     can still be edited or deleted afterwards.
+//   kind = "recipe" — a batch cooked once and eaten over several sittings
+//     (a tray of chilli). `servings` says how many portions the item list
+//     makes; logging it writes one Entry for the portion actually eaten.
+model SavedMeal {
+  id        Int             @id @default(autoincrement())
+  userId    Int
+  user      User            @relation(fields: [userId], references: [id])
+  name      String
+  kind      String          @default("template")
+  // Always 1 for a template. For a recipe this is what divides the item
+  // total to give one portion, so it must never be zero.
+  servings  Float           @default(1)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  items     SavedMealItem[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+// One food within a SavedMeal. Deliberately a plain label/kcal pair rather
+// than a link to Entry or the food library: a saved meal should keep working
+// unchanged after the entries it was built from are edited or deleted.
+model SavedMealItem {
+  id          Int       @id @default(autoincrement())
+  savedMealId Int
+  savedMeal   SavedMeal @relation(fields: [savedMealId], references: [id], onDelete: Cascade)
+  label       String
+  kcal        Int?
+  sortOrder   Int       @default(0)
+
+  @@index([savedMealId])
 }
 
 // A single weigh-in for a calendar day. date is a local "YYYY-MM-DD" key

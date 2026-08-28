@@ -293,6 +293,10 @@ async function loadWeek() {
   const res = await fetch(`/api/match-weeks/current?weeksAgo=${weeksAgo}`);
   const week = await res.json();
 
+  // Fire-and-forget: the strip is a convenience, and waiting on it would
+  // hold up the week the user actually asked for.
+  loadQuickAdd();
+
   weekRangeEl.textContent = `${dateFmt.format(new Date(week.startsAt))} – ${dateFmt.format(
     new Date(new Date(week.endsAt).getTime() - 1000),
   )}`;
@@ -449,6 +453,8 @@ function renderEntryRow(entry) {
   const kcal = document.createElement("div");
   kcal.className = "entry-kcal";
   kcal.textContent = entry.kcal === null ? "Add kcal" : `${entry.kcal} kcal`;
+  const badge = sourceBadgeFor(entry);
+  if (badge) kcal.appendChild(badge);
 
   const actions = document.createElement("div");
   actions.className = "entry-actions";
@@ -457,13 +463,18 @@ function renderEntryRow(entry) {
   editBtn.type = "button";
   editBtn.addEventListener("click", () => enterEditMode(row, entry));
   const repeatBtn = document.createElement("button");
-  repeatBtn.textContent = "+Today";
+  repeatBtn.innerHTML = ICONS.plus;
   repeatBtn.type = "button";
+  repeatBtn.className = "entry-action-icon";
+  repeatBtn.title = "Add to today";
   repeatBtn.setAttribute("aria-label", "Add to today");
   repeatBtn.addEventListener("click", () => repeatEntry(entry.id));
   const delBtn = document.createElement("button");
   delBtn.innerHTML = ICONS.x;
   delBtn.type = "button";
+  delBtn.className = "entry-action-icon";
+  delBtn.title = "Delete";
+  delBtn.setAttribute("aria-label", "Delete entry");
   delBtn.addEventListener("click", () => deleteEntry(entry.id));
   actions.append(editBtn, repeatBtn, delBtn);
 
@@ -836,6 +847,7 @@ async function showApp(user) {
   // status fetch's own (less specific) message resolving afterward.
   await loadWhoopStatus();
   handleWhoopRedirect();
+  handleLaunchParams();
 }
 
 // WHOOP's OAuth callback redirects back to "/" with a query param — surface
@@ -1415,12 +1427,18 @@ function openFoodLibrary() {
   foodLibraryScreen.hidden = false;
   foodSearchInput.value = "";
   foodLibraryError.hidden = true;
+  closeMealEditor();
   loadFoods("");
+  loadMeals();
 }
 
 function closeFoodLibrary() {
   foodLibraryScreen.hidden = true;
   appShell.hidden = false;
+  // Meals and favourites can have changed while the library was open, and
+  // the quick-add strip is built from both — without this a meal saved a
+  // moment ago wouldn't appear until the next full page load.
+  loadQuickAdd();
 }
 
 async function loadFoods(query) {
@@ -2633,3 +2651,632 @@ function navTo(target) {
 document.querySelectorAll(".desktop-nav-btn").forEach((btn) => {
   btn.addEventListener("click", () => navTo(btn.dataset.nav));
 });
+
+// ── Where a calorie figure came from ────────────────────────────────────────
+// Entry.source (see prisma/schema.prisma) records whether a number was
+// estimated, looked up, or typed. Only the two that change how much to trust
+// the figure get a badge — a hand-typed or copied number needs no comment.
+const SOURCE_BADGES = {
+  ai: { text: "est.", cls: "entry-source--est", title: "Estimated by AI from what you described" },
+  database: { text: "✓", cls: "entry-source--verified", title: "From Open Food Facts nutrition data" },
+};
+
+function sourceBadgeFor(entry) {
+  const spec = SOURCE_BADGES[entry.source];
+  if (!spec || entry.kcal === null) return null;
+  const badge = document.createElement("span");
+  badge.className = `entry-source ${spec.cls}`;
+  badge.textContent = spec.text;
+  badge.title = spec.title;
+  return badge;
+}
+
+// ── Quick add ───────────────────────────────────────────────────────────────
+// The fastest path to a logged meal: saved meals and the foods logged most
+// often, one tap each, above the form rather than two screens away.
+const quickAddCard = document.getElementById("quick-add");
+const quickAddChips = document.getElementById("quick-add-chips");
+const quickAddError = document.getElementById("quick-add-error");
+const quickAddManage = document.getElementById("quick-add-manage");
+
+const QUICK_ADD_FOODS = 6;
+
+async function loadQuickAdd() {
+  try {
+    const [mealsRes, foodsRes] = await Promise.all([fetch("/api/meals"), fetch("/api/foods")]);
+    if (!mealsRes.ok || !foodsRes.ok) throw new Error();
+    const meals = await mealsRes.json();
+    const foods = await foodsRes.json();
+    renderQuickAdd(meals, foods);
+  } catch {
+    // A failed quick-add strip shouldn't shout — the form below still works.
+    quickAddCard.hidden = true;
+  }
+}
+
+function renderQuickAdd(meals, foods) {
+  quickAddChips.innerHTML = "";
+  quickAddError.hidden = true;
+
+  // Favourites first, then whatever has been logged most — a food starred on
+  // purpose is a stronger signal than one that merely recurs.
+  const byUse = [...foods].sort((a, b) => {
+    if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
+    return b.count - a.count;
+  });
+  const topFoods = byUse.slice(0, QUICK_ADD_FOODS);
+
+  for (const meal of meals) {
+    quickAddChips.appendChild(
+      quickChip({
+        label: meal.name,
+        sub: meal.kind === "recipe" ? portionSubtitle(meal) : `${meal.items.length} items`,
+        kind: "meal",
+        onTap: () => logSavedMeal(meal),
+      }),
+    );
+  }
+
+  for (const food of topFoods) {
+    quickAddChips.appendChild(
+      quickChip({
+        label: food.label,
+        sub: food.kcal !== null ? `${food.kcal} kcal` : null,
+        kind: "food",
+        favorite: food.favorite,
+        onTap: () => quickLogFood(food),
+      }),
+    );
+  }
+
+  quickAddCard.hidden = quickAddChips.childElementCount === 0;
+}
+
+function portionSubtitle(meal) {
+  return meal.kcalPerServing !== null ? `${meal.kcalPerServing} kcal / portion` : "recipe";
+}
+
+function quickChip({ label, sub, kind, favorite, onTap }) {
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = `quick-chip quick-chip--${kind}`;
+
+  if (favorite) {
+    const star = document.createElement("span");
+    star.className = "quick-chip-star";
+    star.innerHTML = ICONS.starFilled;
+    chip.appendChild(star);
+  }
+
+  const text = document.createElement("span");
+  text.className = "quick-chip-text";
+  const main = document.createElement("span");
+  main.className = "quick-chip-label";
+  main.textContent = label;
+  text.appendChild(main);
+  if (sub) {
+    const meta = document.createElement("span");
+    meta.className = "quick-chip-sub";
+    meta.textContent = sub;
+    text.appendChild(meta);
+  }
+  chip.appendChild(text);
+
+  chip.addEventListener("click", async () => {
+    if (chip.disabled) return;
+    chip.disabled = true;
+    chip.classList.add("quick-chip--busy");
+    try {
+      await onTap();
+    } finally {
+      chip.disabled = false;
+      chip.classList.remove("quick-chip--busy");
+    }
+  });
+  return chip;
+}
+
+function showQuickAddError(message) {
+  quickAddError.textContent = message;
+  quickAddError.hidden = false;
+}
+
+async function quickLogFood(food) {
+  try {
+    const res = await fetch("/api/foods/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ labelKey: food.labelKey }),
+    });
+    if (!res.ok) throw new Error();
+    quickAddError.hidden = true;
+    await loadWeek();
+  } catch {
+    showQuickAddError(`Couldn't log ${food.label} — please try again.`);
+  }
+}
+
+// A recipe needs to know how much was eaten before it can be logged; a
+// template is the whole thing by definition, so it goes straight in.
+async function logSavedMeal(meal) {
+  let servings = 1;
+  if (meal.kind === "recipe") {
+    const answer = window.prompt(`How many portions of ${meal.name}?`, "1");
+    if (answer === null) return;
+    servings = Number(answer);
+    if (!Number.isFinite(servings) || servings <= 0) {
+      showQuickAddError("Enter a number of portions greater than zero.");
+      return;
+    }
+  }
+  try {
+    const res = await fetch(`/api/meals/${meal.id}/log`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ servings }),
+    });
+    if (!res.ok) throw new Error();
+    quickAddError.hidden = true;
+    await loadWeek();
+  } catch {
+    showQuickAddError(`Couldn't log ${meal.name} — please try again.`);
+  }
+}
+
+quickAddManage.addEventListener("click", () => navTo("food-library"));
+
+// ── Saved meals & recipes (Food Library screen) ─────────────────────────────
+const mealsSection = document.getElementById("meals-section");
+const mealListEl = document.getElementById("meal-list");
+const mealNewBtn = document.getElementById("meal-new-btn");
+const mealEditor = document.getElementById("meal-editor");
+const mealNameInput = document.getElementById("meal-name");
+const mealKindTemplateBtn = document.getElementById("meal-kind-template");
+const mealKindRecipeBtn = document.getElementById("meal-kind-recipe");
+const mealKindNote = document.getElementById("meal-kind-note");
+const mealServingsRow = document.getElementById("meal-servings-row");
+const mealServingsInput = document.getElementById("meal-servings");
+const mealItemsEl = document.getElementById("meal-items");
+const mealAddItemBtn = document.getElementById("meal-add-item");
+const mealCancelBtn = document.getElementById("meal-cancel");
+const mealSaveBtn = document.getElementById("meal-save");
+const mealEditorError = document.getElementById("meal-editor-error");
+
+// null while creating, the meal's id while editing an existing one.
+let editingMealId = null;
+let editorKind = "template";
+
+async function loadMeals() {
+  try {
+    const res = await fetch("/api/meals");
+    if (!res.ok) throw new Error();
+    renderMeals(await res.json());
+  } catch {
+    mealListEl.innerHTML = '<p class="empty-state">Couldn’t load your meals.</p>';
+  }
+}
+
+function renderMeals(meals) {
+  mealListEl.innerHTML = "";
+  if (meals.length === 0) {
+    mealListEl.innerHTML =
+      '<p class="empty-state">No saved meals yet — save one to log it in a single tap.</p>';
+    return;
+  }
+  for (const meal of meals) mealListEl.appendChild(renderMealRow(meal));
+}
+
+function renderMealRow(meal) {
+  const row = document.createElement("div");
+  row.className = "meal-row";
+
+  const info = document.createElement("div");
+  info.className = "meal-info";
+
+  const name = document.createElement("div");
+  name.className = "meal-name";
+  name.textContent = meal.name;
+  const kindPill = document.createElement("span");
+  kindPill.className = `meal-kind-pill meal-kind-pill--${meal.kind}`;
+  kindPill.textContent = meal.kind === "recipe" ? "Recipe" : "Meal";
+  name.appendChild(kindPill);
+
+  const meta = document.createElement("div");
+  meta.className = "meal-meta";
+  const itemLabel = meal.items.length === 1 ? "1 item" : `${meal.items.length} items`;
+  const kcalLabel =
+    meal.kind === "recipe"
+      ? meal.kcalPerServing !== null
+        ? ` · ${meal.kcalPerServing} kcal per portion · makes ${meal.servings}`
+        : ` · makes ${meal.servings}`
+      : meal.totalKcal !== null
+        ? ` · ${meal.totalKcal} kcal`
+        : "";
+  meta.textContent = itemLabel + kcalLabel;
+
+  const itemsLine = document.createElement("div");
+  itemsLine.className = "meal-items-line";
+  itemsLine.textContent = meal.items.map((i) => i.label).join(", ");
+
+  info.append(name, meta, itemsLine);
+
+  const actions = document.createElement("div");
+  actions.className = "meal-actions";
+  const logBtn = document.createElement("button");
+  logBtn.type = "button";
+  logBtn.textContent = "+Today";
+  logBtn.addEventListener("click", async () => {
+    logBtn.disabled = true;
+    try {
+      await logSavedMeal(meal);
+    } finally {
+      logBtn.disabled = false;
+    }
+  });
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.textContent = "Edit";
+  editBtn.addEventListener("click", () => openMealEditor(meal));
+  const delBtn = document.createElement("button");
+  delBtn.type = "button";
+  delBtn.innerHTML = ICONS.x;
+  delBtn.setAttribute("aria-label", `Delete ${meal.name}`);
+  delBtn.addEventListener("click", () => deleteMeal(meal));
+  actions.append(logBtn, editBtn, delBtn);
+
+  row.append(info, actions);
+  return row;
+}
+
+async function deleteMeal(meal) {
+  if (!window.confirm(`Delete "${meal.name}"? Entries already logged from it stay in your diary.`)) return;
+  try {
+    const res = await fetch(`/api/meals/${meal.id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error();
+    await loadMeals();
+  } catch {
+    mealEditorError.textContent = "Couldn't delete that meal.";
+    mealEditorError.hidden = false;
+  }
+}
+
+function setEditorKind(kind) {
+  editorKind = kind;
+  const isRecipe = kind === "recipe";
+  mealKindRecipeBtn.classList.toggle("meal-kind-btn--active", isRecipe);
+  mealKindTemplateBtn.classList.toggle("meal-kind-btn--active", !isRecipe);
+  mealServingsRow.hidden = !isRecipe;
+  mealKindNote.textContent = isRecipe
+    ? "A recipe is cooked once and eaten over several portions — log just the portion you ate."
+    : "A meal is eaten in one go and logs each item separately.";
+}
+
+function addMealItemRow(item = { label: "", kcal: null }) {
+  const row = document.createElement("div");
+  row.className = "meal-item-row";
+
+  const label = document.createElement("input");
+  label.type = "text";
+  label.className = "meal-item-label";
+  label.placeholder = "e.g. Porridge with banana";
+  label.maxLength = 200;
+  label.value = item.label;
+
+  const kcal = document.createElement("input");
+  kcal.type = "number";
+  kcal.className = "meal-item-kcal";
+  kcal.placeholder = "kcal";
+  kcal.min = "0";
+  kcal.value = item.kcal ?? "";
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "meal-item-remove";
+  remove.innerHTML = ICONS.x;
+  remove.setAttribute("aria-label", "Remove item");
+  remove.addEventListener("click", () => {
+    row.remove();
+    // Always leave one row so the editor never looks broken.
+    if (mealItemsEl.childElementCount === 0) addMealItemRow();
+  });
+
+  row.append(label, kcal, remove);
+  mealItemsEl.appendChild(row);
+  return label;
+}
+
+function openMealEditor(meal = null) {
+  editingMealId = meal?.id ?? null;
+  mealEditor.hidden = false;
+  mealEditorError.hidden = true;
+  mealNameInput.value = meal?.name ?? "";
+  mealServingsInput.value = meal?.servings ?? 4;
+  setEditorKind(meal?.kind ?? "template");
+
+  mealItemsEl.innerHTML = "";
+  const items = meal?.items?.length ? meal.items : [{ label: "", kcal: null }];
+  for (const item of items) addMealItemRow(item);
+
+  mealSaveBtn.textContent = meal ? "Save changes" : "Save meal";
+  mealNameInput.focus();
+  mealEditor.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function closeMealEditor() {
+  mealEditor.hidden = true;
+  editingMealId = null;
+  mealEditorError.hidden = true;
+}
+
+mealNewBtn.addEventListener("click", () => {
+  if (mealEditor.hidden) openMealEditor();
+  else closeMealEditor();
+});
+mealCancelBtn.addEventListener("click", closeMealEditor);
+mealAddItemBtn.addEventListener("click", () => addMealItemRow().focus());
+mealKindTemplateBtn.addEventListener("click", () => setEditorKind("template"));
+mealKindRecipeBtn.addEventListener("click", () => setEditorKind("recipe"));
+
+mealEditor.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  mealEditorError.hidden = true;
+
+  const name = mealNameInput.value.trim();
+  if (!name) {
+    mealEditorError.textContent = "Give the meal a name.";
+    mealEditorError.hidden = false;
+    return;
+  }
+
+  const items = [];
+  for (const row of mealItemsEl.querySelectorAll(".meal-item-row")) {
+    const label = row.querySelector(".meal-item-label").value.trim();
+    if (!label) continue;
+    const raw = row.querySelector(".meal-item-kcal").value.trim();
+    items.push({ label, kcal: raw === "" ? null : Math.round(Number(raw)) });
+  }
+  if (items.length === 0) {
+    mealEditorError.textContent = "Add at least one item.";
+    mealEditorError.hidden = false;
+    return;
+  }
+  if (items.some((i) => i.kcal !== null && (!Number.isFinite(i.kcal) || i.kcal < 0))) {
+    mealEditorError.textContent = "Calories must be a positive number, or left blank.";
+    mealEditorError.hidden = false;
+    return;
+  }
+
+  const servings = editorKind === "recipe" ? Number(mealServingsInput.value) : 1;
+  if (editorKind === "recipe" && (!Number.isFinite(servings) || servings <= 0)) {
+    mealEditorError.textContent = "A recipe has to make at least one portion.";
+    mealEditorError.hidden = false;
+    return;
+  }
+
+  const payload = { name, kind: editorKind, servings, items };
+  mealSaveBtn.disabled = true;
+  try {
+    const res = await fetch(editingMealId ? `/api/meals/${editingMealId}` : "/api/meals", {
+      method: editingMealId ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(typeof body.error === "string" ? body.error : "Couldn't save that meal.");
+    }
+    closeMealEditor();
+    await loadMeals();
+  } catch (error) {
+    mealEditorError.textContent = error.message;
+    mealEditorError.hidden = false;
+  } finally {
+    mealSaveBtn.disabled = false;
+  }
+});
+
+// ── Open Food Facts text search ─────────────────────────────────────────────
+// Runs in the browser, like the barcode lookup above it, so it goes straight
+// to Open Food Facts rather than through this app's server.
+const foodSearchBtn = document.getElementById("food-search-btn");
+const foodSearchCard = document.getElementById("food-search-card");
+const foodSearchClose = document.getElementById("food-search-close");
+const foodSearchQuery = document.getElementById("food-search-query");
+const foodSearchStatus = document.getElementById("food-search-status");
+const foodSearchResults = document.getElementById("food-search-results");
+
+let offSearchTimer = null;
+// Bumped on every keystroke so a slow earlier response can't overwrite the
+// results for what's actually in the box now.
+let offSearchSeq = 0;
+
+foodSearchBtn.addEventListener("click", () => {
+  const opening = foodSearchCard.hidden;
+  foodSearchCard.hidden = !opening;
+  if (opening) {
+    foodSearchQuery.value = textInput.value.trim();
+    foodSearchResults.innerHTML = "";
+    foodSearchStatus.hidden = true;
+    foodSearchQuery.focus();
+    if (foodSearchQuery.value) runOffSearch(foodSearchQuery.value);
+  }
+});
+
+foodSearchClose.addEventListener("click", () => {
+  foodSearchCard.hidden = true;
+});
+
+foodSearchQuery.addEventListener("input", () => {
+  clearTimeout(offSearchTimer);
+  const q = foodSearchQuery.value.trim();
+  if (q.length < 3) {
+    foodSearchResults.innerHTML = "";
+    foodSearchStatus.hidden = true;
+    return;
+  }
+  // Open Food Facts asks callers not to hammer its search endpoint, so this
+  // waits for a pause in typing rather than firing per keystroke.
+  offSearchTimer = setTimeout(() => runOffSearch(q), 400);
+});
+
+async function runOffSearch(query) {
+  const seq = ++offSearchSeq;
+  foodSearchStatus.textContent = "Searching…";
+  foodSearchStatus.hidden = false;
+  try {
+    const url =
+      "https://world.openfoodfacts.org/cgi/search.pl?search_simple=1&action=process&json=1&page_size=15" +
+      `&fields=code,product_name,brands,nutriments,serving_quantity&search_terms=${encodeURIComponent(query)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    if (seq !== offSearchSeq) return;
+
+    const products = (data.products ?? [])
+      .map((p) => ({
+        barcode: p.code ?? null,
+        name: p.product_name || null,
+        brand: p.brands || null,
+        kcalPer100g:
+          p.nutriments?.["energy-kcal_100g"] !== undefined
+            ? Number(p.nutriments["energy-kcal_100g"])
+            : null,
+        defaultServing: p.serving_quantity ? Math.round(Number(p.serving_quantity)) : null,
+      }))
+      // A result with no name or no calories can't be logged, so showing it
+      // would only waste a tap.
+      .filter((p) => p.name && p.kcalPer100g !== null && Number.isFinite(p.kcalPer100g));
+
+    renderOffResults(products, query);
+  } catch {
+    if (seq !== offSearchSeq) return;
+    foodSearchStatus.textContent = "Couldn't reach the food database — describe it instead and it'll be estimated.";
+    foodSearchStatus.hidden = false;
+    foodSearchResults.innerHTML = "";
+  }
+}
+
+function renderOffResults(products, query) {
+  foodSearchResults.innerHTML = "";
+  if (products.length === 0) {
+    foodSearchStatus.textContent = `Nothing found for "${query}" — describe it instead and it'll be estimated.`;
+    foodSearchStatus.hidden = false;
+    return;
+  }
+  foodSearchStatus.hidden = true;
+
+  for (const product of products) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "food-search-result";
+
+    const info = document.createElement("span");
+    info.className = "food-search-result-info";
+    const name = document.createElement("span");
+    name.className = "food-search-result-name";
+    name.textContent = product.name;
+    const meta = document.createElement("span");
+    meta.className = "food-search-result-meta";
+    meta.textContent = [product.brand, `${Math.round(product.kcalPer100g)} kcal / 100g`]
+      .filter(Boolean)
+      .join(" · ");
+    info.append(name, meta);
+    row.appendChild(info);
+
+    // Hands off to the same product card the barcode scanner uses, so a
+    // searched item and a scanned one are logged through one path.
+    row.addEventListener("click", () => {
+      foodSearchCard.hidden = true;
+      currentProduct = product;
+      showProductCard(product, product.barcode ?? "");
+      productCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+
+    foodSearchResults.appendChild(row);
+  }
+}
+
+// ── Voice capture ───────────────────────────────────────────────────────────
+// Web Speech dictation straight into the description box. Chrome/Edge/Safari
+// only; the button stays hidden where the API doesn't exist rather than
+// offering something that would do nothing.
+const voiceBtn = document.getElementById("voice-btn");
+const voiceBtnLabel = document.getElementById("voice-btn-label");
+const SpeechRecognitionCtor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+
+let recognition = null;
+
+if (SpeechRecognitionCtor) {
+  voiceBtn.hidden = false;
+  voiceBtn.addEventListener("click", () => {
+    if (recognition) {
+      recognition.stop();
+      return;
+    }
+    recognition = new SpeechRecognitionCtor();
+    recognition.lang = navigator.language || "en-GB";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    // Dictation appends rather than replaces, so speaking twice adds to what's
+    // already there instead of wiping it.
+    const base = textInput.value.trim();
+
+    recognition.addEventListener("start", () => {
+      voiceBtn.classList.add("capture-btn--listening");
+      voiceBtnLabel.textContent = "Listening";
+    });
+    recognition.addEventListener("result", (event) => {
+      let heard = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        heard += event.results[i][0].transcript;
+      }
+      textInput.value = base ? `${base} ${heard.trim()}` : heard.trim();
+    });
+    recognition.addEventListener("error", () => {
+      formError.textContent = "Couldn't hear that — try again, or type it instead.";
+      formError.hidden = false;
+    });
+    recognition.addEventListener("end", () => {
+      voiceBtn.classList.remove("capture-btn--listening");
+      voiceBtnLabel.textContent = "Speak";
+      recognition = null;
+    });
+
+    recognition.start();
+  });
+}
+
+// ── Launch parameters ───────────────────────────────────────────────────────
+// Home-screen shortcuts (manifest "shortcuts") arrive as ?action=…, and text
+// shared into the app from elsewhere (manifest "share_target") as ?text=… /
+// ?title=…. Both are consumed once and stripped, so a refresh doesn't repeat
+// them.
+function handleLaunchParams() {
+  const params = new URLSearchParams(window.location.search);
+  const action = params.get("action");
+  const shared = [params.get("title"), params.get("text"), params.get("url")]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  if (!action && !shared) return;
+
+  if (shared) {
+    textInput.value = shared;
+    textInput.focus();
+  }
+
+  if (action === "scan") openScanner();
+  else if (action === "weigh") {
+    openStats();
+    document.getElementById("weighin-weight")?.focus();
+  } else if (action === "log" || shared) {
+    textInput.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (!shared) textInput.focus();
+  }
+
+  for (const key of ["action", "title", "text", "url"]) params.delete(key);
+  const query = params.toString();
+  window.history.replaceState({}, "", query ? `${window.location.pathname}?${query}` : window.location.pathname);
+}

@@ -30,7 +30,7 @@ function toCsv(headers: string[], rows: unknown[][]): string {
 }
 
 async function collectExport(userId: number) {
-  const [user, matchWeeks, entries, exercises, weighIns, favorites, tags, cycles, sleeps, recoveries] = await Promise.all([
+  const [user, matchWeeks, entries, exercises, weighIns, favorites, tags, savedMeals, cycles, sleeps, recoveries] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: userId } }),
     prisma.matchWeek.findMany({ where: { userId }, orderBy: { startsAt: "asc" } }),
     prisma.entry.findMany({ where: { matchWeek: { userId } }, orderBy: { timestamp: "asc" } }),
@@ -38,6 +38,7 @@ async function collectExport(userId: number) {
     prisma.weighIn.findMany({ where: { userId }, orderBy: { date: "asc" } }),
     prisma.foodFavorite.findMany({ where: { userId } }),
     prisma.foodTag.findMany({ where: { userId } }),
+    prisma.savedMeal.findMany({ where: { userId }, include: { items: true }, orderBy: { name: "asc" } }),
     prisma.whoopCycle.findMany({ where: { userId }, orderBy: { start: "asc" } }),
     prisma.whoopSleep.findMany({ where: { userId }, orderBy: { start: "asc" } }),
     prisma.whoopRecovery.findMany({ where: { userId }, orderBy: { date: "asc" } }),
@@ -66,6 +67,7 @@ async function collectExport(userId: number) {
       kcal: e.kcal,
       mealType: e.mealType,
       rawInput: e.rawInput,
+      source: e.source,
       edited: e.edited,
     })),
     exercises: exercises.map((x) => ({
@@ -77,6 +79,14 @@ async function collectExport(userId: number) {
     weighIns: weighIns.map((w) => ({ date: w.date, weightKg: w.weightKg })),
     foodFavorites: favorites.map((f) => f.labelKey),
     foodTags: tags.map((t) => ({ labelKey: t.labelKey, tag: t.tag })),
+    savedMeals: savedMeals.map((m) => ({
+      name: m.name,
+      kind: m.kind,
+      servings: m.servings,
+      items: [...m.items]
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((i) => ({ label: i.label, kcal: i.kcal })),
+    })),
     // Read-only mirror of WHOOP's data — see the note at the top of the file.
     whoop: {
       cycles: cycles.map((c) => ({ start: c.start.toISOString(), end: c.end?.toISOString() ?? null, kcalBurned: c.kcalBurned })),
@@ -102,13 +112,14 @@ dataRouter.get("/export.json", async (req, res) => {
 dataRouter.get("/export/entries.csv", async (req, res) => {
   const entries = await prisma.entry.findMany({ where: { matchWeek: { userId: req.userId! } }, orderBy: { timestamp: "asc" } });
   const csv = toCsv(
-    ["date", "time", "label", "kcal", "meal_type", "raw_input"],
+    ["date", "time", "label", "kcal", "meal_type", "source", "raw_input"],
     entries.map((e) => [
       localDayKey(e.timestamp, config.TIMEZONE),
       e.timestamp.toISOString().slice(11, 16),
       e.label,
       e.kcal,
       e.mealType,
+      e.source,
       e.rawInput,
     ]),
   );
@@ -147,12 +158,23 @@ const importSchema = z.object({
         kcal: z.number().int().nullable().optional(),
         mealType: z.string().optional(),
         rawInput: z.string().nullable().optional(),
+        source: z.string().optional(),
       }),
     )
     .optional(),
   weighIns: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), weightKg: z.number() })).optional(),
   foodFavorites: z.array(z.string()).optional(),
   foodTags: z.array(z.object({ labelKey: z.string(), tag: z.string() })).optional(),
+  savedMeals: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        kind: z.string().optional(),
+        servings: z.number().positive().optional(),
+        items: z.array(z.object({ label: z.string().min(1), kcal: z.number().int().nullable().optional() })).min(1),
+      }),
+    )
+    .optional(),
 });
 
 /**
@@ -169,7 +191,7 @@ dataRouter.post("/import", async (req, res) => {
   }
   const userId = req.userId!;
   const data = parsed.data;
-  const counts = { entries: 0, weighIns: 0, favorites: 0, tags: 0, skipped: 0 };
+  const counts = { entries: 0, weighIns: 0, favorites: 0, tags: 0, savedMeals: 0, skipped: 0 };
 
   if (data.profile) {
     const p = data.profile;
@@ -213,6 +235,25 @@ dataRouter.post("/import", async (req, res) => {
     counts.tags += 1;
   }
 
+  for (const m of data.savedMeals ?? []) {
+    const kind = m.kind === "recipe" ? "recipe" : "template";
+    const servings = kind === "recipe" ? (m.servings ?? 1) : 1;
+    const items = m.items.map((it, i) => ({ label: it.label, kcal: it.kcal ?? null, sortOrder: i }));
+    // Name is the natural key here (it's unique per user), so importing the
+    // same file twice rewrites the meal rather than making a second copy.
+    const existing = await prisma.savedMeal.findFirst({ where: { userId, name: m.name }, select: { id: true } });
+    if (existing) {
+      await prisma.savedMealItem.deleteMany({ where: { savedMealId: existing.id } });
+      await prisma.savedMeal.update({
+        where: { id: existing.id },
+        data: { kind, servings, items: { create: items } },
+      });
+    } else {
+      await prisma.savedMeal.create({ data: { userId, name: m.name, kind, servings, items: { create: items } } });
+    }
+    counts.savedMeals += 1;
+  }
+
   if (data.entries?.length) {
     const weekStart = await getUserWeekStart(userId);
     for (const e of data.entries) {
@@ -237,6 +278,7 @@ dataRouter.post("/import", async (req, res) => {
           kcal: e.kcal ?? null,
           mealType: e.mealType ?? "snack",
           rawInput: e.rawInput ?? null,
+          source: e.source ?? "ai",
           matchWeekId: matchWeek.id,
         },
       });

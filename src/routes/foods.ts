@@ -176,7 +176,7 @@ foodsRouter.post("/log", async (req, res) => {
   const candidates = await prisma.entry.findMany({
     where: { matchWeek: { userId: req.userId! } },
     orderBy: { timestamp: "desc" },
-    select: { label: true, kcal: true, imageUrl: true },
+    select: { label: true, kcal: true, imageUrl: true, source: true },
   });
   const match = candidates.find((e) => normalizeLabel(e.label) === labelKey);
   if (!match) {
@@ -197,6 +197,7 @@ foodsRouter.post("/log", async (req, res) => {
       kcal: match.kcal,
       imageUrl: match.imageUrl,
       mealType,
+      source: match.source,
       matchWeekId: matchWeek.id,
     },
   });
