@@ -74,17 +74,23 @@
 
         <p id="week-note" class="muted" hidden>Viewing a past week — go to the current week to log new entries.</p>
 
-        <section id="quick-add" class="card quick-add" hidden>
-          <div class="quick-add-header">
-            <span class="quick-add-title">Quick add</span>
-            <button type="button" id="quick-add-manage" class="ghost-sm">Manage meals</button>
-          </div>
-          <div id="quick-add-chips" class="quick-add-chips"></div>
-          <p id="quick-add-error" class="error" hidden></p>
-        </section>
-
         <form id="entry-form" class="card">
-          <label for="text">What did you eat?</label>
+          <div class="entry-form-header">
+            <label for="text">What did you eat?</label>
+            <button type="button" id="quick-add-toggle" class="ghost-sm" aria-expanded="false" aria-controls="quick-add" hidden>
+              Quick add
+            </button>
+          </div>
+
+          <section id="quick-add" class="quick-add" hidden>
+            <div class="quick-add-header">
+              <span class="quick-add-title">Log again in one tap</span>
+              <button type="button" id="quick-add-manage" class="ghost-sm">Manage meals</button>
+            </div>
+            <div id="quick-add-chips" class="quick-add-chips"></div>
+            <p id="quick-add-error" class="error" hidden></p>
+          </section>
+
           <textarea
             id="text"
             name="text"
@@ -413,45 +419,60 @@
             </div>
           </fieldset>
 
-          <fieldset class="settings-fieldset">
-            <legend>Calorie budget</legend>
+          <fieldset class="settings-fieldset" id="body-stats-fieldset">
+            <legend>Body stats &amp; goal</legend>
+            <p id="body-stats-note" class="muted body-stats-note">
+              Your goal weight drives the projection on the Stats screen. Height, age and
+              activity are only used to estimate what you burn on days a tracker can't
+              measure.
+            </p>
             <div class="settings-row">
               <div class="settings-field">
                 <label id="weight-label" for="settings-weight">Weight (kg)</label>
                 <input type="number" id="settings-weight" min="30" max="700" step="0.1" placeholder="e.g. 95" />
               </div>
-              <div class="settings-field" id="height-cm-wrap">
-                <label for="settings-height">Height (cm)</label>
-                <input type="number" id="settings-height" min="100" max="250" step="1" placeholder="e.g. 178" />
-              </div>
-              <div class="settings-field" id="height-ft-wrap" hidden>
-                <label>Height</label>
-                <div class="ft-in-row">
-                  <input type="number" id="settings-height-ft" min="3" max="8" step="1" placeholder="ft" />
-                  <input type="number" id="settings-height-in" min="0" max="11" step="1" placeholder="in" />
-                </div>
-              </div>
               <div class="settings-field">
-                <label for="settings-age">Age</label>
-                <input type="number" id="settings-age" min="16" max="99" step="1" placeholder="e.g. 35" />
+                <label id="goal-weight-label" for="settings-goal-weight">Goal weight</label>
+                <input type="number" id="settings-goal-weight" min="30" max="700" step="0.1" placeholder="e.g. 85" />
               </div>
             </div>
-            <label for="settings-activity">Activity level</label>
-            <select id="settings-activity">
-              <option value="">— not set —</option>
-              <option value="sedentary">Sedentary (desk job, little exercise)</option>
-              <option value="light">Lightly active (exercise 1–3×/week)</option>
-              <option value="moderate">Moderately active (exercise 3–5×/week)</option>
-              <option value="active">Very active (hard exercise 6–7×/week)</option>
-            </select>
+
+            <details id="estimate-fields" class="estimate-fields">
+              <summary id="estimate-fields-summary">Burn estimate details</summary>
+              <p id="estimate-fields-note" class="muted">
+                Only used to guess your burn on days without tracker data.
+              </p>
+              <div class="settings-row">
+                <div class="settings-field" id="height-cm-wrap">
+                  <label for="settings-height">Height (cm)</label>
+                  <input type="number" id="settings-height" min="100" max="250" step="1" placeholder="e.g. 178" />
+                </div>
+                <div class="settings-field" id="height-ft-wrap" hidden>
+                  <label for="settings-height-ft">Height</label>
+                  <div class="ft-in-row">
+                    <input type="number" id="settings-height-ft" min="3" max="8" step="1" placeholder="ft" />
+                    <input type="number" id="settings-height-in" min="0" max="11" step="1" placeholder="in" />
+                  </div>
+                </div>
+                <div class="settings-field">
+                  <label for="settings-age">Age</label>
+                  <input type="number" id="settings-age" min="16" max="99" step="1" placeholder="e.g. 35" />
+                </div>
+              </div>
+              <label for="settings-activity">Activity level</label>
+              <select id="settings-activity">
+                <option value="">— not set —</option>
+                <option value="sedentary">Sedentary (desk job, little exercise)</option>
+                <option value="light">Lightly active (exercise 1–3×/week)</option>
+                <option value="moderate">Moderately active (exercise 3–5×/week)</option>
+                <option value="active">Very active (hard exercise 6–7×/week)</option>
+              </select>
+            </details>
+
             <div class="settings-row">
               <div class="settings-field">
                 <label id="goal-label" for="settings-goal">Target loss (per week)</label>
                 <input type="number" id="settings-goal" min="0.1" max="3" step="0.1" placeholder="e.g. 0.5" />
-              </div>
-              <div class="settings-field">
-                <label id="goal-weight-label" for="settings-goal-weight">Goal weight</label>
-                <input type="number" id="settings-goal-weight" min="30" max="700" step="0.1" placeholder="e.g. 85" />
               </div>
             </div>
           </fieldset>
@@ -688,11 +709,12 @@
           </div>
 
           <section id="breakdown-weight-card" class="card" hidden>
-            <h2>Weekly Weight</h2>
+            <div class="card-header-row"><h2>Weekly Weight</h2><button type="button" class="info-btn" data-info="weekly-weight" aria-label="What this means"></button></div>
             <div class="table-scroll">
               <table class="breakdown-table">
                 <thead>
                   <tr>
+                    <th></th>
                     <th>Week of</th>
                     <th>Weight change</th>
                   </tr>
@@ -746,6 +768,7 @@
           <section id="tdee-card" class="card" hidden>
             <div class="card-heading-row">
               <h2>Your Metabolism</h2>
+              <button type="button" class="info-btn" data-info="tdee" aria-label="What this means"></button>
               <span id="tdee-confidence" class="confidence-pill"></span>
             </div>
             <div class="hero-row">
@@ -764,21 +787,56 @@
           </section>
 
           <section id="averages-card" class="card">
-            <h2>Averages</h2>
-            <div class="balance-grid balance-grid--single">
-              <div class="balance-cell">
+            <div class="card-header-row">
+              <h2>Averages</h2>
+              <button type="button" class="info-btn" data-info="averages" aria-label="What this means"></button>
+              <span id="averages-window" class="muted averages-window"></span>
+            </div>
+            <div class="balance-grid">
+              <div class="balance-cell balance-cell--accent">
                 <span id="stat-avg-kcal" class="balance-number">—</span>
-                <span class="balance-caption">kcal/day (7d)</span>
+                <span class="balance-caption">kcal in/day (7d)</span>
+              </div>
+              <div class="balance-cell">
+                <span id="stat-avg-kcal-28" class="balance-number">—</span>
+                <span class="balance-caption">kcal in/day (28d)</span>
+              </div>
+              <div class="balance-cell">
+                <span id="stat-avg-burn" class="balance-number">—</span>
+                <span class="balance-caption">kcal out/day</span>
+              </div>
+              <div id="stat-avg-net-cell" class="balance-cell">
+                <span id="stat-avg-net" class="balance-number">—</span>
+                <span id="stat-avg-net-caption" class="balance-caption">daily balance</span>
+              </div>
+            </div>
+            <div class="balance-grid averages-grid-secondary">
+              <div class="balance-cell">
+                <span id="stat-avg-weekly-change" class="balance-number">—</span>
+                <span id="stat-avg-weekly-change-caption" class="balance-caption">per week</span>
+              </div>
+              <div class="balance-cell">
+                <span id="stat-avg-workouts" class="balance-number">—</span>
+                <span class="balance-caption">workouts/week</span>
+              </div>
+              <div class="balance-cell">
+                <span id="stat-avg-recovery" class="balance-number">—</span>
+                <span class="balance-caption">avg recovery</span>
+              </div>
+              <div class="balance-cell">
+                <span id="stat-avg-sleep" class="balance-number">—</span>
+                <span class="balance-caption">avg sleep</span>
               </div>
             </div>
           </section>
 
           <section id="breakdown-calories-card" class="card" hidden>
-            <h2>Weekly Calories</h2>
+            <div class="card-header-row"><h2>Weekly Calories</h2><button type="button" class="info-btn" data-info="weekly-calories" aria-label="What this means"></button></div>
             <div class="table-scroll">
               <table class="breakdown-table">
                 <thead>
                   <tr>
+                    <th></th>
                     <th>Week of</th>
                     <th>Avg kcal/day</th>
                     <th>Workouts</th>
@@ -792,7 +850,7 @@
 
         <div id="stats-tab-recovery" class="stats-tab-panel" hidden>
           <section id="whoop-stats-card" class="card" hidden>
-            <h2>Recovery &amp; Sleep</h2>
+            <div class="card-header-row"><h2>Recovery &amp; Sleep</h2><button type="button" class="info-btn" data-info="recovery" aria-label="What this means"></button></div>
             <div class="hero-row">
               <div id="stat-recovery-hero" class="stat-hero">
                 <span id="stat-recovery" class="stat-hero-number">—</span>
@@ -811,13 +869,15 @@
           </section>
 
           <section id="breakdown-recovery-card" class="card" hidden>
-            <h2>Weekly Recovery</h2>
+            <div class="card-header-row"><h2>Weekly Recovery</h2><button type="button" class="info-btn" data-info="weekly-recovery" aria-label="What this means"></button></div>
             <div class="table-scroll">
               <table class="breakdown-table">
                 <thead>
                   <tr>
+                    <th></th>
                     <th>Week of</th>
                     <th>Avg recovery</th>
+                    <th>Avg sleep</th>
                   </tr>
                 </thead>
                 <tbody id="breakdown-recovery-body"></tbody>

@@ -5,6 +5,8 @@ import { requireAuth } from "../auth";
 import {
   getLocalParts,
   getMatchWeekBoundariesForWeeksAgo,
+  matchWeekCalendarDays,
+  weightedDaysLogged,
   getUserWeekStart,
   localDayKey,
   zonedTimeToUtc,
@@ -34,15 +36,66 @@ function clampInt(value: unknown, min: number, max: number, fallback: number): n
 }
 
 /** Average daily calories logged over the trailing window, or null with no entries in it. */
-async function avgKcalPerDay(userId: number): Promise<number | null> {
-  const since = new Date(Date.now() - AVG_KCAL_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+async function avgKcalPerDay(userId: number, days = AVG_KCAL_WINDOW_DAYS): Promise<number | null> {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   const entries = await prisma.entry.findMany({
     where: { matchWeek: { userId }, timestamp: { gte: since }, kcal: { not: null } },
     select: { kcal: true },
   });
   if (entries.length === 0) return null;
   const total = entries.reduce((sum, e) => sum + (e.kcal ?? 0), 0);
-  return Math.round(total / AVG_KCAL_WINDOW_DAYS);
+  return Math.round(total / days);
+}
+
+const AVG_LONG_WINDOW_DAYS = 28;
+
+/**
+ * The averages the Stats screen leads with, over a trailing window.
+ *
+ * Burn is averaged only over days WHOOP actually scored, not over the whole
+ * window — dividing by days with no cycle would quietly drag the figure
+ * down every time the watch came off.
+ */
+async function trailingAverages(userId: number, days: number) {
+  const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const sinceKey = localDayKey(sinceDate, config.TIMEZONE);
+
+  const [cycles, recoveries, sleeps, workouts] = await Promise.all([
+    prisma.whoopCycle.findMany({
+      where: { userId, start: { gte: sinceDate }, kcalBurned: { not: null } },
+      select: { start: true, end: true, kcalBurned: true },
+    }),
+    prisma.whoopRecovery.findMany({
+      where: { userId, date: { gte: sinceKey }, recoveryScore: { not: null } },
+      select: { recoveryScore: true },
+    }),
+    prisma.whoopSleep.findMany({
+      where: { userId, start: { gte: sinceDate }, timeAsleepMin: { not: null } },
+      select: { timeAsleepMin: true },
+    }),
+    prisma.exercise.findMany({ where: { matchWeek: { userId }, timestamp: { gte: sinceDate } }, select: { id: true } }),
+  ]);
+
+  const burnByDay = new Map<string, number>();
+  for (const c of cycles) {
+    const split = splitCycleAcrossDays(c.start, c.end ?? new Date(), c.kcalBurned ?? 0, config.TIMEZONE);
+    for (const [key, kcal] of split) burnByDay.set(key, (burnByDay.get(key) ?? 0) + kcal);
+  }
+  // Today is still accruing, so including it would understate the average.
+  const todayKey = localDayKey(new Date(), config.TIMEZONE);
+  burnByDay.delete(todayKey);
+
+  const burnDays = [...burnByDay.values()];
+  const mean = (values: number[]) =>
+    values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : null;
+
+  return {
+    kcalBurnedPerDay: mean(burnDays),
+    recovery: mean(recoveries.map((r) => r.recoveryScore!)),
+    sleepMinutes: mean(sleeps.map((sl) => sl.timeAsleepMin!)),
+    workoutsPerWeek:
+      workouts.length > 0 ? Math.round((workouts.length / days) * 7 * 10) / 10 : null,
+  };
 }
 
 /** Projected arrival at the goal weight, extrapolating the current trend rate. */
@@ -81,8 +134,10 @@ statsRouter.get("/summary", async (req, res) => {
   const userId = req.userId!;
   const since = localDayKey(new Date(Date.now() - WEIGHT_TREND_WINDOW_DAYS * 24 * 60 * 60 * 1000), config.TIMEZONE);
 
-  const [avgKcal, user, windowWeighIns, allWeighIns] = await Promise.all([
+  const [avgKcal, avgKcal28, averages, user, windowWeighIns, allWeighIns] = await Promise.all([
     avgKcalPerDay(userId),
+    avgKcalPerDay(userId, AVG_LONG_WINDOW_DAYS),
+    trailingAverages(userId, AVG_LONG_WINDOW_DAYS),
     prisma.user.findUnique({ where: { id: userId }, select: { weeklyGoalKg: true, goalWeightKg: true } }),
     prisma.weighIn.findMany({ where: { userId, date: { gte: since } }, orderBy: { date: "asc" } }),
     prisma.weighIn.findMany({ where: { userId }, orderBy: { date: "asc" } }),
@@ -119,6 +174,19 @@ statsRouter.get("/summary", async (req, res) => {
 
   res.json({
     avgKcalPerDay: avgKcal,
+    averages: {
+      windowDays: AVG_LONG_WINDOW_DAYS,
+      kcalInPerDay7: avgKcal,
+      kcalInPerDay28: avgKcal28,
+      kcalBurnedPerDay: averages.kcalBurnedPerDay,
+      // Net is only meaningful when both halves came from real data.
+      netKcalPerDay:
+        avgKcal28 !== null && averages.kcalBurnedPerDay !== null ? avgKcal28 - averages.kcalBurnedPerDay : null,
+      recovery: averages.recovery,
+      sleepMinutes: averages.sleepMinutes,
+      workoutsPerWeek: averages.workoutsPerWeek,
+      kgPerWeek,
+    },
     weightPace,
     weightTrend,
     goalProjection,
@@ -262,7 +330,7 @@ statsRouter.get("/weekly-breakdown", async (req, res) => {
   );
   const rangeStart = boundaries[0]!.start;
 
-  const [entries, weighIns, workouts, recoveries] = await Promise.all([
+  const [entries, weighIns, workouts, recoveries, sleeps] = await Promise.all([
     prisma.entry.findMany({
       where: { matchWeek: { userId }, timestamp: { gte: rangeStart }, kcal: { not: null } },
       select: { timestamp: true, kcal: true },
@@ -278,6 +346,10 @@ statsRouter.get("/weekly-breakdown", async (req, res) => {
     prisma.whoopRecovery.findMany({
       where: { userId, date: { gte: localDayKey(rangeStart, config.TIMEZONE) }, recoveryScore: { not: null } },
       select: { date: true, recoveryScore: true },
+    }),
+    prisma.whoopSleep.findMany({
+      where: { userId, start: { gte: rangeStart }, timeAsleepMin: { not: null } },
+      select: { start: true, timeAsleepMin: true, performancePercent: true },
     }),
   ]);
 
@@ -308,7 +380,14 @@ statsRouter.get("/weekly-breakdown", async (req, res) => {
     );
     const weekKcal = entriesThisWeek.reduce((sum, e) => sum + (e.kcal ?? 0), 0);
     const avgKcalPerDayThisWeek = weekKcal > 0 ? Math.round(weekKcal / daysElapsed) : null;
-    const daysWithEntries = new Set(entriesThisWeek.map((e) => localDayKey(e.timestamp, config.TIMEZONE))).size;
+    // A match week spans 8 calendar days, because it starts and ends
+    // mid-Monday — so the two boundary days are half a day each. Counting
+    // distinct calendar days would report "8 of 7".
+    const daysWithEntries = weightedDaysLogged(
+      new Set(entriesThisWeek.map((e) => localDayKey(e.timestamp, config.TIMEZONE))),
+      start,
+      config.TIMEZONE,
+    );
 
     const workoutCount = workouts.filter(
       (w) => w.timestamp.getTime() >= start.getTime() && w.timestamp.getTime() < end.getTime(),
@@ -322,7 +401,23 @@ statsRouter.get("/weekly-breakdown", async (req, res) => {
       ? Math.round(recoveryScores.reduce((a, b) => a + b, 0) / recoveryScores.length)
       : null;
 
-    const weightNow = weightAsOf(endKey);
+    const sleepsThisWeek = sleeps.filter(
+      (sl) => sl.start.getTime() >= start.getTime() && sl.start.getTime() < end.getTime(),
+    );
+    const avgSleepMinutes = sleepsThisWeek.length
+      ? Math.round(sleepsThisWeek.reduce((a, sl) => a + (sl.timeAsleepMin ?? 0), 0) / sleepsThisWeek.length)
+      : null;
+    const scoredSleeps = sleepsThisWeek.filter((sl) => sl.performancePercent !== null);
+    const avgSleepPerformance = scoredSleeps.length
+      ? Math.round(scoredSleeps.reduce((a, sl) => a + (sl.performancePercent ?? 0), 0) / scoredSleeps.length)
+      : null;
+
+    // Only a week that was actually weighed in gets a change. Carrying the
+    // last known weight forward would report a confident 0.0kg for a week
+    // nobody stepped on the scales in, which reads as "no progress" rather
+    // than "no data".
+    const weighedThisWeek = weighIns.some((w) => w.date >= startKey && w.date <= endKey);
+    const weightNow = weighedThisWeek ? weightAsOf(endKey) : null;
     const weightChangeKg =
       weightNow !== null && previousWeekEndWeight !== null ? Math.round((weightNow - previousWeekEndWeight) * 100) / 100 : null;
     previousWeekEndWeight = weightNow ?? previousWeekEndWeight;
@@ -335,10 +430,133 @@ statsRouter.get("/weekly-breakdown", async (req, res) => {
       weightChangeKg,
       workoutCount,
       avgRecovery,
+      avgSleepMinutes,
+      avgSleepPerformance,
     };
   });
 
   res.json({ weeks: result });
+});
+
+/**
+ * The individual days behind one row of a weekly table, so a week that looks
+ * wrong can be opened up rather than just wondered about.
+ *
+ * Keyed by the week's start day rather than an index, so a row stays
+ * addressable after the range around it changes.
+ */
+statsRouter.get("/week-days", async (req, res) => {
+  const userId = req.userId!;
+  const weekStartKey = typeof req.query.weekStart === "string" ? req.query.weekStart : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStartKey)) {
+    res.status(400).json({ error: "weekStart must be a YYYY-MM-DD date." });
+    return;
+  }
+
+  const weekStartConfig = await getUserWeekStart(userId);
+  const now = new Date();
+
+  // Find the match week whose start day matches, by walking back from now —
+  // cheaper and less error-prone than reconstructing a boundary from a bare
+  // date that might not be a real week start at all.
+  let found: { start: Date; end: Date } | null = null;
+  for (let weeksAgo = 0; weeksAgo <= BREAKDOWN_MAX_WEEKS; weeksAgo++) {
+    const boundary = getMatchWeekBoundariesForWeeksAgo(now, weeksAgo, config.TIMEZONE, weekStartConfig);
+    if (localDayKey(boundary.start, config.TIMEZONE) === weekStartKey) {
+      found = boundary;
+      break;
+    }
+  }
+  if (!found) {
+    res.status(404).json({ error: "No match week starts on that date." });
+    return;
+  }
+  const { start, end } = found;
+  const endKey = localDayKey(new Date(end.getTime() - 1), config.TIMEZONE);
+
+  const [entries, weighIns, workouts, recoveries, sleeps, cycles] = await Promise.all([
+    prisma.entry.findMany({
+      where: { matchWeek: { userId }, timestamp: { gte: start, lt: end } },
+      select: { timestamp: true, kcal: true },
+    }),
+    prisma.weighIn.findMany({ where: { userId, date: { gte: weekStartKey, lte: endKey } } }),
+    prisma.exercise.findMany({
+      where: { matchWeek: { userId }, timestamp: { gte: start, lt: end } },
+      select: { timestamp: true, kcalBurned: true },
+    }),
+    prisma.whoopRecovery.findMany({
+      where: { userId, date: { gte: weekStartKey, lte: endKey } },
+      select: { date: true, recoveryScore: true },
+    }),
+    prisma.whoopSleep.findMany({
+      where: { userId, start: { gte: start, lt: end } },
+      select: { start: true, timeAsleepMin: true, performancePercent: true },
+    }),
+    // Widened, because a cycle that began before the week can still spill
+    // calories into its first day — see splitCycleAcrossDays.
+    prisma.whoopCycle.findMany({
+      where: { userId, start: { gte: new Date(start.getTime() - 2 * 86_400_000), lt: end }, kcalBurned: { not: null } },
+      select: { start: true, end: true, kcalBurned: true },
+    }),
+  ]);
+
+  const kcalInByDay = new Map<string, number>();
+  for (const e of entries) {
+    const key = localDayKey(e.timestamp, config.TIMEZONE);
+    kcalInByDay.set(key, (kcalInByDay.get(key) ?? 0) + (e.kcal ?? 0));
+  }
+  const loggedDays = new Set(entries.map((e) => localDayKey(e.timestamp, config.TIMEZONE)));
+
+  const kcalOutByDay = new Map<string, number>();
+  for (const c of cycles) {
+    const split = splitCycleAcrossDays(c.start, c.end ?? now, c.kcalBurned ?? 0, config.TIMEZONE);
+    for (const [key, kcal] of split) kcalOutByDay.set(key, (kcalOutByDay.get(key) ?? 0) + kcal);
+  }
+
+  const workoutsByDay = new Map<string, number>();
+  for (const w of workouts) {
+    const key = localDayKey(w.timestamp, config.TIMEZONE);
+    workoutsByDay.set(key, (workoutsByDay.get(key) ?? 0) + 1);
+  }
+
+  const weightByDay = new Map(weighIns.map((w) => [w.date, w.weightKg]));
+  const recoveryByDay = new Map(recoveries.map((r) => [r.date, r.recoveryScore]));
+  const sleepByDay = new Map<string, { minutes: number | null; performance: number | null }>();
+  for (const sl of sleeps) {
+    sleepByDay.set(localDayKey(sl.start, config.TIMEZONE), {
+      minutes: sl.timeAsleepMin,
+      performance: sl.performancePercent,
+    });
+  }
+
+  const todayKey = localDayKey(now, config.TIMEZONE);
+  const calendarDays = matchWeekCalendarDays(start, config.TIMEZONE);
+
+  const days = calendarDays
+    // Days the week hasn't reached yet are simply absent, rather than shown
+    // as a row of dashes.
+    .filter((key) => key <= todayKey)
+    .map((key, index) => {
+      const kcalIn = kcalInByDay.get(key) ?? null;
+      const kcalOut = kcalOutByDay.get(key);
+      const sleep = sleepByDay.get(key) ?? { minutes: null, performance: null };
+      return {
+        date: key,
+        // The two boundary days are half a day of this week each, which is
+        // why the week's "days logged" total isn't a whole number.
+        partial: index === 0 || index === calendarDays.length - 1,
+        kcalIn,
+        kcalOut: kcalOut != null ? Math.round(kcalOut) : null,
+        logged: loggedDays.has(key),
+        weightKg: weightByDay.get(key) ?? null,
+        recoveryScore: recoveryByDay.get(key) ?? null,
+        sleepMinutes: sleep.minutes,
+        sleepPerformance: sleep.performance,
+        workoutCount: workoutsByDay.get(key) ?? 0,
+      };
+    });
+
+  res.json({ weekStart: weekStartKey, weekEnd: endKey, days });
 });
 
 // ── Insights ─────────────────────────────────────────────────────────────

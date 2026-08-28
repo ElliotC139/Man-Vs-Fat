@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   whoopCycles: [] as any[],
   exercises: [] as any[],
   whoopRecoveries: [] as any[],
+  whoopSleeps: [] as any[],
   nextUserId: 1,
 }));
 
@@ -93,6 +94,16 @@ vi.mock("../src/db", () => {
         }),
       ),
     },
+    whoopSleep: {
+      findMany: vi.fn(async ({ where }: any) =>
+        state.whoopSleeps.filter((sl) => {
+          if (sl.userId !== where.userId) return false;
+          if (where.start?.gte && sl.start.getTime() < where.start.gte.getTime()) return false;
+          if (where.timeAsleepMin?.not === null && sl.timeAsleepMin === null) return false;
+          return true;
+        }),
+      ),
+    },
     whoopRecovery: {
       findMany: vi.fn(async ({ where }: any) =>
         state.whoopRecoveries.filter((r) => {
@@ -126,6 +137,7 @@ beforeEach(async () => {
   state.whoopCycles.length = 0;
   state.exercises.length = 0;
   state.whoopRecoveries.length = 0;
+  state.whoopSleeps.length = 0;
   state.nextUserId = 1;
   vi.clearAllMocks();
 
@@ -337,6 +349,8 @@ interface WeekBreakdown {
   weightChangeKg: number | null;
   workoutCount: number;
   avgRecovery: number | null;
+  avgSleepMinutes: number | null;
+  avgSleepPerformance: number | null;
 }
 
 async function fetchBreakdown(cookie: string, weeks?: number): Promise<WeekBreakdown[]> {
@@ -387,6 +401,56 @@ describe("GET /api/stats/weekly-breakdown", () => {
     const weeks = await fetchBreakdown(cookie, 4);
     const currentWeek = weeks[weeks.length - 1]!;
     expect(currentWeek.daysWithEntries).toBe(2);
+  });
+
+  it("counts the two boundary days as half a day each", async () => {
+    const { cookie, userId } = await signUp("alice");
+    // A match week runs Monday evening to Monday evening, so it touches 8
+    // calendar days while only being 7 days long. Logging on every one of
+    // them must total 7, not 8 — the bug this guards against reported
+    // "logged 8 of 7 days".
+    const weeksBack = 2;
+    const before = await fetchBreakdown(cookie, 4);
+    const target = before[before.length - 1 - weeksBack]!;
+
+    // The week opens at 17:00 on its first calendar day and closes at 17:00
+    // on its last, so an entry has to land the right side of each boundary
+    // to count: evening on the first day, midday on the rest.
+    const firstDay = new Date(`${target.weekStart}T20:00:00Z`);
+    state.entries.push({ userId, timestamp: firstDay, kcal: 500 });
+    const midday = new Date(`${target.weekStart}T12:00:00Z`);
+    for (let i = 1; i < 8; i++) {
+      state.entries.push({ userId, timestamp: new Date(midday.getTime() + i * 86_400_000), kcal: 500 });
+    }
+
+    const weeks = await fetchBreakdown(cookie, 4);
+    const week = weeks[weeks.length - 1 - weeksBack]!;
+    expect(week.daysWithEntries).toBe(7);
+  });
+
+  it("leaves a week with no weigh-in of its own without a weight change", async () => {
+    const { cookie, userId } = await signUp("alice");
+    // Only one weigh-in, three weeks back. Carrying it forward would report
+    // a confident 0.0kg for every week since, which reads as "no progress"
+    // rather than "not weighed".
+    state.weighIns.push({ userId, date: localDayKey(daysAgo(21), TIMEZONE), weightKg: 92 });
+
+    const weeks = await fetchBreakdown(cookie, 4);
+    const currentWeek = weeks[weeks.length - 1]!;
+    expect(currentWeek.weightChangeKg).toBeNull();
+  });
+
+  it("averages the week's sleep", async () => {
+    const { cookie, userId } = await signUp("alice");
+    state.whoopSleeps.push(
+      { userId, start: daysAgo(1), timeAsleepMin: 420, performancePercent: 80 },
+      { userId, start: daysAgo(2), timeAsleepMin: 480, performancePercent: 90 },
+    );
+
+    const weeks = await fetchBreakdown(cookie, 4);
+    const currentWeek = weeks[weeks.length - 1]!;
+    expect(currentWeek.avgSleepMinutes).toBe(450);
+    expect(currentWeek.avgSleepPerformance).toBe(85);
   });
 
   it("computes week-over-week weight change using the most recent weigh-in per week", async () => {

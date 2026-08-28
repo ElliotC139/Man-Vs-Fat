@@ -2531,3 +2531,179 @@ tr.has-tooltip:active {
   font-size: 0.82rem;
   line-height: 1.45;
 }
+
+/* ── Quick add, now behind a button ── */
+.entry-form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.entry-form-header label {
+  margin: 0;
+}
+.quick-add {
+  /* Inside the form card now rather than a card of its own, so it reads as
+     a drawer on the thing it fills in. */
+  background: var(--bg);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-bottom: 12px;
+  animation: fadeInUp 0.22s var(--ease);
+}
+
+/* ── Info buttons ── */
+.card-header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.card-header-row h2 {
+  margin: 0;
+}
+.averages-window {
+  margin-left: auto;
+  font-size: 0.75rem;
+}
+.info-btn {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: var(--muted);
+  cursor: help;
+  transition: color 0.12s var(--ease), transform 0.2s var(--spring);
+}
+.info-btn .icon {
+  font-size: 1rem;
+}
+.info-btn:hover {
+  color: var(--pitch);
+}
+.info-btn:active {
+  transform: scale(0.88);
+}
+.info-btn.tooltip-active {
+  color: var(--pitch);
+}
+
+.averages-grid-secondary {
+  margin-top: 8px;
+}
+
+/* ── Weekly table drill-down ── */
+.breakdown-toggle-cell {
+  width: 34px;
+  padding-right: 0 !important;
+}
+.breakdown-toggle {
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  background: var(--card);
+  background-image: none;
+  box-shadow: none;
+  color: var(--muted);
+  transition: color 0.12s var(--ease), border-color 0.12s var(--ease), transform 0.2s var(--spring);
+}
+.breakdown-toggle .icon {
+  font-size: 0.85rem;
+}
+.breakdown-toggle:hover {
+  color: var(--pitch);
+  border-color: var(--pitch);
+}
+.breakdown-toggle:active {
+  transform: scale(0.9);
+}
+.breakdown-detail-row td {
+  padding: 0 !important;
+  background: var(--bg);
+}
+.breakdown-detail-loading {
+  margin: 0;
+  padding: 12px 14px;
+  font-size: 0.82rem;
+}
+.week-days {
+  padding: 6px 14px 10px;
+  animation: fadeInUp 0.22s var(--ease);
+}
+.week-day {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.week-day:last-child {
+  border-bottom: none;
+}
+.week-day-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+/* Marks the two days a match week only half-owns. */
+.week-day-half {
+  font-size: 0.72rem;
+  color: var(--pitch);
+  cursor: help;
+}
+.week-day-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.week-day-value--empty {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* ── Settings: the burn-estimate fallback ── */
+.body-stats-note {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  margin: 0 0 12px;
+}
+.estimate-fields {
+  margin-bottom: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+.estimate-fields > summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--pitch-dark);
+}
+.estimate-fields[open] > summary {
+  margin-bottom: 8px;
+}
+.estimate-fields > .muted {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  margin: 0 0 10px;
+}
