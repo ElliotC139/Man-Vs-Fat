@@ -3,6 +3,8 @@ function icon(paths, extraClass = "") {
 }
 const ICONS = {
   plus: icon('<path d="M5 12h14M12 5v14"/>'),
+  minus: icon('<path d="M5 12h14"/>'),
+  info: icon('<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>'),
   x: icon('<path d="M18 6 6 18M6 6l12 12"/>'),
   flame: icon(
     '<path d="M8.5 14.5a2.5 2.5 0 0 0 5 0c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7.5 7.5 0 1 1-15 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 1 2.5Z"/>',
@@ -115,6 +117,17 @@ const statRecovery = document.getElementById("stat-recovery");
 const statSleep = document.getElementById("stat-sleep");
 const whoopStatsAvg = document.getElementById("whoop-stats-avg");
 const statAvgKcal = document.getElementById("stat-avg-kcal");
+const statAvgKcal28 = document.getElementById("stat-avg-kcal-28");
+const statAvgBurn = document.getElementById("stat-avg-burn");
+const statAvgNet = document.getElementById("stat-avg-net");
+const statAvgNetCell = document.getElementById("stat-avg-net-cell");
+const statAvgNetCaption = document.getElementById("stat-avg-net-caption");
+const statAvgWeeklyChange = document.getElementById("stat-avg-weekly-change");
+const statAvgWeeklyChangeCaption = document.getElementById("stat-avg-weekly-change-caption");
+const statAvgWorkouts = document.getElementById("stat-avg-workouts");
+const statAvgRecovery = document.getElementById("stat-avg-recovery");
+const statAvgSleep = document.getElementById("stat-avg-sleep");
+const averagesWindow = document.getElementById("averages-window");
 const insightsCard = document.getElementById("insights-card");
 const insightsList = document.getElementById("insights-list");
 const balanceTrendCard = document.getElementById("balance-trend-card");
@@ -915,6 +928,8 @@ async function loadWhoopStatus() {
     whoopConnectBtn.hidden = !status.configured || status.connected;
     whoopSyncBtn.hidden = !status.configured || !status.connected;
     whoopDisconnectBtn.hidden = !status.configured || !status.connected;
+
+    applyTrackerAwareSettings(status.connected === true);
 
     if (!status.configured) {
       whoopStatusText.textContent = "Not connected";
@@ -1862,8 +1877,51 @@ async function loadStatsSummary() {
   }
 }
 
+/**
+ * The Averages card. Every figure is either a real number or an em dash —
+ * nothing is filled in with a zero that would read as a measurement.
+ */
+function renderAverages(averages, avgKcalPerDay) {
+  const set = (el, value) => {
+    el.textContent = value ?? "—";
+  };
+  const num = (value) => (value === null || value === undefined ? null : value.toLocaleString());
+
+  averagesWindow.textContent = averages.windowDays ? `last ${averages.windowDays} days` : "";
+
+  set(statAvgKcal, num(averages.kcalInPerDay7 ?? avgKcalPerDay));
+  set(statAvgKcal28, num(averages.kcalInPerDay28));
+  set(statAvgBurn, num(averages.kcalBurnedPerDay));
+
+  if (averages.netKcalPerDay === null || averages.netKcalPerDay === undefined) {
+    set(statAvgNet, null);
+    statAvgNetCaption.textContent = "daily balance";
+    statAvgNetCell.classList.remove("balance-cell--loss", "balance-cell--gain");
+  } else {
+    const net = averages.netKcalPerDay;
+    // A deficit is the goal here, so it gets the positive colour.
+    statAvgNet.textContent = `${net <= 0 ? "-" : "+"}${Math.abs(net).toLocaleString()}`;
+    statAvgNetCaption.textContent = net <= 0 ? "deficit/day" : "surplus/day";
+    statAvgNetCell.classList.toggle("balance-cell--loss", net <= 0);
+    statAvgNetCell.classList.toggle("balance-cell--gain", net > 0);
+  }
+
+  if (averages.kgPerWeek === null || averages.kgPerWeek === undefined) {
+    set(statAvgWeeklyChange, null);
+    statAvgWeeklyChangeCaption.textContent = "per week";
+  } else {
+    const sign = averages.kgPerWeek <= 0 ? "-" : "+";
+    statAvgWeeklyChange.textContent = `${sign}${kgToDisplay(Math.abs(averages.kgPerWeek))}`;
+    statAvgWeeklyChangeCaption.textContent = `${weightUnit()}/week ${averages.kgPerWeek <= 0 ? "lost" : "gained"}`;
+  }
+
+  set(statAvgWorkouts, averages.workoutsPerWeek === null || averages.workoutsPerWeek === undefined ? null : String(averages.workoutsPerWeek));
+  set(statAvgRecovery, averages.recovery === null || averages.recovery === undefined ? null : `${averages.recovery}%`);
+  set(statAvgSleep, averages.sleepMinutes === null || averages.sleepMinutes === undefined ? null : formatSleep(averages.sleepMinutes));
+}
+
 function renderStatsSummary(data) {
-  statAvgKcal.textContent = data.avgKcalPerDay !== null && data.avgKcalPerDay !== undefined ? String(data.avgKcalPerDay) : "—";
+  renderAverages(data.averages ?? {}, data.avgKcalPerDay);
 
   if (data.weightPace) {
     const { kgPerWeek, onTrack } = data.weightPace;
@@ -1991,9 +2049,9 @@ function renderTdee(data) {
   tdeeConfidence.className = `confidence-pill confidence-pill--${data.confidence}`;
 
   const pct = Math.round(data.completeness * 100);
-  const direction = data.trendChangeKg <= 0 ? "lost" : "gained";
+  const direction = data.weightChangeKg <= 0 ? "lost" : "gained";
   tdeeExplain.textContent =
-    `Worked out from what you actually ate and the ${kgToDisplay(Math.abs(data.trendChangeKg))} ${weightUnit()} you ` +
+    `Worked out from what you actually ate and the ${kgToDisplay(Math.abs(data.weightChangeKg))} ${weightUnit()} you ` +
     `${direction} over ${data.windowDays} days (${pct}% of days logged). This is your real burn rate, not a formula.`;
 
   if (data.underLoggingKcalPerDay) {
@@ -2021,12 +2079,8 @@ function hideTooltip() {
   activeTooltipTarget = null;
 }
 
-function showTooltip(target) {
-  const tip = document.createElement("div");
-  tip.className = "app-tooltip";
-  tip.textContent = target.dataset.tooltip;
-  document.body.appendChild(tip);
-
+/** Places an open tooltip against its target. Called on open and on scroll. */
+function positionTooltip(tip, target) {
   const rect = target.getBoundingClientRect();
   const tipRect = tip.getBoundingClientRect();
   const anchorX = rect.left + rect.width / 2;
@@ -2039,7 +2093,8 @@ function showTooltip(target) {
     top = rect.bottom + 10;
     placement = "bottom";
   }
-  tip.classList.add(`app-tooltip--${placement}`);
+  tip.classList.toggle("app-tooltip--top", placement === "top");
+  tip.classList.toggle("app-tooltip--bottom", placement === "bottom");
   tip.style.top = `${top}px`;
 
   // Keep the box on screen, then slide the caret back the other way by
@@ -2048,6 +2103,15 @@ function showTooltip(target) {
   const clampedX = Math.min(Math.max(anchorX, half + 8), window.innerWidth - half - 8);
   tip.style.left = `${clampedX}px`;
   tip.style.setProperty("--caret-offset", `${anchorX - clampedX}px`);
+}
+
+function showTooltip(target) {
+  const tip = document.createElement("div");
+  tip.className = "app-tooltip";
+  tip.textContent = target.dataset.tooltip;
+  document.body.appendChild(tip);
+
+  positionTooltip(tip, target);
 
   target.classList.add("tooltip-active");
   activeTooltipEl = tip;
@@ -2067,7 +2131,29 @@ document.addEventListener("click", (e) => {
     hideTooltip();
   }
 });
-window.addEventListener("scroll", hideTooltip, true);
+// Scrolling used to dismiss the tooltip outright, which made it almost
+// unusable on a phone: tapping a row near the bottom of the screen scrolls it
+// into view, and the tooltip vanished before it could be read. It now follows
+// its target instead, and only closes once that target has left the screen.
+let tooltipFollowQueued = false;
+window.addEventListener(
+  "scroll",
+  () => {
+    if (!activeTooltipEl || !activeTooltipTarget || tooltipFollowQueued) return;
+    tooltipFollowQueued = true;
+    requestAnimationFrame(() => {
+      tooltipFollowQueued = false;
+      if (!activeTooltipEl || !activeTooltipTarget) return;
+      const rect = activeTooltipTarget.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > window.innerHeight) {
+        hideTooltip();
+        return;
+      }
+      positionTooltip(activeTooltipEl, activeTooltipTarget);
+    });
+  },
+  true,
+);
 
 // ── Insights ─────────────────────────────────────────────────────────────
 async function loadInsights() {
@@ -2307,7 +2393,7 @@ function renderWeeklyBreakdown(data) {
 
   breakdownWeightCard.hidden = !hasAny("weightChangeKg");
   breakdownCaloriesCard.hidden = !(hasAny("avgKcalPerDay") || hasAny("workoutCount"));
-  breakdownRecoveryCard.hidden = !hasAny("avgRecovery");
+  breakdownRecoveryCard.hidden = !(hasAny("avgRecovery") || hasAny("avgSleepMinutes"));
 
   breakdownWeightBody.innerHTML = "";
   breakdownCaloriesBody.innerHTML = "";
@@ -2316,41 +2402,174 @@ function renderWeeklyBreakdown(data) {
   for (let i = weeks.length - 1; i >= 0; i--) {
     const week = weeks[i];
 
-    const weightRow = document.createElement("tr");
-    makeRowTappable(weightRow, week);
-    weightRow.appendChild(weekOfCell(week));
-    const weight = document.createElement("td");
+    // ── Weight ──
+    // A week nobody weighed in during has no change to report. The backend
+    // sends null rather than 0 for exactly this reason, so the row is left
+    // out entirely instead of claiming a confident 0.0kg.
     if (week.weightChangeKg !== null) {
+      const weight = document.createElement("td");
       const sign = week.weightChangeKg <= 0 ? "-" : "+";
       weight.textContent = `${sign}${kgToDisplay(Math.abs(week.weightChangeKg))} ${weightUnit()}`;
       weight.className = week.weightChangeKg <= 0 ? "breakdown-loss" : "breakdown-gain";
-    } else {
-      weight.textContent = "—";
+      appendBreakdownRow(breakdownWeightBody, week, [weight], "weight");
     }
-    weightRow.appendChild(weight);
-    breakdownWeightBody.appendChild(weightRow);
 
-    const kcalDetail =
-      week.avgKcalPerDay !== null ? `logged ${week.daysWithEntries} of 7 days` : undefined;
-    const caloriesRow = document.createElement("tr");
-    makeRowTappable(caloriesRow, week, kcalDetail);
-    caloriesRow.appendChild(weekOfCell(week));
+    // ── Calories ──
     const kcal = document.createElement("td");
     kcal.textContent = week.avgKcalPerDay !== null ? week.avgKcalPerDay.toLocaleString() : "—";
-    caloriesRow.appendChild(kcal);
     const workouts = document.createElement("td");
     workouts.textContent = String(week.workoutCount);
-    caloriesRow.appendChild(workouts);
-    breakdownCaloriesBody.appendChild(caloriesRow);
+    const kcalDetail =
+      week.avgKcalPerDay !== null ? `Logged on ${formatDaysLogged(week.daysWithEntries)} of 7 days` : undefined;
+    appendBreakdownRow(breakdownCaloriesBody, week, [kcal, workouts], "calories", kcalDetail);
 
-    const recoveryRow = document.createElement("tr");
-    makeRowTappable(recoveryRow, week);
-    recoveryRow.appendChild(weekOfCell(week));
+    // ── Recovery ──
     const recovery = document.createElement("td");
     recovery.textContent = week.avgRecovery !== null ? `${week.avgRecovery}%` : "—";
-    recoveryRow.appendChild(recovery);
-    breakdownRecoveryBody.appendChild(recoveryRow);
+    const sleep = document.createElement("td");
+    sleep.textContent = week.avgSleepMinutes !== null ? formatSleep(week.avgSleepMinutes) : "—";
+    appendBreakdownRow(breakdownRecoveryBody, week, [recovery, sleep], "recovery");
   }
+}
+
+/** "7h 12m" from a count of minutes. */
+function formatSleep(minutes) {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hours}h ${String(mins).padStart(2, "0")}m`;
+}
+
+/**
+ * A match week's two boundary days count half each, so the total is often
+ * fractional — 6.5, not 7. Shown to one decimal only when it needs one.
+ */
+function formatDaysLogged(days) {
+  return Number.isInteger(days) ? String(days) : days.toFixed(1);
+}
+
+/**
+ * One weekly row, with a disclosure button that pulls in the individual days
+ * behind it. The days are fetched on first open and kept, so collapsing and
+ * reopening doesn't re-request them.
+ */
+function appendBreakdownRow(tbody, week, cells, kind, extraDetail) {
+  const row = document.createElement("tr");
+  makeRowTappable(row, week, extraDetail);
+
+  const toggleCell = document.createElement("td");
+  toggleCell.className = "breakdown-toggle-cell";
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "breakdown-toggle";
+  toggle.innerHTML = ICONS.plus;
+  toggle.setAttribute("aria-expanded", "false");
+  toggle.setAttribute("aria-label", `Show the days in the week of ${week.weekStart}`);
+  toggleCell.appendChild(toggle);
+  row.appendChild(toggleCell);
+
+  row.appendChild(weekOfCell(week));
+  for (const cell of cells) row.appendChild(cell);
+  tbody.appendChild(row);
+
+  // The detail lives in its own row spanning the full table, so the weekly
+  // columns keep their alignment.
+  const detailRow = document.createElement("tr");
+  detailRow.className = "breakdown-detail-row";
+  detailRow.hidden = true;
+  const detailCell = document.createElement("td");
+  detailCell.colSpan = cells.length + 2;
+  detailRow.appendChild(detailCell);
+  tbody.appendChild(detailRow);
+
+  let loaded = false;
+  toggle.addEventListener("click", async (event) => {
+    // Otherwise the row's own tooltip fires on the same tap.
+    event.stopPropagation();
+    const opening = detailRow.hidden;
+    detailRow.hidden = !opening;
+    toggle.setAttribute("aria-expanded", String(opening));
+    toggle.innerHTML = opening ? ICONS.minus : ICONS.plus;
+    if (!opening || loaded) return;
+
+    detailCell.innerHTML = '<p class="muted breakdown-detail-loading">Loading…</p>';
+    try {
+      const res = await fetch(`/api/stats/week-days?weekStart=${encodeURIComponent(week.weekStart)}`);
+      if (!res.ok) throw new Error();
+      const body = await res.json();
+      renderWeekDays(detailCell, body.days ?? [], kind);
+      loaded = true;
+    } catch {
+      detailCell.innerHTML = '<p class="muted breakdown-detail-loading">Couldn’t load those days.</p>';
+    }
+  });
+}
+
+/** Which column each table's drill-down shows, and how to render it. */
+const WEEK_DAY_COLUMNS = {
+  weight: {
+    heading: "Weight",
+    value: (day) => (day.weightKg !== null ? `${kgToDisplay(day.weightKg)} ${weightUnit()}` : null),
+  },
+  calories: {
+    heading: "In / out",
+    value: (day) => {
+      if (day.kcalIn === null && day.kcalOut === null) return null;
+      const inPart = day.kcalIn !== null ? `${day.kcalIn.toLocaleString()} in` : "— in";
+      const outPart = day.kcalOut !== null ? `${day.kcalOut.toLocaleString()} out` : "— out";
+      return `${inPart} · ${outPart}`;
+    },
+  },
+  recovery: {
+    heading: "Recovery / sleep",
+    value: (day) => {
+      if (day.recoveryScore === null && day.sleepMinutes === null) return null;
+      const parts = [];
+      if (day.recoveryScore !== null) parts.push(`${day.recoveryScore}%`);
+      if (day.sleepMinutes !== null) parts.push(formatSleep(day.sleepMinutes));
+      return parts.join(" · ");
+    },
+  },
+};
+
+function renderWeekDays(container, days, kind) {
+  container.innerHTML = "";
+  if (days.length === 0) {
+    container.innerHTML = '<p class="muted breakdown-detail-loading">Nothing recorded for this week.</p>';
+    return;
+  }
+
+  const column = WEEK_DAY_COLUMNS[kind] ?? WEEK_DAY_COLUMNS.calories;
+  const list = document.createElement("div");
+  list.className = "week-days";
+
+  for (const day of days) {
+    const rowEl = document.createElement("div");
+    rowEl.className = "week-day";
+
+    const label = document.createElement("span");
+    label.className = "week-day-label";
+    label.textContent = dayFmt.format(new Date(`${day.date}T12:00:00`));
+    // The first and last days of a match week are shared with the weeks
+    // either side of them, which is why they only count as half.
+    if (day.partial) {
+      const half = document.createElement("span");
+      half.className = "week-day-half";
+      half.textContent = "½";
+      half.title = "The week starts and ends part-way through this day";
+      label.appendChild(half);
+    }
+
+    const value = document.createElement("span");
+    value.className = "week-day-value";
+    const text = column.value(day);
+    value.textContent = text ?? "—";
+    if (text === null) value.classList.add("week-day-value--empty");
+
+    rowEl.append(label, value);
+    list.appendChild(rowEl);
+  }
+
+  container.appendChild(list);
 }
 
 // ── Shared line-chart rendering ─────────────────────────────────────────
@@ -2700,10 +2919,10 @@ document.querySelectorAll(".desktop-nav-btn").forEach((btn) => {
 
 // ── Where a calorie figure came from ────────────────────────────────────────
 // Entry.source (see prisma/schema.prisma) records whether a number was
-// estimated, looked up, or typed. Only the two that change how much to trust
-// the figure get a badge — a hand-typed or copied number needs no comment.
+// estimated, looked up, or typed. Only a database-backed figure is marked:
+// almost everything here is AI-estimated, so badging that said nothing while
+// putting a label on nearly every row.
 const SOURCE_BADGES = {
-  ai: { text: "est.", cls: "entry-source--est", title: "Estimated by AI from what you described" },
   database: { text: "✓", cls: "entry-source--verified", title: "From Open Food Facts nutrition data" },
 };
 
@@ -2724,6 +2943,16 @@ const quickAddCard = document.getElementById("quick-add");
 const quickAddChips = document.getElementById("quick-add-chips");
 const quickAddError = document.getElementById("quick-add-error");
 const quickAddManage = document.getElementById("quick-add-manage");
+const quickAddToggle = document.getElementById("quick-add-toggle");
+
+// The panel stays shut until asked for — it was competing with the thing
+// people came to the screen to do, which is type what they ate.
+function setQuickAddOpen(open) {
+  quickAddCard.hidden = !open;
+  quickAddToggle.setAttribute("aria-expanded", String(open));
+}
+
+quickAddToggle.addEventListener("click", () => setQuickAddOpen(quickAddCard.hidden));
 
 const QUICK_ADD_FOODS = 6;
 
@@ -2736,7 +2965,8 @@ async function loadQuickAdd() {
     renderQuickAdd(meals, foods);
   } catch {
     // A failed quick-add strip shouldn't shout — the form below still works.
-    quickAddCard.hidden = true;
+    setQuickAddOpen(false);
+    quickAddToggle.hidden = true;
   }
 }
 
@@ -2775,7 +3005,11 @@ function renderQuickAdd(meals, foods) {
     );
   }
 
-  quickAddCard.hidden = quickAddChips.childElementCount === 0;
+  // Nothing to add again yet means no button at all, rather than a button
+  // that opens an empty panel.
+  const hasChips = quickAddChips.childElementCount > 0;
+  quickAddToggle.hidden = !hasChips;
+  if (!hasChips) setQuickAddOpen(false);
 }
 
 function portionSubtitle(meal) {
@@ -2871,7 +3105,10 @@ async function logSavedMeal(meal) {
   }
 }
 
-quickAddManage.addEventListener("click", () => navTo("food-library"));
+quickAddManage.addEventListener("click", () => {
+  setQuickAddOpen(false);
+  navTo("food-library");
+});
 
 // ── Saved meals & recipes (Food Library screen) ─────────────────────────────
 const mealsSection = document.getElementById("meals-section");
@@ -4034,3 +4271,71 @@ healthFileInput.addEventListener("change", async () => {
     healthFileInput.value = "";
   }
 });
+
+// ── Info buttons ────────────────────────────────────────────────────────────
+// The screen carries a few figures that aren't self-explanatory — an adaptive
+// TDEE, a weighted day count, a recovery score. Rather than crowd every card
+// with a paragraph, each gets an (i) that explains it on demand, through the
+// tooltip mechanism already used by the charts and tables.
+const INFO_TEXT = {
+  tdee:
+    "What you actually burn per day, worked backwards from what you ate and how your weight " +
+    "moved — not a height-and-age formula. Confidence reflects how many days you logged and " +
+    "how long the window is.",
+  averages:
+    "Trailing averages. Calories in comes from your diary; calories out from your tracker, " +
+    "averaged only over days it actually recorded. Today is left out, since it's still going.",
+  "weekly-calories":
+    "A match week runs Monday evening to Monday evening, so it touches 8 calendar days — the " +
+    "first and last count as half each. That's why days logged can be 6.5 rather than a whole " +
+    "number. Tap + to see the individual days.",
+  "weekly-weight":
+    "The change from the previous week's last weigh-in. A week you didn't weigh in during is " +
+    "left out entirely rather than shown as no change. Tap + to see each day's reading.",
+  "weekly-recovery":
+    "WHOOP's recovery score is how ready your body is that day, from heart-rate variability " +
+    "and resting heart rate. Sleep is time actually asleep, not time in bed. Tap + for the days.",
+  recovery:
+    "Recovery is WHOOP's 0–100% readiness score for today, from your overnight heart-rate " +
+    "variability and resting heart rate. Green is rested, red means take it easy.",
+};
+
+for (const button of document.querySelectorAll(".info-btn")) {
+  button.innerHTML = ICONS.info;
+  const text = INFO_TEXT[button.dataset.info];
+  if (!text) continue;
+  button.dataset.tooltip = text;
+  button.classList.add("has-tooltip");
+}
+
+
+// ── Body stats, once a tracker is doing the measuring ───────────────────────
+// Height, age and activity exist only to feed the Mifflin-St Jeor fallback
+// used on days with no tracker data. With WHOOP connected that's a rare
+// backstop rather than the main event, so the fields fold away instead of
+// sitting at the top of Settings implying they still drive the numbers.
+const bodyStatsNote = document.getElementById("body-stats-note");
+const estimateFields = document.getElementById("estimate-fields");
+const estimateFieldsSummary = document.getElementById("estimate-fields-summary");
+const estimateFieldsNote = document.getElementById("estimate-fields-note");
+
+function applyTrackerAwareSettings(trackerConnected) {
+  if (trackerConnected) {
+    bodyStatsNote.textContent =
+      "Your goal weight drives the projection on the Stats screen. With WHOOP connected, your " +
+      "burn is measured rather than estimated, so the rest is only a fallback.";
+    estimateFieldsSummary.textContent = "Burn estimate fallback";
+    estimateFieldsNote.textContent =
+      "Only used on days WHOOP has no data for. Everything else comes from the watch.";
+    // Left closed: it's a backstop, not something to maintain.
+    estimateFields.open = false;
+  } else {
+    bodyStatsNote.textContent =
+      "Your goal weight drives the projection on the Stats screen. Height, age and activity " +
+      "estimate what you burn until a tracker can measure it.";
+    estimateFieldsSummary.textContent = "Burn estimate details";
+    estimateFieldsNote.textContent =
+      "Used to estimate what you burn each day. Connect WHOOP in Settings to measure it instead.";
+    estimateFields.open = true;
+  }
+}
