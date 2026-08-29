@@ -232,7 +232,7 @@ body {
    keeps its title at full size — there's no fixture there to take over, and
    an eyebrow alone leaves the header a large empty band. */
 .banner--fixture h1 {
-  margin: 0 0 8px;
+  margin: 0 0 20px;
   font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.18em;
@@ -2414,11 +2414,23 @@ tr.has-tooltip:active {
   display: flex;
   gap: 8px;
   justify-content: center;
-  flex-wrap: wrap;
 }
 .summary-actions .ghost-sm,
 .summary-actions .button-link {
-  width: auto;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 180px;
+  margin-top: 8px;
+  min-height: 44px;
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--pitch);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 .review-range {
   text-align: center;
