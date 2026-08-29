@@ -8,7 +8,7 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍽️</text></svg>" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/style.css" />
 
     <!-- Lets "Add to Home Screen" open as a standalone full-screen app
@@ -42,7 +42,7 @@
     </div>
 
     <div id="app-shell" hidden>
-      <header class="banner">
+      <header class="banner banner--fixture">
         <h1 class="brand"><img src="/icons/mark.png" alt="" class="brand-mark" width="28" height="28" /><span class="brand-word">Match Week Food Diary</span></h1>
         <nav class="desktop-nav" aria-label="Main">
           <button type="button" class="desktop-nav-btn desktop-nav-btn--active" data-nav="diary">Diary</button>
@@ -168,6 +168,14 @@
         </section>
 
         <section class="summary card">
+          <div id="form-guide" class="form-guide" hidden>
+            <div class="form-guide-head">
+              <span class="form-guide-title">This week</span>
+              <span id="form-guide-record" class="form-guide-record"></span>
+            </div>
+            <div id="form-guide-days" class="form-guide-days"></div>
+          </div>
+
           <div class="summary-total"><span id="week-total">0</span> kcal this week</div>
           <div class="muted"><span id="week-avg">0</span> kcal/day avg over <span id="days-logged">0</span> day(s) logged</div>
           <div id="week-net-summary" class="week-net-summary" hidden></div>
