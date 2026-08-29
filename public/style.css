@@ -2882,3 +2882,42 @@ tr.has-tooltip:active {
 .form-day-letter {
   line-height: 1;
 }
+
+/* ── Deficit streak ── */
+.streak-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.streak-cell {
+  background: var(--bg);
+  border-radius: var(--radius-md);
+  padding: 14px 12px;
+  text-align: center;
+}
+.streak-number {
+  display: block;
+  font-family: var(--font-heading);
+  font-size: 2.3rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+/* A run that's still alive is the one thing here worth colouring — green
+   keeps meaning "you're under", same as it does on the form guide. */
+.streak-number--live {
+  color: var(--pitch-dark);
+}
+.streak-caption {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.streak-note {
+  margin: 12px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}

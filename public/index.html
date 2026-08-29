@@ -794,6 +794,24 @@
             <p id="tdee-pending-text" class="muted"></p>
           </section>
 
+          <section id="streak-card" class="card" hidden>
+            <div class="card-header-row">
+              <h2>Deficit streak</h2>
+              <button type="button" class="info-btn" data-info="streak" aria-label="What this means"></button>
+            </div>
+            <div class="streak-grid">
+              <div class="streak-cell">
+                <span id="streak-current" class="streak-number">—</span>
+                <span id="streak-current-caption" class="streak-caption">current</span>
+              </div>
+              <div class="streak-cell">
+                <span id="streak-best" class="streak-number">—</span>
+                <span id="streak-best-caption" class="streak-caption">best</span>
+              </div>
+            </div>
+            <p id="streak-note" class="muted streak-note" hidden></p>
+          </section>
+
           <section id="averages-card" class="card">
             <div class="card-header-row">
               <h2>Averages</h2>

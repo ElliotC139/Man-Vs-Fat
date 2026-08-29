@@ -128,6 +128,12 @@ const statAvgWorkouts = document.getElementById("stat-avg-workouts");
 const statAvgRecovery = document.getElementById("stat-avg-recovery");
 const statAvgSleep = document.getElementById("stat-avg-sleep");
 const averagesWindow = document.getElementById("averages-window");
+const streakCard = document.getElementById("streak-card");
+const streakCurrent = document.getElementById("streak-current");
+const streakCurrentCaption = document.getElementById("streak-current-caption");
+const streakBest = document.getElementById("streak-best");
+const streakBestCaption = document.getElementById("streak-best-caption");
+const streakNote = document.getElementById("streak-note");
 const insightsCard = document.getElementById("insights-card");
 const insightsList = document.getElementById("insights-list");
 const balanceTrendCard = document.getElementById("balance-trend-card");
@@ -1842,6 +1848,7 @@ function openStats() {
   loadInsights();
   loadBalanceTrend();
   loadWeeklyBreakdown();
+  loadDeficitStreak();
   loadTdee();
 }
 
@@ -4383,6 +4390,10 @@ const INFO_TEXT = {
   "weekly-weight":
     "The change from the previous week's last weigh-in. A week you didn't weigh in during is " +
     "left out entirely rather than shown as no change. Tap + to see each day's reading.",
+  streak:
+    "Consecutive days you finished under what you burned. A day you didn't log can't be " +
+    "claimed, so it breaks the run. The Monday a match week starts and ends on counts once, " +
+    "as one day — not as two halves.",
   "weekly-recovery":
     "WHOOP's recovery score is how ready your body is that day, from heart-rate variability " +
     "and resting heart rate. Sleep is time actually asleep, not time in bed. Tap + for the days.",
@@ -4429,4 +4440,62 @@ function applyTrackerAwareSettings(trackerConnected) {
       "Used to estimate what you burn each day. Connect WHOOP in Settings to measure it instead.";
     estimateFields.open = true;
   }
+}
+
+
+// ── Deficit streak ──────────────────────────────────────────────────────────
+// Consecutive days finishing under your burn. Counted over calendar days, so
+// the Monday a match week opens and closes on is one day, not two halves —
+// see src/deficitStreak.ts for why that distinction matters.
+const dayRangeFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
+
+function formatStreakRange(startDate, endDate) {
+  const start = new Date(`${startDate}T12:00:00`);
+  const end = new Date(`${endDate}T12:00:00`);
+  if (startDate === endDate) return dayRangeFmt.format(start);
+  return `${dayRangeFmt.format(start)} – ${dayRangeFmt.format(end)}`;
+}
+
+function pluralDays(n) {
+  return n === 1 ? "1 day" : `${n} days`;
+}
+
+async function loadDeficitStreak() {
+  try {
+    const res = await fetch("/api/stats/deficit-streak");
+    if (!res.ok) throw new Error();
+    renderDeficitStreak(await res.json());
+  } catch {
+    streakCard.hidden = true;
+  }
+}
+
+function renderDeficitStreak(data) {
+  // Nothing judgeable yet means nothing worth showing — an empty card of
+  // dashes is worse than no card.
+  if (!data || data.judgedDays === 0) {
+    streakCard.hidden = true;
+    return;
+  }
+  streakCard.hidden = false;
+
+  streakCurrent.textContent = String(data.current);
+  streakCurrent.classList.toggle("streak-number--live", data.current > 0);
+  streakCurrentCaption.textContent =
+    data.current === 0
+      ? "current — no run going"
+      : `current, since ${formatStreakRange(data.currentStartDate, data.currentStartDate)}`;
+
+  if (!data.best) {
+    streakBest.textContent = "—";
+    streakBestCaption.textContent = "best";
+  } else {
+    streakBest.textContent = String(data.best.days);
+    streakBestCaption.textContent = `best (${formatStreakRange(data.best.startDate, data.best.endDate)})`;
+  }
+
+  // Say plainly why today isn't in the number, so a good day in progress
+  // doesn't look like it's been ignored.
+  streakNote.textContent = `Counted over ${pluralDays(data.judgedDays)} with enough data to judge. Today joins once it's finished.`;
+  streakNote.hidden = false;
 }
