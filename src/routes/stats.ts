@@ -14,6 +14,7 @@ import {
 import { estimateAdaptiveTdee } from "../adaptiveTdee";
 import { foodRecoveryFindings } from "../foodRecovery";
 import { latestWeightKg, weightRate } from "../weightStats";
+import { computeDeficitStreak, type DayVerdict } from "../deficitStreak";
 
 export const statsRouter = Router();
 statsRouter.use(requireAuth);
@@ -557,6 +558,87 @@ statsRouter.get("/week-days", async (req, res) => {
     });
 
   res.json({ weekStart: weekStartKey, weekEnd: endKey, days });
+});
+
+/**
+ * Consecutive days finishing under your burn — the current run and the best
+ * one on record.
+ *
+ * Built from raw entries grouped by local calendar day, deliberately never
+ * from match weeks: a match week's day list carries a Monday at both ends,
+ * so walking weeks would judge each half of a Monday separately against a
+ * whole day's burn. Grouping by calendar day puts both halves of a Monday
+ * in one bucket, judged once, as the single day it is.
+ */
+statsRouter.get("/deficit-streak", async (req, res) => {
+  const userId = req.userId!;
+
+  const [user, firstEntry, entries, cycles] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { weightKg: true, heightCm: true, ageYears: true, activityLevel: true },
+    }),
+    prisma.entry.findFirst({
+      where: { matchWeek: { userId }, kcal: { not: null } },
+      orderBy: { timestamp: "asc" },
+      select: { timestamp: true },
+    }),
+    prisma.entry.findMany({
+      where: { matchWeek: { userId }, kcal: { not: null } },
+      select: { timestamp: true, kcal: true },
+    }),
+    prisma.whoopCycle.findMany({
+      where: { userId, scoreState: "SCORED", kcalBurned: { not: null } },
+      select: { start: true, end: true, kcalBurned: true },
+    }),
+  ]);
+
+  if (!firstEntry) {
+    res.json({ current: 0, currentStartDate: null, best: null, judgedDays: 0 });
+    return;
+  }
+
+  const kcalInByDay = new Map<string, number>();
+  for (const e of entries) {
+    const key = localDayKey(e.timestamp, config.TIMEZONE);
+    kcalInByDay.set(key, (kcalInByDay.get(key) ?? 0) + (e.kcal ?? 0));
+  }
+
+  const kcalOutByDay = new Map<string, number>();
+  for (const c of cycles) {
+    const split = splitCycleAcrossDays(c.start, c.end ?? new Date(), c.kcalBurned ?? 0, config.TIMEZONE);
+    for (const [key, kcal] of split) kcalOutByDay.set(key, (kcalOutByDay.get(key) ?? 0) + kcal);
+  }
+
+  const estimated = estimateTdee(user ?? { weightKg: null, heightCm: null, ageYears: null, activityLevel: null });
+
+  // Today is still running, so it can't be called yet — a day that's in
+  // deficit at lunchtime often isn't by bedtime. It joins the streak once
+  // it's over.
+  const todayKey = localDayKey(new Date(), config.TIMEZONE);
+
+  // Every calendar day from the first entry to yesterday, including the
+  // ones with nothing logged: a gap has to appear as an unjudgeable day so
+  // the runs either side of it don't weld together.
+  const verdicts: DayVerdict[] = [];
+  const cursor = new Date(firstEntry.timestamp);
+  cursor.setUTCHours(12, 0, 0, 0);
+  for (let guard = 0; guard < 4000; guard++) {
+    const key = localDayKey(cursor, config.TIMEZONE);
+    if (key >= todayKey) break;
+
+    const kcalIn = kcalInByDay.get(key);
+    const kcalOut = kcalOutByDay.get(key) ?? estimated;
+    verdicts.push({
+      date: key,
+      // Nothing logged, or no burn figure to judge against, means no
+      // verdict — not a free pass.
+      deficit: kcalIn == null || kcalOut == null ? null : kcalIn < kcalOut,
+    });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  res.json(computeDeficitStreak(verdicts));
 });
 
 // ── Insights ─────────────────────────────────────────────────────────────

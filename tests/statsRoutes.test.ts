@@ -59,6 +59,13 @@ vi.mock("../src/db", () => {
       updateMany: vi.fn(async () => ({ count: 0 })),
     },
     entry: {
+      findFirst: vi.fn(async ({ where }: any) => {
+        const items = state.entries
+          .filter((e) => e.userId === where.matchWeek.userId)
+          .filter((e) => (where.kcal?.not === null ? e.kcal !== null : true))
+          .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+        return items[0] ?? null;
+      }),
       findMany: vi.fn(async ({ where }: any) => {
         let items = state.entries.filter((e) => e.userId === where.matchWeek.userId);
         if (where.timestamp?.gte) items = items.filter((e) => e.timestamp.getTime() >= where.timestamp.gte.getTime());
@@ -511,5 +518,118 @@ describe("GET /api/stats/insights", () => {
 
     const body = await fetchInsights(cookie);
     expect(body.insights.some((i) => i.id === "recovery-vs-next-day-kcal")).toBe(true);
+  });
+});
+
+
+interface StreakResponse {
+  current: number;
+  currentStartDate: string | null;
+  best: { days: number; startDate: string; endDate: string } | null;
+  judgedDays: number;
+}
+
+async function fetchStreak(cookie: string): Promise<StreakResponse> {
+  const res = await fetch(`${baseUrl}/api/stats/deficit-streak`, { headers: { Cookie: cookie } });
+  return (await res.json()) as StreakResponse;
+}
+
+/** Midday local on the day `n` days ago, so nothing drifts across a boundary. */
+function middayDaysAgo(n: number): Date {
+  const d = daysAgo(n);
+  d.setHours(12, 0, 0, 0);
+  return d;
+}
+
+describe("GET /api/stats/deficit-streak", () => {
+  it("rejects an unauthenticated request", async () => {
+    const res = await fetch(`${baseUrl}/api/stats/deficit-streak`);
+    expect(res.status).toBe(401);
+  });
+
+  it("reports nothing when there's no history at all", async () => {
+    const { cookie } = await signUp("alice");
+    expect(await fetchStreak(cookie)).toEqual({
+      current: 0,
+      currentStartDate: null,
+      best: null,
+      judgedDays: 0,
+    });
+  });
+
+  it("counts consecutive days finishing under the estimated burn", async () => {
+    const { cookie, userId } = await signUp("alice");
+    // 2,400 kcal/day estimated burn for this profile; 1,500 in is a deficit.
+    state.users[0]!.weightKg = 95;
+    state.users[0]!.heightCm = 180;
+    state.users[0]!.ageYears = 40;
+    state.users[0]!.activityLevel = "moderate";
+    for (let d = 5; d >= 1; d--) {
+      state.entries.push({ userId, timestamp: middayDaysAgo(d), kcal: 1500 });
+    }
+
+    const body = await fetchStreak(cookie);
+    expect(body.current).toBe(5);
+    expect(body.best!.days).toBe(5);
+    expect(body.judgedDays).toBe(5);
+  });
+
+  it("breaks the run on a day that went over", async () => {
+    const { cookie, userId } = await signUp("alice");
+    state.users[0]!.weightKg = 95;
+    state.users[0]!.heightCm = 180;
+    state.users[0]!.ageYears = 40;
+    state.users[0]!.activityLevel = "moderate";
+    for (let d = 5; d >= 1; d--) {
+      state.entries.push({ userId, timestamp: middayDaysAgo(d), kcal: d === 3 ? 6000 : 1500 });
+    }
+
+    const body = await fetchStreak(cookie);
+    // Days 2 and 1 ago survive; the blowout on day 3 ends the earlier run.
+    expect(body.current).toBe(2);
+    expect(body.best!.days).toBe(2);
+  });
+
+  it("leaves today out, since it hasn't finished", async () => {
+    const { cookie, userId } = await signUp("alice");
+    state.users[0]!.weightKg = 95;
+    state.users[0]!.heightCm = 180;
+    state.users[0]!.ageYears = 40;
+    state.users[0]!.activityLevel = "moderate";
+    state.entries.push({ userId, timestamp: middayDaysAgo(1), kcal: 1500 });
+    state.entries.push({ userId, timestamp: middayDaysAgo(0), kcal: 1500 });
+
+    expect((await fetchStreak(cookie)).current).toBe(1);
+  });
+
+  it("counts a Monday once even though a match week opens and closes on it", async () => {
+    const { cookie, userId } = await signUp("alice");
+    state.users[0]!.weightKg = 95;
+    state.users[0]!.heightCm = 180;
+    state.users[0]!.ageYears = 40;
+    state.users[0]!.activityLevel = "moderate";
+
+    // Two entries on the same calendar day, one either side of the 17:00
+    // rollover, so they land in different match weeks. Together they're a
+    // single day at 1,600 kcal — under the burn, and worth one day of
+    // streak, not two.
+    const morning = daysAgo(1); morning.setHours(9, 0, 0, 0);
+    const evening = daysAgo(1); evening.setHours(20, 0, 0, 0);
+    state.entries.push({ userId, timestamp: morning, kcal: 800 });
+    state.entries.push({ userId, timestamp: evening, kcal: 800 });
+
+    const body = await fetchStreak(cookie);
+    expect(body.current).toBe(1);
+    expect(body.judgedDays).toBe(1);
+  });
+
+  it("says nothing rather than guessing when there's no burn figure at all", async () => {
+    const { cookie, userId } = await signUp("alice");
+    // No body stats and no WHOOP: nothing to judge a day against.
+    state.entries.push({ userId, timestamp: middayDaysAgo(1), kcal: 1500 });
+
+    const body = await fetchStreak(cookie);
+    expect(body.judgedDays).toBe(0);
+    expect(body.current).toBe(0);
   });
 });
