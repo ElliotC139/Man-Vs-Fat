@@ -214,6 +214,9 @@ const weekAvgEl = document.getElementById("week-avg");
 const daysLoggedEl = document.getElementById("days-logged");
 const weekNetSummaryEl = document.getElementById("week-net-summary");
 const dailyTotalsEl = document.getElementById("daily-totals");
+const formGuideEl = document.getElementById("form-guide");
+const formGuideDaysEl = document.getElementById("form-guide-days");
+const formGuideRecordEl = document.getElementById("form-guide-record");
 const entryListEl = document.getElementById("entry-list");
 const pendingNoteEl = document.getElementById("pending-note");
 const exportPdfEl = document.getElementById("export-pdf");
@@ -314,7 +317,7 @@ async function loadWeek() {
     new Date(new Date(week.endsAt).getTime() - 1000),
   )}`;
   weekNextBtn.disabled = weeksAgo === 0;
-  weekTotalEl.textContent = week.totalKcal;
+  weekTotalEl.textContent = (week.totalKcal ?? 0).toLocaleString();
   weekAvgEl.textContent = week.dailyAverage;
   daysLoggedEl.textContent = week.daysLogged;
   exportPdfEl.href = `/api/match-weeks/current/report.pdf?weeksAgo=${weeksAgo}`;
@@ -334,10 +337,89 @@ async function loadWeek() {
     pendingNoteEl.hidden = true;
   }
 
+  renderFormGuide(week.dailyTotals ?? [], week.whoop?.dailyBurn ?? []);
   renderDailyTotals(week.dailyTotals ?? [], week.whoop?.dailyBurn ?? []);
   renderEntries(week.entries);
   renderExercises(week.exercises ?? []);
   renderBudgetWidget(week);
+}
+
+/**
+ * The week as a form guide.
+ *
+ * A football season is read as a run of results — W W L D W — and a week of
+ * eating genuinely is the same shape: seven days, each either under your
+ * burn or over it. This is the one thing on the screen that answers "am I
+ * winning this week" without reading a single number, which is the question
+ * the screen exists to answer.
+ *
+ * Deliberately not a chart. A chart invites you to study it; a form guide is
+ * read at a glance, which is the point.
+ */
+function renderFormGuide(days, whoopDailyBurn) {
+  const burnByDate = new Map((whoopDailyBurn ?? []).map((b) => [b.date, b]));
+  formGuideDaysEl.innerHTML = "";
+  // A match week touches 8 calendar days, not 7 — it opens and closes
+  // part-way through a Monday. The grid is sized from the data so the row
+  // never wraps.
+  formGuideDaysEl.style.gridTemplateColumns = `repeat(${Math.max(days.length, 1)}, 1fr)`;
+
+  // Without a tracker there's still a verdict to give: the same
+  // Mifflin-St Jeor estimate the balance widget falls back to. A form guide
+  // that only works for WHOOP users would be worse than no form guide.
+  const estimatedDailyBurn = calculateTdee(currentUser);
+
+  let under = 0;
+  let over = 0;
+
+  for (const day of days) {
+    const burn = burnByDate.get(day.date);
+    const block = document.createElement("div");
+    const initial = day.label?.trim().charAt(0) ?? "";
+
+    // Three states, and the difference between them matters: a day you came
+    // in under, a day you went over, and a day there simply isn't a verdict
+    // for yet. A future day is not a good day.
+    let state = "none";
+    let detail = `${day.label}: nothing logged`;
+
+    const measuredBurn = !burn?.future && burn?.kcalWeighted != null ? burn.kcalWeighted : null;
+    // Today is still in progress, so judging it would call a result at
+    // half-time.
+    const burnForDay = measuredBurn ?? (day.isToday ? null : estimatedDailyBurn);
+
+    if (burnForDay != null && day.kcal > 0) {
+      const net = day.kcal - burnForDay;
+      state = net <= 0 ? "under" : "over";
+      if (net <= 0) under += 1;
+      else over += 1;
+      const word = net <= 0 ? "under" : "over";
+      const source = measuredBurn != null ? "" : " (est.)";
+      detail = `${day.label}: ${Math.abs(Math.round(net)).toLocaleString()} kcal ${word}${source}`;
+    } else if (day.kcal > 0) {
+      state = "logged";
+      detail = `${day.label}: ${day.kcal.toLocaleString()} kcal logged${day.isToday ? ", still going" : ""}`;
+    }
+
+    block.className = `form-day form-day--${state}`;
+    if (day.isToday) block.classList.add("form-day--today");
+    block.innerHTML = `<span class="form-day-letter">${initial}</span>`;
+    block.dataset.tooltip = detail;
+    block.classList.add("has-tooltip");
+    block.tabIndex = 0;
+    formGuideDaysEl.appendChild(block);
+  }
+
+  // No verdicts yet means no record to report — better silent than "0-0".
+  if (under + over === 0) {
+    formGuideRecordEl.textContent = "";
+    formGuideEl.hidden = days.length === 0;
+    return;
+  }
+  formGuideRecordEl.textContent = `${under} under · ${over} over`;
+  formGuideRecordEl.className =
+    under >= over ? "form-guide-record form-guide-record--good" : "form-guide-record form-guide-record--bad";
+  formGuideEl.hidden = false;
 }
 
 function renderDailyTotals(days, whoopDailyBurn) {
@@ -455,13 +537,22 @@ function renderEntryRow(entry) {
   row.className = "entry-row";
   row.dataset.id = entry.id;
 
-  const time = document.createElement("div");
-  time.className = "entry-time";
-  time.textContent = timeFmt.format(new Date(entry.timestamp));
+  // Time sits under the label rather than in its own column. At 390px the
+  // old four-column row left the label about 76px, which wrapped "Beef
+  // burger with bacon and cheese" over four lines. Stacking gives that
+  // column back to the food's name, which is the part you actually read.
+  const main = document.createElement("div");
+  main.className = "entry-main";
 
   const label = document.createElement("div");
   label.className = "entry-label";
   label.textContent = entry.label;
+
+  const time = document.createElement("div");
+  time.className = "entry-time";
+  time.textContent = timeFmt.format(new Date(entry.timestamp));
+
+  main.append(label, time);
 
   const kcal = document.createElement("div");
   kcal.className = "entry-kcal";
@@ -491,7 +582,7 @@ function renderEntryRow(entry) {
   delBtn.addEventListener("click", () => deleteEntry(entry.id));
   actions.append(editBtn, repeatBtn, delBtn);
 
-  row.append(time, label, kcal, actions);
+  row.append(main, kcal, actions);
   return row;
 }
 

@@ -1,15 +1,26 @@
 :root {
+  /* A pitch at night, under floodlights.
+     Green was previously doing six jobs at once — background, headings,
+     numbers, buttons, dividers, accents — which is why it stopped meaning
+     anything. Here it has two: the deep ground the scoreboard sits on, and
+     "you're under" in the one place that reading matters. */
   --pitch: #1f9d52;
   --pitch-light: #2ec26b;
   --pitch-dark: #12602f;
-  --ink: #14181a;
-  --muted: #6b7280;
-  --bg: #f7f7f5;
+  /* The touchline at night — the header's ground. Deliberately a saturated
+     dark green, not a neutral near-black. */
+  --pitch-deep: #0b3a22;
+  --ink: #0f1417;
+  --muted: #6e7b74;
+  /* Pitch-marking white, warm-neutral. Not cream. */
+  --bg: #f6f7f4;
   --card: #ffffff;
   --hairline: #e6ece8;
   --danger: #dc2626;
-  --amber: #d97706;
+  --amber: #b06f05;
   --amber-light: #f59e0b;
+  /* The floodlight: "over", and the one warm note against all that green. */
+  --floodlight: #ffc53d;
   --gold: var(--amber);
 
   --radius-sm: 10px;
@@ -23,7 +34,11 @@
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
   --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  --font-heading: "Poppins", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* Barlow Condensed is the fixture list, the league table, the number on
+     the back of a shirt. Poppins — which this replaces — is the face you
+     reach for on any project, which is exactly the problem. Inter stays for
+     body copy: the boldness is spent in one place. */
+  --font-heading: "Barlow Condensed", "Oswald", "Arial Narrow", -apple-system, BlinkMacSystemFont, sans-serif;
 
   /* The raised "selected" pill shared by the stats tabs, the daily/weekly
      toggle and the units switch. A token because all three were the same
@@ -71,6 +86,19 @@ h2,
   font-family: var(--font-heading);
 }
 
+/* Barlow Condensed runs narrow and short next to Poppins, so headings and
+   figures are set larger and tighter than the old scale to hold the same
+   presence. Numbers are tabular everywhere: a column of figures that
+   shifts as it updates reads as sloppy. */
+.summary-total,
+.balance-number,
+.stat-hero-number,
+.weight-hero-number,
+.tdee-value {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
 .icon {
   display: inline-block;
   vertical-align: -3px;
@@ -101,26 +129,26 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* The header is the scoreboard: a deep, flat touchline green rather than
+   the three-layer gradient it replaces. The gradient was doing decorative
+   work; a solid dark ground does structural work, by making everything
+   below it read as the lit surface. */
 .banner {
   position: relative;
-  background:
-    radial-gradient(circle at 15% -30%, rgba(255, 255, 255, 0.3), transparent 50%),
-    radial-gradient(circle at 100% 120%, rgba(217, 119, 6, 0.4), transparent 60%),
-    linear-gradient(135deg, var(--pitch-light), var(--pitch) 45%, var(--pitch-dark));
-  color: white;
-  padding: 30px 20px 24px;
+  background: var(--pitch-deep);
+  color: #fff;
+  padding: 22px 20px 18px;
   text-align: center;
-  box-shadow: var(--shadow-lg), inset 0 -14px 22px -16px rgba(0, 0, 0, 0.3);
   overflow: hidden;
 }
-/* A thin glass highlight along the very top edge — the difference between
-   a flat color fill and something that reads as a lit, raised panel. */
-.banner::before {
+/* A single bright line along the bottom edge — the touchline. The only
+   decoration the header gets. */
+.banner::after {
   content: "";
   position: absolute;
-  inset: 0 0 auto 0;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.4);
+  inset: auto 0 0 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--pitch) 0%, var(--pitch-light) 50%, var(--pitch) 100%);
 }
 
 .settings-toggle,
@@ -134,12 +162,11 @@ body {
   min-height: 38px;
   padding: 0;
   border-radius: 50%;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.1));
-  border: 1px solid rgba(255, 255, 255, 0.38);
-  backdrop-filter: blur(6px);
-  color: white;
-  font-size: 1.3rem;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 1.15rem;
+  box-shadow: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -150,8 +177,7 @@ body {
 .stats-toggle:active,
 .library-back:active {
   transform: scale(0.9);
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.18));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.18);
 }
 .settings-toggle { right: 14px; }
 .stats-toggle { right: 60px; }
@@ -191,11 +217,35 @@ body {
 }
 
 .banner h1 {
-  margin: 0 0 4px;
-  padding: 0 96px;
-  font-size: clamp(1.05rem, 5.5vw, 1.4rem);
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  margin: 0;
+  padding: 0 92px;
+  font-size: clamp(1.15rem, 5.4vw, 1.45rem);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  line-height: 1.15;
+}
+
+/* On the diary the hierarchy inverts, deliberately: you open that screen to
+   look at a week, not to be told the app's name. The wordmark drops to a
+   tracked eyebrow and the fixture becomes the headline. Every other screen
+   keeps its title at full size — there's no fixture there to take over, and
+   an eyebrow alone leaves the header a large empty band. */
+.banner--fixture h1 {
+  margin: 0 0 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.62);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.banner--fixture h1 .brand-mark {
+  width: 16px;
+  height: 16px;
+  padding: 2px;
 }
 
 /* Three header icons on the main app-shell banner (food library, stats,
@@ -231,9 +281,9 @@ body {
 .brand-mark {
   display: block;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.14);
   padding: 4px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  box-shadow: none;
   flex-shrink: 0;
 }
 
@@ -241,13 +291,22 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
-  margin-top: 6px;
+  gap: 12px;
+  margin-top: 0;
 }
 
+/* The fixture. This is now the biggest thing in the header. */
 .week-nav #week-range {
-  min-width: 160px;
-  font-weight: 500;
+  min-width: 176px;
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
 }
 
 .week-nav button {
@@ -256,11 +315,11 @@ body {
   padding: 4px 12px;
   font-size: 1.1rem;
   line-height: 1;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.08));
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 8px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  box-shadow: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -269,8 +328,7 @@ body {
 
 .week-nav button:active {
   transform: scale(0.92);
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.16));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .week-nav button:disabled {
@@ -453,16 +511,21 @@ button.ghost:active {
 }
 
 .summary {
-  text-align: center;
-  background: linear-gradient(180deg, rgba(31, 157, 82, 0.06), transparent 60%);
+  text-align: left;
+  background: var(--card);
 }
 
+/* Ink, not green. The form guide directly above it is the thing meant to
+   carry the week's verdict; a second green statement two lines later was
+   arguing with it. The number stays large and confident, it just stops
+   competing on colour. */
 .summary-total {
-  font-size: 1.9rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-size: 2.1rem;
+  font-weight: 700;
+  letter-spacing: 0;
   font-variant-numeric: tabular-nums;
-  color: var(--pitch-dark);
+  color: var(--ink);
+  line-height: 1.05;
 }
 
 .week-net-summary {
@@ -496,7 +559,7 @@ button.ghost:active {
 }
 
 .day-total-row--today {
-  background: rgba(31, 157, 82, 0.1);
+  background: var(--bg);
   border-bottom: none;
   border-radius: 8px;
   padding: 6px 8px;
@@ -544,25 +607,20 @@ button.ghost:active {
   font-size: 0.9rem;
 }
 
+/* Section eyebrows, set like the column headings on a team sheet. The
+   little green bar that used to sit in front of every one of these is gone:
+   it encoded nothing, it just repeated the brand colour eleven times down
+   the page. That was the one accessory to take off before leaving. */
 h2 {
-  font-size: 0.82rem;
-  font-weight: 700;
+  font-size: 0.9rem;
+  font-weight: 600;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.1em;
   margin: 0 6px 10px;
   display: flex;
   align-items: center;
-  gap: 7px;
-}
-h2::before {
-  content: "";
-  display: inline-block;
-  width: 4px;
-  height: 13px;
-  border-radius: 3px;
-  background: linear-gradient(180deg, var(--pitch-light), var(--pitch-dark));
-  flex-shrink: 0;
+  gap: 8px;
 }
 
 .day-group {
@@ -574,17 +632,22 @@ h2::before {
   justify-content: space-between;
   align-items: baseline;
   gap: 8px;
-  font-weight: 700;
-  font-size: 0.85rem;
-  color: var(--pitch-dark);
-  margin: 0 6px 6px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  margin: 14px 6px 6px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--hairline);
 }
 
+/* Today is marked by ink and a solid rule, not another green wash. */
 .day-heading--today {
-  background: rgba(31, 157, 82, 0.1);
-  border-radius: 8px;
-  padding: 6px 8px;
-  margin: 0 0 6px;
+  color: var(--ink);
+  border-bottom-color: var(--ink);
 }
 
 .log-week-row {
@@ -641,21 +704,27 @@ h2::before {
   transform: scale(0.995);
 }
 
+.entry-main {
+  flex: 1;
+  min-width: 0;
+}
 .entry-time {
   color: var(--muted);
-  font-size: 0.8rem;
-  width: 42px;
-  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  margin-top: 1px;
 }
 
 .entry-label {
-  flex: 1;
   font-size: 0.95rem;
+  line-height: 1.25;
 }
 
 .entry-kcal {
-  font-weight: 700;
-  font-size: 0.95rem;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
   flex-shrink: 0;
   /* The provenance badge sits inside this cell, so it must never be split
      onto its own line away from the number it describes. */
@@ -859,13 +928,7 @@ h2::before {
   position: relative;
   overflow: hidden;
 }
-.budget-widget::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 4px;
-  background: linear-gradient(180deg, var(--pitch-light), var(--pitch-dark));
-}
+
 .budget-header {
   display: flex;
   justify-content: space-between;
@@ -2479,6 +2542,11 @@ tr.has-tooltip:active {
   --pill-active-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   --tooltip-bg: #f2f5f3;
   --tooltip-ink: #14181a;
+  /* The header ground has to stay clearly above the page in dark mode; the
+     light-mode value sits at almost the same luminance as the dark page and
+     the scoreboard would dissolve into it. */
+  --pitch-deep: #0f2e1e;
+  --floodlight: #e8a91f;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -2504,6 +2572,11 @@ tr.has-tooltip:active {
     --pill-active-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
     --tooltip-bg: #f2f5f3;
     --tooltip-ink: #14181a;
+    /* The header ground has to stay clearly above the page in dark mode; the
+       light-mode value sits at almost the same luminance as the dark page and
+       the scoreboard would dissolve into it. */
+    --pitch-deep: #0f2e1e;
+    --floodlight: #e8a91f;
   }
 }
 
@@ -2706,4 +2779,94 @@ tr.has-tooltip:active {
   font-size: 0.78rem;
   line-height: 1.4;
   margin: 0 0 10px;
+}
+
+/* ── The form guide ──
+   The signature element. Everything else on this screen is deliberately
+   quieter so this can be the one thing you remember. */
+.form-guide {
+  margin: 0 0 18px;
+  padding: 0 0 16px;
+  border-bottom: 1px solid var(--hairline);
+}
+.form-guide-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.form-guide-title {
+  font-family: var(--font-heading);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+.form-guide-record {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.form-guide-record--good { color: var(--pitch-dark); }
+.form-guide-record--bad { color: var(--amber); }
+
+.form-guide-days {
+  display: grid;
+  /* Column count is set in JS from the day count — a match week touches 8
+     calendar days, opening and closing part-way through a Monday. */
+  grid-template-columns: repeat(8, 1fr);
+  gap: 5px;
+}
+.form-day {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: transform 0.2s var(--spring), box-shadow 0.15s var(--ease);
+}
+.form-day:active { transform: scale(0.92); }
+.form-day.tooltip-active { box-shadow: 0 0 0 2px var(--pitch); }
+
+/* Under your burn: the win. Solid pitch green, the one place the brand
+   colour is allowed to be a fill rather than an accent. */
+.form-day--under {
+  background: var(--pitch);
+  color: #fff;
+}
+/* Over: the floodlight amber. Not red — going over on one day is a result,
+   not a failure, and the palette shouldn't shout about it. */
+.form-day--over {
+  background: var(--floodlight);
+  color: #4a3300;
+}
+/* Logged, but no burn data to judge it against yet. */
+.form-day--logged {
+  background: rgba(31, 157, 82, 0.14);
+  color: var(--pitch-dark);
+}
+/* Not yet played. */
+.form-day--none {
+  background: var(--bg);
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+.form-day--today {
+  box-shadow: inset 0 0 0 2px var(--ink);
+}
+.form-day--today.tooltip-active {
+  box-shadow: inset 0 0 0 2px var(--ink), 0 0 0 2px var(--pitch);
+}
+.form-day-letter {
+  line-height: 1;
 }
