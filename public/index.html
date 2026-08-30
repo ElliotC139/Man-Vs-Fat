@@ -38,6 +38,30 @@
           <span id="auth-toggle-text">Don't have an account?</span>
           <button type="button" id="auth-toggle-btn" class="link-btn">Sign up</button>
         </p>
+        <p class="muted auth-toggle">
+          <button type="button" id="auth-forgot-btn" class="link-btn">Forgotten your password?</button>
+        </p>
+
+        <form id="forgot-form" hidden>
+          <label for="forgot-username">Username or email</label>
+          <input type="text" id="forgot-username" autocomplete="username" />
+          <button type="submit" id="forgot-submit">Send a reset link</button>
+          <p id="forgot-status" class="muted" hidden></p>
+          <p id="forgot-error" class="error" hidden></p>
+          <p class="muted auth-toggle">
+            <button type="button" id="forgot-cancel" class="link-btn">Back to sign in</button>
+          </p>
+        </form>
+
+        <form id="reset-form" hidden>
+          <p class="muted">Choose a new password for your account.</p>
+          <label for="reset-password">New password</label>
+          <input type="password" id="reset-password" autocomplete="new-password" minlength="8" />
+          <button type="submit" id="reset-submit">Set password and sign in</button>
+          <p id="reset-error" class="error" hidden></p>
+        </form>
+
+        <p class="muted auth-legal"><a href="/privacy.html">Privacy policy</a></p>
       </div>
     </div>
 
@@ -176,6 +200,15 @@
             <div id="form-guide-days" class="form-guide-days"></div>
           </div>
 
+          <div id="target-today" class="target-today" hidden>
+            <div class="target-today-head">
+              <span class="target-today-label">Today</span>
+              <span id="target-today-figures" class="target-today-figures"></span>
+            </div>
+            <div class="target-track"><div id="target-fill" class="target-fill"></div></div>
+            <span id="target-today-note" class="target-today-note"></span>
+          </div>
+
           <div class="summary-total"><span id="week-total">0</span> kcal this week</div>
           <div class="muted"><span id="week-avg">0</span> kcal/day avg over <span id="days-logged">0</span> day(s) logged</div>
           <div id="week-net-summary" class="week-net-summary" hidden></div>
@@ -184,6 +217,18 @@
           <div class="summary-actions">
             <button type="button" id="open-review-btn" class="ghost-sm">Weekly review</button>
             <a id="export-pdf" class="button-link" href="/api/match-weeks/current/report.pdf">Export PDF</a>
+          </div>
+        </section>
+
+        <section id="water-card" class="card water-card">
+          <div class="water-head">
+            <span class="water-title">Water today</span>
+            <span id="water-total" class="water-total">0 ml</span>
+          </div>
+          <div class="water-buttons">
+            <button type="button" class="ghost-sm water-btn" data-water="250">+ Glass</button>
+            <button type="button" class="ghost-sm water-btn" data-water="500">+ Bottle</button>
+            <button type="button" class="ghost-sm water-btn" data-water="-250">Undo</button>
           </div>
         </section>
 
@@ -237,7 +282,30 @@
         </section>
 
         <section>
-          <h2>Food diary</h2>
+          <div class="section-header">
+            <h2>Food diary</h2>
+            <button type="button" id="copy-day-toggle" class="ghost-sm">Copy a day</button>
+          </div>
+
+          <form id="copy-day-form" class="card copy-day-form" hidden>
+            <p class="muted">Copies every food entry from one day onto another, keeping each meal at its original time.</p>
+            <div class="copy-day-fields">
+              <div class="settings-field">
+                <label for="copy-day-from">From</label>
+                <input type="date" id="copy-day-from" />
+              </div>
+              <div class="settings-field">
+                <label for="copy-day-to">To</label>
+                <input type="date" id="copy-day-to" />
+              </div>
+            </div>
+            <div class="meal-editor-actions">
+              <button type="submit" id="copy-day-submit">Copy</button>
+              <button type="button" id="copy-day-cancel" class="ghost">Cancel</button>
+            </div>
+            <p id="copy-day-error" class="error" hidden></p>
+          </form>
+
           <div id="entry-list"></div>
         </section>
       </main>
@@ -482,7 +550,17 @@
                 <label id="goal-label" for="settings-goal">Target loss (per week)</label>
                 <input type="number" id="settings-goal" min="0.1" max="3" step="0.1" placeholder="e.g. 0.5" />
               </div>
+              <div class="settings-field">
+                <label for="settings-calorie-target">Daily calorie target</label>
+                <input type="number" id="settings-calorie-target" min="800" max="8000" step="10" placeholder="e.g. 2200" />
+              </div>
             </div>
+            <p class="muted">
+              Leave the target blank and the diary just reports what you ate. Set one and today's
+              progress shows against it.
+              <button type="button" id="suggest-target-btn" class="link-btn">Suggest one from my data</button>
+            </p>
+            <p id="suggest-target-note" class="muted" hidden></p>
           </fieldset>
 
           <fieldset class="settings-fieldset">
@@ -569,9 +647,79 @@
             <p id="health-status" class="muted" hidden></p>
           </fieldset>
 
+          <fieldset class="settings-fieldset">
+            <legend>Sign-in &amp; security</legend>
+
+            <div class="settings-row">
+              <div class="settings-field">
+                <label for="settings-email">Recovery email</label>
+                <input type="email" id="settings-email" autocomplete="email" placeholder="you@example.com" />
+              </div>
+            </div>
+            <p id="settings-email-note" class="muted"></p>
+            <div class="export-row">
+              <button type="button" id="settings-email-save" class="ghost-sm">Save email</button>
+            </div>
+
+            <details class="estimate-fields">
+              <summary id="password-summary">Change password</summary>
+              <div class="settings-field" id="current-password-wrap">
+                <label for="settings-current-password">Current password</label>
+                <input type="password" id="settings-current-password" autocomplete="current-password" />
+              </div>
+              <div class="settings-field">
+                <label for="settings-new-password">New password</label>
+                <input type="password" id="settings-new-password" autocomplete="new-password" minlength="8" />
+              </div>
+              <div class="export-row">
+                <button type="button" id="settings-password-save" class="ghost-sm">Update password</button>
+              </div>
+            </details>
+
+            <p id="google-link-status" class="muted"></p>
+            <div id="google-link-btn" class="google-signin-btn" hidden></div>
+
+            <div class="export-row">
+              <button type="button" id="logout-everywhere-btn" class="ghost-sm">Sign out on all devices</button>
+            </div>
+            <p id="security-status" class="muted" hidden></p>
+            <p id="security-error" class="error" hidden></p>
+          </fieldset>
+
+          <fieldset class="settings-fieldset">
+            <legend>Diagnostics</legend>
+            <p id="diagnostics-backup" class="muted">Checking backups…</p>
+            <div class="export-row">
+              <button type="button" id="diagnostics-backup-btn" class="ghost-sm">Back up now</button>
+              <button type="button" id="diagnostics-clear-btn" class="ghost-sm">Clear error log</button>
+            </div>
+            <div id="diagnostics-errors" class="diagnostics-errors"></div>
+            <p id="diagnostics-error" class="error" hidden></p>
+          </fieldset>
+
           <button id="settings-save" type="button">Save</button>
           <p id="settings-error" class="error" hidden></p>
           <button id="logout-btn" type="button" class="ghost">Log out</button>
+
+          <fieldset class="settings-fieldset settings-fieldset--danger">
+            <legend>Delete account</legend>
+            <p class="muted">
+              Deletes your entries, weigh-ins, measurements, photos and tracker data for good.
+              There is no undo — export your data first if you want to keep a copy.
+            </p>
+            <div class="settings-field">
+              <label for="delete-confirm">Type your username to confirm</label>
+              <input type="text" id="delete-confirm" autocomplete="off" />
+            </div>
+            <div class="settings-field" id="delete-password-wrap">
+              <label for="delete-password">Password</label>
+              <input type="password" id="delete-password" autocomplete="current-password" />
+            </div>
+            <button type="button" id="delete-account-btn" class="danger-btn">Delete my account</button>
+            <p id="delete-error" class="error" hidden></p>
+          </fieldset>
+
+          <p class="muted settings-legal"><a href="/privacy.html">Privacy policy</a></p>
         </section>
       </main>
     </div>
@@ -752,6 +900,75 @@
             <h2>History</h2>
             <div id="weighin-list"></div>
           </section>
+
+          <section id="measurements-card" class="card">
+            <div class="section-header">
+              <h2>Measurements</h2>
+              <button type="button" id="measurement-toggle" class="ghost-sm">+ Add</button>
+            </div>
+            <p class="muted">
+              Waist is the one that keeps moving when the scale stalls — worth taking once a
+              week, in the same place, before breakfast.
+            </p>
+
+            <form id="measurement-form" class="measurement-form" hidden>
+              <div class="settings-row">
+                <div class="settings-field">
+                  <label for="measurement-date">Date</label>
+                  <input type="date" id="measurement-date" required />
+                </div>
+                <div class="settings-field">
+                  <label id="measurement-waist-label" for="measurement-waist">Waist (cm)</label>
+                  <input type="number" id="measurement-waist" min="30" max="250" step="0.5" />
+                </div>
+              </div>
+              <details class="estimate-fields">
+                <summary>Other measurements</summary>
+                <div class="settings-row">
+                  <div class="settings-field">
+                    <label id="measurement-chest-label" for="measurement-chest">Chest (cm)</label>
+                    <input type="number" id="measurement-chest" min="30" max="250" step="0.5" />
+                  </div>
+                  <div class="settings-field">
+                    <label id="measurement-hips-label" for="measurement-hips">Hips (cm)</label>
+                    <input type="number" id="measurement-hips" min="30" max="250" step="0.5" />
+                  </div>
+                </div>
+                <div class="settings-row">
+                  <div class="settings-field">
+                    <label id="measurement-thigh-label" for="measurement-thigh">Thigh (cm)</label>
+                    <input type="number" id="measurement-thigh" min="20" max="150" step="0.5" />
+                  </div>
+                  <div class="settings-field">
+                    <label id="measurement-arm-label" for="measurement-arm">Arm (cm)</label>
+                    <input type="number" id="measurement-arm" min="10" max="100" step="0.5" />
+                  </div>
+                </div>
+              </details>
+              <div class="meal-editor-actions">
+                <button type="submit" id="measurement-save">Save</button>
+                <button type="button" id="measurement-cancel" class="ghost">Cancel</button>
+              </div>
+              <p id="measurement-error" class="error" hidden></p>
+            </form>
+
+            <p id="measurement-summary" class="muted" hidden></p>
+            <div id="measurement-list"></div>
+          </section>
+
+          <section id="progress-photos-card" class="card">
+            <div class="section-header">
+              <h2>Progress photos</h2>
+            </div>
+            <p class="muted">Same spot, same light, same time of day — that's what makes them comparable.</p>
+            <label for="progress-photo-input" class="photo-label">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg>
+              <span id="progress-photo-status">Add a photo</span>
+              <input type="file" id="progress-photo-input" accept="image/*" />
+            </label>
+            <p id="progress-photo-error" class="error" hidden></p>
+            <div id="progress-photo-grid" class="progress-photo-grid"></div>
+          </section>
         </div>
 
         <div id="stats-tab-calories" class="stats-tab-panel" hidden>
@@ -856,6 +1073,27 @@
             </div>
           </section>
 
+          <section id="eating-window-card" class="card" hidden>
+            <div class="section-header">
+              <h2>Eating window</h2>
+            </div>
+            <div class="balance-grid">
+              <div class="balance-cell">
+                <span id="window-average" class="balance-number">—</span>
+                <span class="balance-caption">avg window</span>
+              </div>
+              <div class="balance-cell">
+                <span id="window-first" class="balance-number">—</span>
+                <span class="balance-caption">first meal</span>
+              </div>
+              <div class="balance-cell">
+                <span id="window-last" class="balance-number">—</span>
+                <span class="balance-caption">last meal</span>
+              </div>
+            </div>
+            <p id="window-note" class="muted"></p>
+          </section>
+
           <section id="breakdown-calories-card" class="card" hidden>
             <div class="card-header-row"><h2>Weekly Calories</h2><button type="button" class="info-btn" data-info="weekly-calories" aria-label="What this means"></button></div>
             <div class="table-scroll">
@@ -912,6 +1150,14 @@
           </section>
         </div>
       </main>
+    </div>
+
+    <div id="photo-modal" class="photo-modal" hidden>
+      <button type="button" id="photo-modal-close" class="photo-modal-close" aria-label="Close">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+      <img id="photo-modal-img" alt="" />
+      <p id="photo-modal-caption" class="photo-modal-caption"></p>
     </div>
 
     <div id="scan-modal" class="scan-modal" hidden>

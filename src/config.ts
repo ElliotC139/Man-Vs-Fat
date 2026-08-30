@@ -20,6 +20,17 @@ const envSchema = z.object({
   // Must exactly match the redirect URI registered in the WHOOP developer
   // dashboard (app URL + /api/whoop/callback).
   APP_BASE_URL: z.string().default("https://match-week-food-diary.fly.dev"),
+  // Optional Slack-style incoming webhook posted to whenever a server error
+  // is recorded (see src/errorLog.ts). Unset means errors are still stored
+  // and visible in Settings, just not pushed anywhere.
+  ERROR_WEBHOOK_URL: z.string().optional(),
+  // Optional Resend API key. With it, a forgotten password is recoverable by
+  // email; without it, recovery falls back to signing in with Google (see
+  // src/mailer.ts and routes/auth.ts).
+  RESEND_API_KEY: z.string().optional(),
+  // The From: address for those emails. Must be on a domain verified with
+  // Resend, or delivery is rejected.
+  MAIL_FROM: z.string().default("Food Diary <onboarding@resend.dev>"),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -37,3 +48,5 @@ export const driveConfigured = Boolean(
 );
 
 export const whoopConfigured = Boolean(config.WHOOP_CLIENT_ID && config.WHOOP_CLIENT_SECRET);
+
+export const mailConfigured = Boolean(config.RESEND_API_KEY);

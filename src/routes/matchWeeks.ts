@@ -11,6 +11,7 @@ import {
 } from "../matchWeek";
 import { generateMatchWeekReport } from "../pdf/generateReport";
 import { getWeekInsights, previousWeekNumbers } from "../weekReview";
+import { dayNotesForWeek } from "../dayNotes";
 import { uploadReportToDrive } from "../drive/uploadToDrive";
 import { getWhoopWeekBudget } from "../whoop/sync";
 import { normalizeLabel } from "./foods";
@@ -148,6 +149,7 @@ matchWeeksRouter.get("/current/review", async (req, res) => {
     totalKcal,
     dailyAverage,
     daysLogged,
+    dayNotes: await dayNotesForWeek(req.userId!, start),
     cachedOnly: req.query.refresh !== "1",
   });
 
@@ -232,6 +234,7 @@ matchWeeksRouter.get("/current/report.pdf", async (req, res) => {
       totalKcal,
       dailyAverage,
       daysLogged,
+      dayNotes: await dayNotesForWeek(req.userId!, start),
     });
     const pdfBuffer = await generateMatchWeekReport(weekForPdf, config.TIMEZONE, insights);
     const fileName = `${localDayKey(start, config.TIMEZONE)}.pdf`;
@@ -259,6 +262,7 @@ matchWeeksRouter.post("/:id/generate-report", async (req, res) => {
       totalKcal,
       dailyAverage,
       daysLogged,
+      dayNotes: await dayNotesForWeek(req.userId!, week.startsAt),
     });
     const pdfBuffer = await generateMatchWeekReport(week, config.TIMEZONE, insights);
     const fileName = `${localDayKey(week.startsAt, config.TIMEZONE)}.pdf`;

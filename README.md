@@ -67,6 +67,8 @@ See `.env.example` for the full list with comments. The essentials:
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` | Drive upload. Leave unset to run without Drive (reports generate but stay local + log a warning). |
 | `GOOGLE_DRIVE_FOLDER_ID` | Optional. If unset, the app finds-or-creates a "Food Diary" folder once and caches its id in the DB. |
 | `GOOGLE_SIGNIN_CLIENT_ID` | Optional, separate from the Drive client above. Enables the "Sign in with Google" button. Leave unset to keep username/password as the only sign-in method. |
+| `RESEND_API_KEY` / `MAIL_FROM` | Optional. Enables "Forgotten your password?" to email a one-hour reset link. Unset, the app says so plainly and falls back to signing in with a linked Google account. |
+| `ERROR_WEBHOOK_URL` | Optional Slack-style incoming webhook. Every recorded server error is POSTed as `{"text": "..."}`. Errors are stored and shown in Settings → Diagnostics either way. |
 
 ## Google Drive one-time setup
 
@@ -209,6 +211,38 @@ uploads it to Drive as `Food Diary/<week-start-date>.pdf`, and stamps the row
 so it's never regenerated automatically. A failure on one week doesn't block
 others, and leaves that week's `reportGeneratedAt` null so the next tick
 retries it.
+
+## Backups
+
+Everything the app has recorded lives in one SQLite file on one volume, so
+`src/jobs/backup.ts` runs nightly at 03:30 local (and once ~30s after boot, so
+a machine that never reaches 03:30 still leaves a copy). It uses SQLite's
+`VACUUM INTO`, which writes a complete, consistent copy without locking out
+writers — a plain file copy of a WAL-mode database can't promise that.
+
+Copies go to `data/backups/`, the newest 14 are kept, and if Drive is
+configured the latest is uploaded there too. That last part is the bit that
+matters: a backup sitting on the volume it exists to survive isn't one.
+Settings → Diagnostics shows when the last backup ran and whether it went
+off-box, and has a "Back up now" button.
+
+`src/jobs/cleanupUploads.ts` runs at 03:45, straight after, and deletes photos
+in `data/uploads/` that no entry, exercise or progress photo references any
+more — skipping anything under 24 hours old, since an upload written moments
+before its row is created is indistinguishable from an orphan.
+
+## Rate limiting
+
+Every AI estimate costs money on the operator's card, so `src/rateLimit.ts`
+puts a ceiling in front of the model call: 12 a minute and 300 a day per user,
+with barcode scans and typed figures exempt because they cost nothing. Login
+attempts are throttled per username *and* source address — per username alone
+would let anyone lock an account out by failing at it — and password-reset
+requests per address.
+
+It's an in-memory sliding window, which suits a single Fly machine: the
+failure it exists to stop is a runaway loop within one process lifetime, not a
+patient attacker pacing requests across restarts.
 
 ## Estimation edge cases
 

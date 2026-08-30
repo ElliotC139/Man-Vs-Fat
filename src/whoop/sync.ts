@@ -2,6 +2,7 @@ import { prisma } from "../db";
 import { config } from "../config";
 import { findOrCreateMatchWeek, getUserWeekStart, localDayKey, matchWeekCalendarDays, zonedTimeToUtc } from "../matchWeek";
 import { fetchRecentCycles, fetchRecentRecovery, fetchRecentSleep, fetchRecentWorkouts, refreshAccessToken } from "./client";
+import { recordError } from "../errorLog";
 
 const BACKFILL_DAYS = 10;
 // The first sync after a connection is created (or after this field was
@@ -47,7 +48,7 @@ async function syncUserWorkouts(userId: number, accessToken: string, since: Date
   } catch (e) {
     // Most likely an older connection made before read:workout was requested
     // — don't let a missing scope take down the cycle sync too.
-    console.error("WHOOP workout fetch failed (may need to reconnect for the read:workout scope):", e);
+    void recordError("whoop.sync.workouts", e, userId);
     return;
   }
 
@@ -78,7 +79,7 @@ async function syncUserSleep(userId: number, accessToken: string, since: Date): 
   } catch (e) {
     // Most likely a connection made before read:sleep was requested — don't
     // let a missing scope take down the rest of sync.
-    console.error("WHOOP sleep fetch failed (may need to reconnect for the read:sleep scope):", e);
+    void recordError("whoop.sync.sleep", e, userId);
     return;
   }
 
@@ -112,7 +113,7 @@ async function syncUserRecovery(userId: number, accessToken: string, since: Date
   } catch (e) {
     // Most likely a connection made before read:recovery was requested —
     // don't let a missing scope take down the rest of sync.
-    console.error("WHOOP recovery fetch failed (may need to reconnect for the read:recovery scope):", e);
+    void recordError("whoop.sync.recovery", e, userId);
     return;
   }
 
@@ -216,7 +217,7 @@ export async function syncAllConnectedUsers(): Promise<void> {
     try {
       await syncUser(userId);
     } catch (e) {
-      console.error(`Scheduled WHOOP sync failed for user ${userId}:`, e);
+      void recordError("whoop.sync", e, userId);
     }
   }
 }

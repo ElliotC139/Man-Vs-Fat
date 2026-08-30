@@ -3,6 +3,7 @@ import { config, driveConfigured } from "../config";
 import { generateMatchWeekReport } from "../pdf/generateReport";
 import { uploadReportToDrive } from "../drive/uploadToDrive";
 import { localDayKey } from "../matchWeek";
+import { recordError } from "../errorLog";
 
 /**
  * Closes any match week whose boundary has passed but hasn't had a report
@@ -41,7 +42,7 @@ export async function closeMatchWeeksNeedingReport(): Promise<void> {
     } catch (error) {
       // Leave reportGeneratedAt null so the next tick retries; one bad week
       // shouldn't block the rest of the queue.
-      console.error(`Failed to close match week ${week.id}:`, error);
+      void recordError(`weeklyReport.week.${week.id}`, error);
     }
   }
 }

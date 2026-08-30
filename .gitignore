@@ -5,6 +5,7 @@ data/*.db
 data/*.db-journal
 data/uploads/
 data/reports/
+data/backups/
 *.log
 .DS_Store
 prisma/*.db

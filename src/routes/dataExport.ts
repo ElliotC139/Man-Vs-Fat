@@ -33,7 +33,22 @@ function toCsv(headers: string[], rows: unknown[][]): string {
 }
 
 async function collectExport(userId: number) {
-  const [user, matchWeeks, entries, exercises, weighIns, favorites, tags, savedMeals, cycles, sleeps, recoveries] = await Promise.all([
+  const [
+    user,
+    matchWeeks,
+    entries,
+    exercises,
+    weighIns,
+    favorites,
+    tags,
+    savedMeals,
+    cycles,
+    sleeps,
+    recoveries,
+    measurements,
+    dayNotes,
+    waterLogs,
+  ] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: userId } }),
     prisma.matchWeek.findMany({ where: { userId }, orderBy: { startsAt: "asc" } }),
     prisma.entry.findMany({ where: { matchWeek: { userId } }, orderBy: { timestamp: "asc" } }),
@@ -45,6 +60,9 @@ async function collectExport(userId: number) {
     prisma.whoopCycle.findMany({ where: { userId }, orderBy: { start: "asc" } }),
     prisma.whoopSleep.findMany({ where: { userId }, orderBy: { start: "asc" } }),
     prisma.whoopRecovery.findMany({ where: { userId }, orderBy: { date: "asc" } }),
+    prisma.measurement.findMany({ where: { userId }, orderBy: { date: "asc" } }),
+    prisma.dayNote.findMany({ where: { userId }, orderBy: { date: "asc" } }),
+    prisma.waterLog.findMany({ where: { userId }, orderBy: { date: "asc" } }),
   ]);
 
   return {
@@ -62,6 +80,7 @@ async function collectExport(userId: number) {
       activityLevel: user.activityLevel,
       weeklyGoalKg: user.weeklyGoalKg,
       goalWeightKg: user.goalWeightKg,
+      dailyCalorieTarget: user.dailyCalorieTarget,
     },
     matchWeeks: matchWeeks.map((w) => ({ startsAt: w.startsAt.toISOString(), endsAt: w.endsAt.toISOString() })),
     entries: entries.map((e) => ({
@@ -69,6 +88,7 @@ async function collectExport(userId: number) {
       label: e.label,
       kcal: e.kcal,
       mealType: e.mealType,
+      quantity: e.quantity,
       rawInput: e.rawInput,
       source: e.source,
       edited: e.edited,
@@ -80,6 +100,16 @@ async function collectExport(userId: number) {
       fromWhoop: x.whoopWorkoutId !== null,
     })),
     weighIns: weighIns.map((w) => ({ date: w.date, weightKg: w.weightKg })),
+    measurements: measurements.map((m) => ({
+      date: m.date,
+      waistCm: m.waistCm,
+      chestCm: m.chestCm,
+      hipsCm: m.hipsCm,
+      thighCm: m.thighCm,
+      armCm: m.armCm,
+    })),
+    dayNotes: dayNotes.map((n) => ({ date: n.date, note: n.note })),
+    waterLogs: waterLogs.map((w) => ({ date: w.date, ml: w.ml })),
     foodFavorites: favorites.map((f) => f.labelKey),
     foodTags: tags.map((t) => ({ labelKey: t.labelKey, tag: t.tag })),
     savedMeals: savedMeals.map((m) => ({
@@ -166,6 +196,20 @@ const importSchema = z.object({
     )
     .optional(),
   weighIns: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), weightKg: z.number() })).optional(),
+  measurements: z
+    .array(
+      z.object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        waistCm: z.number().nullable().optional(),
+        chestCm: z.number().nullable().optional(),
+        hipsCm: z.number().nullable().optional(),
+        thighCm: z.number().nullable().optional(),
+        armCm: z.number().nullable().optional(),
+      }),
+    )
+    .optional(),
+  dayNotes: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), note: z.string() })).optional(),
+  waterLogs: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), ml: z.number().int() })).optional(),
   foodFavorites: z.array(z.string()).optional(),
   foodTags: z.array(z.object({ labelKey: z.string(), tag: z.string() })).optional(),
   savedMeals: z
@@ -194,7 +238,17 @@ dataRouter.post("/import", async (req, res) => {
   }
   const userId = req.userId!;
   const data = parsed.data;
-  const counts = { entries: 0, weighIns: 0, favorites: 0, tags: 0, savedMeals: 0, skipped: 0 };
+  const counts = {
+    entries: 0,
+    weighIns: 0,
+    measurements: 0,
+    dayNotes: 0,
+    waterLogs: 0,
+    favorites: 0,
+    tags: 0,
+    savedMeals: 0,
+    skipped: 0,
+  };
 
   if (data.profile) {
     const p = data.profile;
@@ -218,6 +272,36 @@ dataRouter.post("/import", async (req, res) => {
       create: { userId, date: w.date, weightKg: w.weightKg },
     });
     counts.weighIns += 1;
+  }
+
+  // Same upsert-on-the-day rule as weigh-ins: re-importing an export you
+  // already imported corrects the rows rather than duplicating them.
+  for (const m of data.measurements ?? []) {
+    const { date, ...values } = m;
+    await prisma.measurement.upsert({
+      where: { userId_date: { userId, date } },
+      update: values,
+      create: { userId, date, ...values },
+    });
+    counts.measurements += 1;
+  }
+
+  for (const n of data.dayNotes ?? []) {
+    await prisma.dayNote.upsert({
+      where: { userId_date: { userId, date: n.date } },
+      update: { note: n.note },
+      create: { userId, date: n.date, note: n.note },
+    });
+    counts.dayNotes += 1;
+  }
+
+  for (const w of data.waterLogs ?? []) {
+    await prisma.waterLog.upsert({
+      where: { userId_date: { userId, date: w.date } },
+      update: { ml: w.ml },
+      create: { userId, date: w.date, ml: w.ml },
+    });
+    counts.waterLogs += 1;
   }
 
   for (const key of data.foodFavorites ?? []) {

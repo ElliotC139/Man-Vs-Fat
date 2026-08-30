@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config";
+import { recordError } from "./errorLog";
 
 const client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
 
@@ -126,7 +127,10 @@ export async function estimateMeal(input: EstimateInput): Promise<EstimateResult
     }
   }
 
-  console.error("Estimate failed after all retries, falling back to a manual-entry placeholder:", lastError);
+  // Only the final give-up is recorded: a retried blip that then succeeded
+  // isn't a fault worth waking anyone for, whereas an entry that reached the
+  // user with no calorie figure is.
+  void recordError("estimate", lastError);
   return [
     {
       label: input.text?.trim()?.slice(0, 60) || "Unestimated meal (tap to add kcal)",

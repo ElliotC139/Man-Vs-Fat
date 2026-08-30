@@ -41,20 +41,34 @@ function sign(payload: string, secret: string): string {
   return crypto.createHmac("sha256", secret).update(payload).digest("hex");
 }
 
+/**
+ * Tokens carry when they were issued as well as when they expire. The issue
+ * time is what makes revocation possible without a session table: raising
+ * User.sessionsValidFrom invalidates every token minted before that instant,
+ * which is exactly what "sign out everywhere" needs to mean on a device you
+ * no longer have.
+ */
 async function createSessionToken(userId: number): Promise<string> {
   const secret = await getSessionSecret();
-  const payload = `${userId}.${Date.now() + SESSION_MAX_AGE_MS}`;
+  const issuedAt = Date.now();
+  const payload = `${userId}.${issuedAt + SESSION_MAX_AGE_MS}.${issuedAt}`;
   return `${payload}.${sign(payload, secret)}`;
 }
 
 async function verifySessionToken(token: string): Promise<number | null> {
   const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const [userIdRaw, expiryRaw, signature] = parts;
+  // Three parts is the pre-revocation token shape. Those are still accepted
+  // so a deploy doesn't sign everyone out, but they have no issue time, so
+  // they're treated as issued at the epoch — meaning the first use of "sign
+  // out everywhere" clears them too.
+  if (parts.length !== 3 && parts.length !== 4) return null;
+  const signature = parts[parts.length - 1]!;
+  const payload = parts.slice(0, -1).join(".");
+  const [userIdRaw, expiryRaw, issuedAtRaw] = parts;
   if (!userIdRaw || !expiryRaw || !signature) return null;
 
   const secret = await getSessionSecret();
-  const expected = sign(`${userIdRaw}.${expiryRaw}`, secret);
+  const expected = sign(payload, secret);
   const given = Buffer.from(signature);
   const wanted = Buffer.from(expected);
   if (given.length !== wanted.length || !crypto.timingSafeEqual(given, wanted)) return null;
@@ -63,7 +77,30 @@ async function verifySessionToken(token: string): Promise<number | null> {
   if (!Number.isFinite(expiry) || expiry < Date.now()) return null;
 
   const userId = Number(userIdRaw);
-  return Number.isFinite(userId) ? userId : null;
+  if (!Number.isFinite(userId)) return null;
+
+  const issuedAt = issuedAtRaw === undefined ? 0 : Number(issuedAtRaw);
+  if (!Number.isFinite(issuedAt)) return null;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { sessionsValidFrom: true },
+  });
+  // A deleted account's token stops working immediately rather than at expiry.
+  if (!user) return null;
+  if (user.sessionsValidFrom && issuedAt < user.sessionsValidFrom.getTime()) return null;
+
+  return userId;
+}
+
+/** Revokes every session token issued to this user before now. */
+export async function revokeAllSessions(userId: number): Promise<void> {
+  // One second in the future, because a token minted in the same millisecond
+  // as the revocation would otherwise survive it.
+  await prisma.user.update({
+    where: { id: userId },
+    data: { sessionsValidFrom: new Date(Date.now() + 1000) },
+  });
 }
 
 export async function setSessionCookie(res: Response, userId: number): Promise<void> {

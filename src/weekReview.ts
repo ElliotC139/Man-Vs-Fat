@@ -45,6 +45,7 @@ export async function getWeekInsights(week: {
   totalKcal: number;
   dailyAverage: number;
   daysLogged: number;
+  dayNotes?: { date: string; note: string }[];
   /** Skips the model call and returns only what's already cached. */
   cachedOnly?: boolean;
 }): Promise<WeekInsights | null> {
@@ -61,6 +62,7 @@ export async function getWeekInsights(week: {
     totalKcal: params.totalKcal,
     dailyAverage: params.dailyAverage,
     daysLogged: params.daysLogged,
+    dayNotes: params.dayNotes,
     timeZone: config.TIMEZONE,
   });
   // A failed generation keeps whatever was cached rather than blanking it.

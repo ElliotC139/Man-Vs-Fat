@@ -15,6 +15,7 @@ import { estimateAdaptiveTdee } from "../adaptiveTdee";
 import { foodRecoveryFindings } from "../foodRecovery";
 import { latestWeightKg, weightRate } from "../weightStats";
 import { computeDeficitStreak, type DayVerdict } from "../deficitStreak";
+import { recordError } from "../errorLog";
 
 export const statsRouter = Router();
 statsRouter.use(requireAuth);
@@ -641,6 +642,73 @@ statsRouter.get("/deficit-streak", async (req, res) => {
   res.json(computeDeficitStreak(verdicts));
 });
 
+// ── Eating window ────────────────────────────────────────────────────────
+//
+// First meal to last meal, per day. Every entry already carries a timestamp,
+// so this needs no new logging from the user at all — it's the one stat here
+// that is purely a different reading of data the diary already has.
+//
+// A day with a single entry has no window (you can't span from one meal to
+// itself), so those are reported as null rather than as a zero-hour window,
+// which would drag every average down.
+
+const WINDOW_DEFAULT_DAYS = 30;
+const WINDOW_MIN_DAYS = 7;
+const WINDOW_MAX_DAYS = 90;
+
+statsRouter.get("/eating-window", async (req, res) => {
+  const userId = req.userId!;
+  const days = clampInt(req.query.days, WINDOW_MIN_DAYS, WINDOW_MAX_DAYS, WINDOW_DEFAULT_DAYS);
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const entries = await prisma.entry.findMany({
+    where: { matchWeek: { userId }, timestamp: { gte: since } },
+    select: { timestamp: true },
+    orderBy: { timestamp: "asc" },
+  });
+
+  // Minutes past local midnight, so a 22:30 last meal sorts after an 08:00
+  // first meal rather than being compared as raw UTC instants.
+  const byDay = new Map<string, number[]>();
+  for (const entry of entries) {
+    const key = localDayKey(entry.timestamp, config.TIMEZONE);
+    const local = getLocalParts(entry.timestamp, config.TIMEZONE);
+    const list = byDay.get(key) ?? [];
+    list.push(local.hour * 60 + local.minute);
+    byDay.set(key, list);
+  }
+
+  const rows = [...byDay.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, minutes]) => {
+      const first = Math.min(...minutes);
+      const last = Math.max(...minutes);
+      // Distinct times, not entry count: logging a saved meal writes several
+      // entries at one instant, and counting that as a measured zero-hour
+      // window would drag every average towards nothing.
+      const spansTwoMeals = new Set(minutes).size > 1;
+      return {
+        date,
+        firstMealMin: first,
+        lastMealMin: last,
+        windowMin: spansTwoMeals ? last - first : null,
+        entries: minutes.length,
+      };
+    });
+
+  const windows = rows.map((row) => row.windowMin).filter((value): value is number => value !== null);
+  const average = (values: number[]) =>
+    values.length === 0 ? null : Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+
+  res.json({
+    days: rows,
+    avgWindowMin: average(windows),
+    avgFirstMealMin: average(rows.filter((row) => row.windowMin !== null).map((row) => row.firstMealMin)),
+    avgLastMealMin: average(rows.filter((row) => row.windowMin !== null).map((row) => row.lastMealMin)),
+    daysMeasured: windows.length,
+  });
+});
+
 // ── Insights ─────────────────────────────────────────────────────────────
 // Deliberately simple, sample-size-gated observations — plain grouped
 // averages over the user's own data, not statistical inference. Each one
@@ -735,11 +803,82 @@ statsRouter.get("/insights", async (req, res) => {
     }
   }
 
+  // 4. Sleep against weight change, week by week.
+  //
+  // Deliberately weekly rather than daily: a single night's sleep can't move
+  // the scale, and day-to-day weight is mostly water. Grouping both into
+  // seven-day blocks is the coarsest comparison that could show anything
+  // real, and it's still an association rather than a cause — which is why
+  // the wording says "weeks when", not "sleeping less makes you".
+  const [sleeps, weighInsForSleep] = await Promise.all([
+    prisma.whoopSleep.findMany({
+      where: { userId, start: { gte: since }, timeAsleepMin: { not: null } },
+      select: { start: true, timeAsleepMin: true },
+    }),
+    prisma.weighIn.findMany({ where: { userId, date: { gte: sinceKey } }, orderBy: { date: "asc" } }),
+  ]);
+
+  if (sleeps.length >= MIN_SAMPLE_DAYS * 2 && weighInsForSleep.length >= 4) {
+    // Bucket both series into the same 7-day blocks, counted back from today
+    // so the most recent full week is block 0.
+    const blockOf = (key: string): number => {
+      const days = Math.floor((Date.now() - Date.parse(`${key}T12:00:00Z`)) / (24 * 60 * 60 * 1000));
+      return Math.floor(days / 7);
+    };
+
+    const sleepByBlock = new Map<number, number[]>();
+    for (const sleep of sleeps) {
+      const block = blockOf(localDayKey(sleep.start, config.TIMEZONE));
+      const list = sleepByBlock.get(block) ?? [];
+      list.push(sleep.timeAsleepMin!);
+      sleepByBlock.set(block, list);
+    }
+
+    const weightByBlock = new Map<number, { first: number; last: number }>();
+    for (const weighIn of weighInsForSleep) {
+      const block = blockOf(weighIn.date);
+      const seen = weightByBlock.get(block);
+      // weighInsForSleep is ordered by date ascending, so the first row seen
+      // for a block is its earliest and every later one is its latest.
+      weightByBlock.set(block, { first: seen?.first ?? weighIn.weightKg, last: weighIn.weightKg });
+    }
+
+    const paired: { sleepMin: number; changeKg: number }[] = [];
+    for (const [block, sleepMinutes] of sleepByBlock) {
+      const weights = weightByBlock.get(block);
+      if (!weights || sleepMinutes.length < 3) continue;
+      paired.push({
+        sleepMin: sleepMinutes.reduce((a, b) => a + b, 0) / sleepMinutes.length,
+        changeKg: weights.last - weights.first,
+      });
+    }
+
+    if (paired.length >= 4) {
+      const medianSleep = [...paired].sort((a, b) => a.sleepMin - b.sleepMin)[Math.floor(paired.length / 2)]!.sleepMin;
+      const shorter = paired.filter((p) => p.sleepMin < medianSleep);
+      const longer = paired.filter((p) => p.sleepMin >= medianSleep);
+      if (shorter.length >= 2 && longer.length >= 2) {
+        const avg = (rows: typeof paired) => rows.reduce((sum, row) => sum + row.changeKg, 0) / rows.length;
+        const shortAvg = avg(shorter);
+        const longAvg = avg(longer);
+        const gap = Math.abs(longAvg - shortAvg);
+        if (gap >= 0.15) {
+          const better = longAvg < shortAvg ? "more" : "less";
+          const hours = (medianSleep / 60).toFixed(1);
+          insights.push({
+            id: "sleep-vs-weight",
+            text: `Weeks when you averaged ${better} than ${hours}h asleep went about ${gap.toFixed(1)}kg better on the scale than the weeks either side of that mark.`,
+          });
+        }
+      }
+    }
+  }
+
   // Food/recovery associations come from a wider 90-day window and their own
   // sample-size gates, so they're computed separately and appended rather
   // than folded into the checks above.
   const bodyFindings = await foodRecoveryFindings(userId).catch((e) => {
-    console.error("Food/recovery findings failed:", e);
+    void recordError("insights.foodRecovery", e, userId);
     return [];
   });
 

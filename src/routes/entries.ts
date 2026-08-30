@@ -5,10 +5,11 @@ import { prisma } from "../db";
 import { config } from "../config";
 import { requireAuth } from "../auth";
 import { estimateMeal } from "../estimate";
-import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart, zonedTimeToUtc } from "../matchWeek";
+import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart, localDayKey, zonedTimeToUtc } from "../matchWeek";
 import { MEAL_TYPES, MEAL_TYPE_DEFAULT_HOUR, inferMealType, type MealType } from "../mealType";
-import { saveUploadedImage } from "../lib/storage";
+import { saveUploadedImage, deleteUploadedImage } from "../lib/storage";
 import { normalizeUploadedImage } from "../lib/imageProcessing";
+import { consumeAll, AI_BURST, AI_DAILY } from "../rateLimit";
 
 export const entriesRouter = Router();
 entriesRouter.use(requireAuth);
@@ -73,6 +74,20 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
   // value directly, and record that the figure came from a real database
   // rather than a guess.
   const source = directKcal ? "database" : "ai";
+
+  // Only the estimating path is metered — a barcode scan or a typed number
+  // costs nothing, and rationing those would punish exactly the entries the
+  // app most wants people to make.
+  if (!directKcal) {
+    const verdict = consumeAll(`ai:${req.userId!}`, [AI_BURST, AI_DAILY]);
+    if (!verdict.allowed) {
+      res.status(429)
+        .set("Retry-After", String(verdict.retryAfterSec))
+        .json({ error: "That's a lot of entries at once — give it a minute and try again." });
+      return;
+    }
+  }
+
   const items = directKcal
     ? [{ label: text?.trim() || "Scanned item", kcal: directKcal }]
     : await estimateMeal({
@@ -115,6 +130,9 @@ const updateEntrySchema = z.object({
   // edits because a meal slot alone doesn't say which side of the Monday 17:00
   // match-week boundary it falls on — a Monday snack could be either side of it.
   hour: z.number().int().min(0).max(23).optional(),
+  // How many were eaten. Changing this rescales kcal from the old quantity,
+  // so "two of those" is one tap rather than re-describing the food.
+  quantity: z.number().min(0.25).max(50).optional(),
 });
 
 entriesRouter.patch("/:id", async (req, res) => {
@@ -138,7 +156,7 @@ entriesRouter.patch("/:id", async (req, res) => {
     return;
   }
 
-  const { date, hour, ...rest } = parsed.data;
+  const { date, hour, quantity, ...rest } = parsed.data;
 
   try {
     const data: typeof rest & {
@@ -146,6 +164,7 @@ entriesRouter.patch("/:id", async (req, res) => {
       source?: string;
       timestamp?: Date;
       matchWeekId?: number;
+      quantity?: number;
     } = {
       ...rest,
       edited: true,
@@ -154,6 +173,18 @@ entriesRouter.patch("/:id", async (req, res) => {
     // Typing a number over an estimate makes it the user's own figure, so it
     // should stop being labelled as guessed.
     if (rest.kcal !== undefined && rest.kcal !== null) data.source = "manual";
+
+    if (quantity !== undefined) {
+      data.quantity = quantity;
+      // kcal stores the total for the whole entry, so a quantity change has
+      // to move it too — scaled from the previous quantity rather than from
+      // one unit, since the entry may already have been "two of those". An
+      // explicit kcal in the same request wins: that's the user overriding
+      // the arithmetic, which is the whole point of being able to type it.
+      if (rest.kcal === undefined && existing.kcal !== null && existing.quantity > 0) {
+        data.kcal = Math.round((existing.kcal / existing.quantity) * quantity);
+      }
+    }
 
     if (date !== undefined || hour !== undefined) {
       const localTime = getLocalParts(existing.timestamp, config.TIMEZONE);
@@ -195,6 +226,7 @@ entriesRouter.post("/:id/repeat", async (req, res) => {
       rawInput: null,
       label: existing.label,
       kcal: existing.kcal,
+      quantity: existing.quantity,
       imageUrl: existing.imageUrl,
       mealType,
       // A repeat is only as trustworthy as what it copies, so it inherits
@@ -207,6 +239,81 @@ entriesRouter.post("/:id/repeat", async (req, res) => {
   res.status(201).json(entry);
 });
 
+const copyDaySchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
+/**
+ * Duplicates every food entry from one calendar day onto another — the
+ * "copy yesterday" shortcut. Each copy keeps its original time of day, so a
+ * copied breakfast stays a breakfast and, on a rollover Monday, still lands
+ * on the same side of the week boundary as the meal it came from.
+ */
+entriesRouter.post("/copy-day", async (req, res) => {
+  const parsed = copyDaySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Pick a day to copy from and a day to copy to." });
+    return;
+  }
+  const { from, to } = parsed.data;
+  if (from === to) {
+    res.status(400).json({ error: "Those are the same day." });
+    return;
+  }
+  // Same rule as a weigh-in: this is a diary of what was eaten, so copying
+  // onto a day that hasn't happened would put food in a week's totals before
+  // anyone ate it.
+  if (to > localDayKey(new Date(), config.TIMEZONE)) {
+    res.status(400).json({ error: "Can't copy onto a day that hasn't happened yet." });
+    return;
+  }
+
+  const weekStart = await getUserWeekStart(req.userId!);
+  const weeks = await prisma.matchWeek.findMany({
+    where: { userId: req.userId! },
+    include: { entries: true },
+  });
+
+  const source = weeks
+    .flatMap((week) => week.entries)
+    .filter((entry) => localDayKey(entry.timestamp, config.TIMEZONE) === from)
+    .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+  if (source.length === 0) {
+    res.status(404).json({ error: "Nothing was logged on that day." });
+    return;
+  }
+
+  const [year, month, day] = to.split("-").map(Number) as [number, number, number];
+  const created = [];
+  for (const entry of source) {
+    const local = getLocalParts(entry.timestamp, config.TIMEZONE);
+    const timestamp = zonedTimeToUtc(year, month, day, local.hour, local.minute, config.TIMEZONE);
+    const matchWeek = await findOrCreateMatchWeek(timestamp, config.TIMEZONE, req.userId!, weekStart);
+    created.push(
+      await prisma.entry.create({
+        data: {
+          timestamp,
+          rawInput: null,
+          label: entry.label,
+          kcal: entry.kcal,
+          quantity: entry.quantity,
+          // The photo is left behind on purpose: it is a picture of a meal
+          // eaten on the original day, and carrying it over would make the
+          // copy claim to be evidence of something that didn't happen.
+          imageUrl: null,
+          mealType: entry.mealType,
+          source: entry.source,
+          matchWeekId: matchWeek.id,
+        },
+      }),
+    );
+  }
+
+  res.status(201).json(created);
+});
+
 entriesRouter.delete("/:id", async (req, res) => {
   const id = Number(req.params.id);
   try {
@@ -216,6 +323,13 @@ entriesRouter.delete("/:id", async (req, res) => {
       return;
     }
     await prisma.entry.delete({ where: { id } });
+    // Photos used to outlive the row that referenced them, filling the volume
+    // with files nothing could ever show again. A photo shared with another
+    // entry (a repeat copies the URL) is kept.
+    if (existing.imageUrl) {
+      const stillUsed = await prisma.entry.count({ where: { imageUrl: existing.imageUrl } });
+      if (stillUsed === 0) deleteUploadedImage(existing.imageUrl);
+    }
     res.status(204).end();
   } catch {
     res.status(404).json({ error: "Entry not found" });

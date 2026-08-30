@@ -20,6 +20,9 @@ const ICONS = {
     '<path d="M12 3.5 14.9 9.4l6.5.95-4.7 4.6 1.1 6.45L12 18.3 6.2 21.4l1.1-6.45-4.7-4.6 6.5-.95Z" fill="currentColor"/>',
   ),
   check: icon('<polyline points="20 6 9 17 4 12"/>'),
+  pencil: icon('<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>'),
+  droplet: icon('<path d="M12 2.7 6.9 8.1a7.2 7.2 0 1 0 10.2 0Z"/>'),
+  note: icon('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z"/><path d="M14 3v6h6"/>'),
 };
 
 const authScreen = document.getElementById("auth-screen");
@@ -348,6 +351,9 @@ async function loadWeek() {
   renderEntries(week.entries);
   renderExercises(week.exercises ?? []);
   renderBudgetWidget(week);
+  renderTargetToday(week.dailyTotals ?? []);
+  // After renderEntries, since the notes attach to day headings it creates.
+  loadDayNotes();
 }
 
 /**
@@ -522,13 +528,35 @@ function renderEntries(entries) {
     heading.className = isToday ? "day-heading day-heading--today" : "day-heading";
 
     const headingLabel = document.createElement("span");
+    headingLabel.className = "day-heading-label";
     headingLabel.textContent = isToday ? `Today · ${dayFmt.format(date)}` : dayFmt.format(date);
 
     const headingKcal = document.createElement("span");
+    headingKcal.className = "day-heading-kcal";
     headingKcal.textContent = dayPending ? `${dayKcal} kcal + pending` : `${dayKcal} kcal`;
 
-    heading.append(headingLabel, headingKcal);
+    // A note belongs to the calendar day, so it hangs off the day heading
+    // rather than off any one meal. The button carries the note's presence as
+    // well as opening it, so a day with something recorded reads differently
+    // at a glance from one without.
+    const dayKeyIso = toDateInputValue(date);
+    const noteBtn = document.createElement("button");
+    noteBtn.type = "button";
+    noteBtn.className = "day-note-btn";
+    noteBtn.innerHTML = ICONS.note;
+    noteBtn.title = "Note for this day";
+    noteBtn.setAttribute("aria-label", `Note for ${dayFmt.format(date)}`);
+    noteBtn.addEventListener("click", () => toggleDayNoteEditor(group, dayKeyIso, noteBtn));
+
+    heading.append(headingLabel, noteBtn, headingKcal);
     group.appendChild(heading);
+
+    const noteText = document.createElement("p");
+    noteText.className = "day-note";
+    noteText.dataset.dayNote = dayKeyIso;
+    noteText.hidden = true;
+    group.appendChild(noteText);
+    applyDayNote(group, dayKeyIso);
 
     for (const entry of dayEntries) {
       group.appendChild(renderEntryRow(entry));
@@ -547,12 +575,35 @@ function renderEntryRow(entry) {
   // old four-column row left the label about 76px, which wrapped "Beef
   // burger with bacon and cheese" over four lines. Stacking gives that
   // column back to the food's name, which is the part you actually read.
+  // The photo was being uploaded, converted, resized and stored, and then
+  // never shown — the one part of logging a meal that produced nothing to
+  // look at afterwards.
+  if (entry.imageUrl) {
+    const thumb = document.createElement("button");
+    thumb.type = "button";
+    thumb.className = "entry-thumb";
+    thumb.setAttribute("aria-label", `View photo of ${entry.label}`);
+    const img = document.createElement("img");
+    img.src = entry.imageUrl;
+    img.alt = "";
+    img.loading = "lazy";
+    thumb.appendChild(img);
+    thumb.addEventListener("click", () => openPhotoModal(entry.imageUrl, entry.label));
+    row.appendChild(thumb);
+  }
+
   const main = document.createElement("div");
   main.className = "entry-main";
 
   const label = document.createElement("div");
   label.className = "entry-label";
   label.textContent = entry.label;
+  if (entry.quantity && entry.quantity !== 1) {
+    const qty = document.createElement("span");
+    qty.className = "entry-qty";
+    qty.textContent = `×${formatQuantity(entry.quantity)}`;
+    label.appendChild(qty);
+  }
 
   const time = document.createElement("div");
   time.className = "entry-time";
@@ -606,6 +657,15 @@ function enterEditMode(row, entry) {
   kcalInput.min = "0";
   kcalInput.value = entry.kcal ?? "";
 
+  const qtyInput = document.createElement("input");
+  qtyInput.type = "number";
+  qtyInput.min = "0.25";
+  qtyInput.step = "0.25";
+  qtyInput.className = "entry-qty-input";
+  qtyInput.value = entry.quantity ?? 1;
+  qtyInput.title = "How many";
+  qtyInput.setAttribute("aria-label", "Quantity");
+
   const dateInput = document.createElement("input");
   dateInput.type = "date";
   dateInput.value = toDateInputValue(entry.timestamp);
@@ -643,6 +703,13 @@ function enterEditMode(row, entry) {
       kcal: kcalInput.value === "" ? null : Number(kcalInput.value),
       date: dateInput.value,
     };
+    // Only sent when it actually changed. Sending it every time would make
+    // the server rescale kcal on every save, undoing a figure typed by hand
+    // in the same edit.
+    const newQty = Number(qtyInput.value);
+    if (Number.isFinite(newQty) && newQty > 0 && newQty !== (entry.quantity ?? 1)) {
+      body.quantity = newQty;
+    }
     if (isRolloverDay(dateInput.value)) {
       body.hour = weekSelect.value === "last"
         ? Math.max(0, userWeekStartHour - 1)
@@ -656,7 +723,7 @@ function enterEditMode(row, entry) {
     loadWeek();
   });
 
-  editRow.append(labelInput, kcalInput, dateInput, weekSelect, saveBtn);
+  editRow.append(labelInput, kcalInput, qtyInput, dateInput, weekSelect, saveBtn);
   row.appendChild(editRow);
 }
 
@@ -823,8 +890,30 @@ function tryInitGoogleSignIn() {
   window.google.accounts.id.initialize({ client_id: googleClientId, callback: handleGoogleCredential });
   window.google.accounts.id.renderButton(googleSigninBtn, { theme: "outline", size: "large", width: 300 });
   googleSigninBtn.hidden = false;
+  // Recorded so the forgotten-password view can hide and restore the button
+  // without having to re-derive whether it was ever rendered.
+  googleSigninBtn.dataset.ready = "1";
   authDivider.hidden = false;
+
+  // The same credential flow, but pointed at /link-google so an existing
+  // account gains Google as a way back in rather than a second account being
+  // created. Linking is never inferred from a matching email address.
+  const linkTarget = document.getElementById("google-link-btn");
+  if (linkTarget) {
+    window.google.accounts.id.renderButton(linkTarget, {
+      theme: "outline",
+      size: "large",
+      width: 300,
+      click_listener: () => {
+        pendingGoogleAction = "link";
+      },
+    });
+  }
 }
+
+// Which endpoint the next Google credential should go to. Google's button
+// gives one shared callback, so the two uses have to be told apart here.
+let pendingGoogleAction = "signin";
 
 async function loadGoogleConfig() {
   try {
@@ -838,6 +927,25 @@ async function loadGoogleConfig() {
 }
 
 async function handleGoogleCredential(response) {
+  if (pendingGoogleAction === "link") {
+    pendingGoogleAction = "signin";
+    try {
+      const res = await fetch("/api/auth/link-google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential: response.credential }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Couldn't link that Google account.");
+      currentUser = data;
+      renderSecuritySection(data);
+      showSecurityMessage("Google linked. You can now sign in that way if you forget your password.");
+    } catch (error) {
+      showSecurityMessage(error.message ?? "Couldn't link that Google account.", true);
+    }
+    return;
+  }
+
   authError.hidden = true;
   try {
     const res = await fetch("/api/auth/google", {
@@ -860,6 +968,8 @@ function openSettings() {
   appShell.hidden = true;
   settingsScreen.hidden = false;
   refreshPushUi();
+  loadRecoveryOptions();
+  loadDiagnostics();
 }
 
 function closeSettings() {
@@ -910,6 +1020,9 @@ settingsSave.addEventListener("click", async () => {
         activityLevel: activityVal,
         weeklyGoalKg: goalVal,
         goalWeightKg: goalWeightVal,
+        // Always kcal, never converted — a calorie is a calorie in either
+        // unit system, unlike every other figure on this form.
+        dailyCalorieTarget: settingsCalorieTarget.value === "" ? null : Number(settingsCalorieTarget.value),
         reminderHour: settingsReminderHour.value === "" ? null : Number(settingsReminderHour.value),
       }),
     });
@@ -968,6 +1081,11 @@ function populateSettings(user) {
   } else {
     settingsGoalWeight.value = "";
   }
+  settingsCalorieTarget.value = user.dailyCalorieTarget ?? "";
+  settingsEmail.value = user.email ?? "";
+  renderSecuritySection(user);
+  deleteConfirmInput.value = "";
+  deletePasswordWrap.hidden = !user.hasPassword;
 }
 
 async function showApp(user, { firstRun = false } = {}) {
@@ -992,6 +1110,7 @@ async function showApp(user, { firstRun = false } = {}) {
   handleLaunchParams();
   refreshOfflineBanner();
   flushQueue();
+  loadWater();
 }
 
 // WHOOP's OAuth callback redirects back to "/" with a query param — surface
@@ -1085,6 +1204,22 @@ function showAuthScreen() {
 }
 
 async function checkAuth() {
+  // A reset link lands on "/" with the token in the query. That view wins
+  // over both the app and the sign-in form: someone following it is here to
+  // set a password, whatever session the browser still has.
+  const resetToken = new URLSearchParams(window.location.search).get("reset");
+  if (resetToken) {
+    appShell.hidden = true;
+    authScreen.hidden = false;
+    authForm.hidden = true;
+    authToggleBtn.parentElement.hidden = true;
+    authForgotBtn.parentElement.hidden = true;
+    googleSigninBtn.hidden = true;
+    authDivider.hidden = true;
+    resetForm.hidden = false;
+    return;
+  }
+
   const res = await fetch("/api/auth/me");
   if (res.ok) {
     showApp(await res.json());
@@ -1093,8 +1228,10 @@ async function checkAuth() {
   }
 }
 
-checkAuth();
-loadGoogleConfig();
+// Bootstrap moved to the bottom of this file: checkAuth() now touches
+// elements whose consts are declared further down (the reset-password view),
+// and a const referenced before its declaration is evaluated is a
+// ReferenceError, not a hoisted undefined.
 
 // ── Exercise photo status ──────────────────────────────────────────────────
 exercisePhotoInput.addEventListener("change", () => {
@@ -1171,6 +1308,14 @@ function renderExercises(exercises) {
     kcal.className = "exercise-kcal";
     kcal.textContent = ex.kcalBurned !== null ? `−${ex.kcalBurned} kcal` : "kcal unknown";
 
+    const editBtn = document.createElement("button");
+    editBtn.className = "exercise-del";
+    editBtn.innerHTML = ICONS.pencil;
+    editBtn.type = "button";
+    editBtn.title = "Edit";
+    editBtn.setAttribute("aria-label", "Edit exercise");
+    editBtn.addEventListener("click", () => enterExerciseEditMode(row, ex));
+
     const delBtn = document.createElement("button");
     delBtn.className = "exercise-del";
     delBtn.innerHTML = ICONS.x;
@@ -1180,7 +1325,7 @@ function renderExercises(exercises) {
     if (ex.fromWhoop) delBtn.title = "Auto-imported from WHOOP — will reappear on next sync";
     delBtn.addEventListener("click", () => deleteExercise(ex.id));
 
-    row.append(icon, label, kcal, delBtn);
+    row.append(icon, label, kcal, editBtn, delBtn);
     exerciseListEl.appendChild(row);
   }
 }
@@ -1300,6 +1445,11 @@ function applyUnitPreference() {
 }
 
 function switchUnits(imperial) {
+  // Measurements follow the same unit preference as weight — a screen that
+  // showed a waist in inches and a weight in kilos would be worse than either.
+  setTimeout(() => {
+    if (measurements.length > 0) renderMeasurements();
+  }, 0);
   // Read current field values and convert them before switching display
   if (currentUser) {
     const oldWeightKg = currentUser.weightKg;
@@ -1850,6 +2000,9 @@ function openStats() {
   loadWeeklyBreakdown();
   loadDeficitStreak();
   loadTdee();
+  loadMeasurements();
+  loadProgressPhotos();
+  loadEatingWindow();
 }
 
 function closeStats() {
@@ -3817,6 +3970,7 @@ async function replayQueued(item) {
 window.addEventListener("online", () => {
   refreshOfflineBanner();
   flushQueue();
+  loadWater();
 });
 window.addEventListener("offline", refreshOfflineBanner);
 
@@ -4499,3 +4653,929 @@ function renderDeficitStreak(data) {
   streakNote.textContent = `Counted over ${pluralDays(data.judgedDays)} with enough data to judge. Today joins once it's finished.`;
   streakNote.hidden = false;
 }
+
+
+// ── Photo lightbox ─────────────────────────────────────────────────────────
+// Meal photos were stored but never rendered. A thumbnail in the row plus a
+// full-size view is the whole feature — no gallery, no editing.
+const photoModal = document.getElementById("photo-modal");
+const photoModalImg = document.getElementById("photo-modal-img");
+const photoModalCaption = document.getElementById("photo-modal-caption");
+const photoModalClose = document.getElementById("photo-modal-close");
+
+function openPhotoModal(url, caption) {
+  photoModalImg.src = url;
+  photoModalImg.alt = caption ?? "";
+  photoModalCaption.textContent = caption ?? "";
+  photoModal.hidden = false;
+  photoModalClose.focus();
+}
+
+function closePhotoModal() {
+  photoModal.hidden = true;
+  // Dropped so a large photo isn't held in memory behind a hidden dialog.
+  photoModalImg.src = "";
+}
+
+photoModalClose.addEventListener("click", closePhotoModal);
+photoModal.addEventListener("click", (event) => {
+  if (event.target === photoModal) closePhotoModal();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !photoModal.hidden) closePhotoModal();
+});
+
+function formatQuantity(quantity) {
+  // 2 rather than 2.0, but 1.5 keeps its half.
+  return Number.isInteger(quantity) ? String(quantity) : String(+quantity.toFixed(2));
+}
+
+
+// ── Exercise editing ───────────────────────────────────────────────────────
+// Food entries have always been editable; exercise wasn't, so a typo meant
+// deleting and re-logging — which for a WHOOP-imported workout also broke the
+// link back to that workout.
+function enterExerciseEditMode(row, exercise) {
+  row.innerHTML = "";
+  const editRow = document.createElement("div");
+  editRow.className = "entry-edit-row";
+
+  const descInput = document.createElement("input");
+  descInput.type = "text";
+  descInput.value = exercise.description;
+  descInput.setAttribute("aria-label", "What you did");
+
+  const kcalInput = document.createElement("input");
+  kcalInput.type = "number";
+  kcalInput.min = "0";
+  kcalInput.value = exercise.kcalBurned ?? "";
+  kcalInput.placeholder = "kcal";
+  kcalInput.setAttribute("aria-label", "Calories burned");
+
+  const dateInput = document.createElement("input");
+  dateInput.type = "date";
+  dateInput.value = toDateInputValue(exercise.timestamp);
+
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.textContent = "Save";
+  saveBtn.style.width = "auto";
+  saveBtn.addEventListener("click", async () => {
+    await fetch(`/api/exercises/${exercise.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        description: descInput.value.trim(),
+        kcalBurned: kcalInput.value === "" ? null : Number(kcalInput.value),
+        date: dateInput.value,
+      }),
+    });
+    loadWeek();
+  });
+
+  editRow.append(descInput, kcalInput, dateInput, saveBtn);
+  row.appendChild(editRow);
+}
+
+
+// ── Daily calorie target ───────────────────────────────────────────────────
+// The diary could say what you ate but never what you were aiming at. The
+// target is the user's own number rather than a derived one: the adaptive
+// TDEE can propose it, but it doesn't move on its own when a wearable syncs.
+const targetToday = document.getElementById("target-today");
+const targetTodayFigures = document.getElementById("target-today-figures");
+const targetTodayNote = document.getElementById("target-today-note");
+const targetFill = document.getElementById("target-fill");
+const settingsCalorieTarget = document.getElementById("settings-calorie-target");
+const suggestTargetBtn = document.getElementById("suggest-target-btn");
+const suggestTargetNote = document.getElementById("suggest-target-note");
+
+function renderTargetToday(days) {
+  const target = currentUser?.dailyCalorieTarget ?? null;
+  if (!target) {
+    targetToday.hidden = true;
+    return;
+  }
+
+  // Only meaningful for the week actually in progress — a target line against
+  // a week you finished a fortnight ago says nothing useful. isToday comes
+  // from the server, which resolves it in the app's timezone rather than the
+  // browser's.
+  const today = (days ?? []).find((day) => day.isToday);
+  if (weeksAgo !== 0 || !today) {
+    targetToday.hidden = true;
+    return;
+  }
+
+  targetToday.hidden = false;
+  const logged = today.kcal ?? 0;
+  const left = target - logged;
+  targetTodayFigures.textContent = `${logged.toLocaleString()} / ${target.toLocaleString()} kcal`;
+
+  const pct = Math.max(0, Math.min(100, (logged / target) * 100));
+  targetFill.style.width = `${pct}%`;
+  targetFill.classList.toggle("target-fill--over", logged > target);
+
+  targetTodayNote.textContent =
+    left >= 0 ? `${left.toLocaleString()} kcal left today` : `${Math.abs(left).toLocaleString()} kcal over`;
+}
+
+suggestTargetBtn.addEventListener("click", async () => {
+  suggestTargetNote.hidden = true;
+  try {
+    const res = await fetch("/api/stats/tdee");
+    const data = await res.json();
+    if (!data?.available) {
+      suggestTargetNote.textContent =
+        "Not enough weigh-ins and logged days yet to work one out — keep logging for a couple of weeks.";
+      suggestTargetNote.hidden = false;
+      return;
+    }
+    // A target is a burn figure minus a deficit: the weekly goal in kg
+    // converted to a daily kcal gap at 7,700 kcal per kg.
+    const weeklyGoalKg = currentUser?.weeklyGoalKg ?? 0.5;
+    const dailyDeficit = Math.round((weeklyGoalKg * 7700) / 7);
+    const suggestion = Math.max(1200, Math.round((data.tdee - dailyDeficit) / 10) * 10);
+    settingsCalorieTarget.value = suggestion;
+    suggestTargetNote.textContent = `${suggestion.toLocaleString()} kcal — your measured burn of ${Math.round(
+      data.tdee,
+    ).toLocaleString()} less the ${dailyDeficit.toLocaleString()} a day that ${weeklyGoalKg}kg a week needs. Save to keep it.`;
+    suggestTargetNote.hidden = false;
+  } catch {
+    suggestTargetNote.textContent = "Couldn't work one out just now — try again in a moment.";
+    suggestTargetNote.hidden = false;
+  }
+});
+
+
+// ── Water ──────────────────────────────────────────────────────────────────
+// One running total per day rather than a row per glass: the only question
+// anyone asks of this data is "how much today".
+const waterCard = document.getElementById("water-card");
+const waterTotalEl = document.getElementById("water-total");
+
+function renderWater(ml) {
+  const litres = ml / 1000;
+  waterTotalEl.textContent = ml >= 1000 ? `${litres.toFixed(litres >= 10 ? 0 : 1)} L` : `${ml} ml`;
+}
+
+async function loadWater() {
+  try {
+    const res = await fetch("/api/days/water");
+    if (!res.ok) throw new Error();
+    const logs = await res.json();
+    const todayIso = toDateInputValue(new Date());
+    renderWater(logs.find((log) => log.date === todayIso)?.ml ?? 0);
+  } catch {
+    renderWater(0);
+  }
+}
+
+for (const button of document.querySelectorAll(".water-btn")) {
+  button.addEventListener("click", async () => {
+    haptic();
+    try {
+      const res = await fetch("/api/days/water", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deltaMl: Number(button.dataset.water) }),
+      });
+      if (!res.ok) throw new Error();
+      renderWater((await res.json()).ml);
+    } catch {
+      // Water is the lowest-stakes thing in the app; a failed tap just
+      // doesn't move the number rather than raising an error banner.
+    }
+  });
+}
+
+
+// ── Day notes ──────────────────────────────────────────────────────────────
+// "Food poisoning", "stag do", "first week back running" — the context that
+// explains an odd week, which the weekly review could previously only guess at.
+let dayNotes = new Map();
+
+async function loadDayNotes() {
+  try {
+    const res = await fetch("/api/days/notes");
+    if (!res.ok) throw new Error();
+    dayNotes = new Map((await res.json()).map((note) => [note.date, note.note]));
+  } catch {
+    dayNotes = new Map();
+  }
+  for (const el of document.querySelectorAll("[data-day-note]")) {
+    applyDayNote(el.parentElement, el.dataset.dayNote);
+  }
+}
+
+function applyDayNote(group, dayIso) {
+  if (!group) return;
+  const el = group.querySelector(`[data-day-note="${dayIso}"]`);
+  if (!el) return;
+  const note = dayNotes.get(dayIso);
+  el.textContent = note ?? "";
+  el.hidden = !note;
+  const button = group.querySelector(".day-note-btn");
+  if (button) button.classList.toggle("day-note-btn--set", Boolean(note));
+}
+
+function toggleDayNoteEditor(group, dayIso, button) {
+  const existing = group.querySelector(".day-note-editor");
+  if (existing) {
+    existing.remove();
+    return;
+  }
+
+  const editor = document.createElement("div");
+  editor.className = "day-note-editor";
+
+  const textarea = document.createElement("textarea");
+  textarea.rows = 2;
+  textarea.maxLength = 500;
+  textarea.placeholder = "What was going on? e.g. away with work, first week back running";
+  textarea.value = dayNotes.get(dayIso) ?? "";
+
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.className = "ghost-sm";
+  saveBtn.textContent = "Save note";
+  saveBtn.addEventListener("click", async () => {
+    const note = textarea.value.trim();
+    await fetch("/api/days/notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date: dayIso, note }),
+    });
+    if (note) dayNotes.set(dayIso, note);
+    else dayNotes.delete(dayIso);
+    editor.remove();
+    applyDayNote(group, dayIso);
+    button.focus();
+  });
+
+  editor.append(textarea, saveBtn);
+  group.appendChild(editor);
+  textarea.focus();
+}
+
+
+// ── Copy a day ─────────────────────────────────────────────────────────────
+const copyDayToggle = document.getElementById("copy-day-toggle");
+const copyDayForm = document.getElementById("copy-day-form");
+const copyDayFrom = document.getElementById("copy-day-from");
+const copyDayTo = document.getElementById("copy-day-to");
+const copyDayCancel = document.getElementById("copy-day-cancel");
+const copyDayError = document.getElementById("copy-day-error");
+
+copyDayToggle.addEventListener("click", () => {
+  copyDayForm.hidden = !copyDayForm.hidden;
+  if (copyDayForm.hidden) return;
+  copyDayError.hidden = true;
+  const today = new Date();
+  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+  // Defaults to the overwhelmingly common case, so the usual action is
+  // "open, Copy" rather than two date pickers.
+  copyDayFrom.value = toDateInputValue(yesterday);
+  copyDayTo.value = toDateInputValue(today);
+  copyDayFrom.max = toDateInputValue(today);
+});
+
+copyDayCancel.addEventListener("click", () => {
+  copyDayForm.hidden = true;
+});
+
+copyDayForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  copyDayError.hidden = true;
+  try {
+    const res = await fetch("/api/entries/copy-day", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from: copyDayFrom.value, to: copyDayTo.value }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error ?? "Couldn't copy that day.");
+    }
+    copyDayForm.hidden = true;
+    haptic();
+    weeksAgo = 0;
+    loadWeek();
+  } catch (error) {
+    copyDayError.textContent = error.message ?? "Couldn't copy that day.";
+    copyDayError.hidden = false;
+  }
+});
+
+
+// ── Body measurements ──────────────────────────────────────────────────────
+// Weight stalls for weeks on a training programme while the waist keeps
+// moving, so this is the measurement the card leads with; the rest are
+// optional and folded away.
+const measurementsCard = document.getElementById("measurements-card");
+const measurementToggle = document.getElementById("measurement-toggle");
+const measurementForm = document.getElementById("measurement-form");
+const measurementCancel = document.getElementById("measurement-cancel");
+const measurementDate = document.getElementById("measurement-date");
+const measurementError = document.getElementById("measurement-error");
+const measurementSummary = document.getElementById("measurement-summary");
+const measurementList = document.getElementById("measurement-list");
+
+const MEASUREMENT_FIELDS = [
+  { key: "waistCm", id: "measurement-waist", label: "Waist" },
+  { key: "chestCm", id: "measurement-chest", label: "Chest" },
+  { key: "hipsCm", id: "measurement-hips", label: "Hips" },
+  { key: "thighCm", id: "measurement-thigh", label: "Thigh" },
+  { key: "armCm", id: "measurement-arm", label: "Arm" },
+];
+
+let measurements = [];
+
+// Imperial users measure a waist in inches, so the same unit switch that
+// governs weight governs this too rather than mixing systems on one screen.
+function cmToDisplay(cm) {
+  return useImperial ? +(cm / 2.54).toFixed(1) : +cm.toFixed(1);
+}
+
+function displayToCm(value) {
+  return useImperial ? value * 2.54 : value;
+}
+
+function lengthUnit() {
+  return useImperial ? "in" : "cm";
+}
+
+function applyMeasurementUnits() {
+  for (const field of MEASUREMENT_FIELDS) {
+    const label = document.getElementById(`${field.id}-label`);
+    if (label) label.textContent = `${field.label} (${lengthUnit()})`;
+  }
+}
+
+async function loadMeasurements() {
+  try {
+    const res = await fetch("/api/body/measurements");
+    if (!res.ok) throw new Error();
+    measurements = await res.json();
+  } catch {
+    measurements = [];
+  }
+  renderMeasurements();
+}
+
+function renderMeasurements() {
+  applyMeasurementUnits();
+  measurementList.innerHTML = "";
+
+  const withWaist = measurements.filter((row) => row.waistCm !== null);
+  if (withWaist.length >= 2) {
+    const first = withWaist[0];
+    const last = withWaist[withWaist.length - 1];
+    const change = last.waistCm - first.waistCm;
+    const direction = change <= 0 ? "off" : "on";
+    measurementSummary.textContent = `${Math.abs(cmToDisplay(Math.abs(change))).toFixed(1)}${lengthUnit()} ${direction} the waist since ${formatStreakRange(first.date, first.date)}.`;
+    measurementSummary.hidden = false;
+  } else {
+    measurementSummary.hidden = true;
+  }
+
+  for (const row of [...measurements].reverse()) {
+    const item = document.createElement("div");
+    item.className = "measurement-row";
+
+    const date = document.createElement("span");
+    date.className = "measurement-date";
+    date.textContent = formatStreakRange(row.date, row.date);
+
+    const values = document.createElement("span");
+    values.className = "measurement-values";
+    values.textContent = MEASUREMENT_FIELDS.filter((field) => row[field.key] !== null)
+      .map((field) => `${field.label} ${cmToDisplay(row[field.key])}${lengthUnit()}`)
+      .join(" · ");
+
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    // Its own class rather than .entry-action-icon: that one is only styled
+    // under .entry-actions, so borrowing it here gave a full-width green
+    // button where a 32px icon was wanted.
+    delBtn.className = "measurement-del";
+    delBtn.innerHTML = ICONS.x;
+    delBtn.title = "Delete";
+    delBtn.setAttribute("aria-label", `Delete measurements for ${row.date}`);
+    delBtn.addEventListener("click", async () => {
+      await fetch(`/api/body/measurements/${row.date}`, { method: "DELETE" });
+      loadMeasurements();
+    });
+
+    item.append(date, values, delBtn);
+    measurementList.appendChild(item);
+  }
+}
+
+measurementToggle.addEventListener("click", () => {
+  measurementForm.hidden = !measurementForm.hidden;
+  if (measurementForm.hidden) return;
+  measurementError.hidden = true;
+  measurementDate.max = todayDateValue();
+  measurementDate.value = todayDateValue();
+  applyMeasurementUnits();
+});
+
+measurementCancel.addEventListener("click", () => {
+  measurementForm.hidden = true;
+});
+
+measurementForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  measurementError.hidden = true;
+
+  const body = { date: measurementDate.value };
+  let any = false;
+  for (const field of MEASUREMENT_FIELDS) {
+    const input = document.getElementById(field.id);
+    if (input.value === "") continue;
+    body[field.key] = displayToCm(Number(input.value));
+    any = true;
+  }
+
+  if (!any) {
+    measurementError.textContent = "Enter at least one measurement.";
+    measurementError.hidden = false;
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/body/measurements", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error ?? "Couldn't save that.");
+    }
+    for (const field of MEASUREMENT_FIELDS) document.getElementById(field.id).value = "";
+    measurementForm.hidden = true;
+    loadMeasurements();
+  } catch (error) {
+    measurementError.textContent = error.message ?? "Couldn't save that.";
+    measurementError.hidden = false;
+  }
+});
+
+
+// ── Progress photos ────────────────────────────────────────────────────────
+const progressPhotoInput = document.getElementById("progress-photo-input");
+const progressPhotoStatus = document.getElementById("progress-photo-status");
+const progressPhotoError = document.getElementById("progress-photo-error");
+const progressPhotoGrid = document.getElementById("progress-photo-grid");
+
+async function loadProgressPhotos() {
+  try {
+    const res = await fetch("/api/body/photos");
+    if (!res.ok) throw new Error();
+    renderProgressPhotos(await res.json());
+  } catch {
+    renderProgressPhotos([]);
+  }
+}
+
+function renderProgressPhotos(photos) {
+  progressPhotoGrid.innerHTML = "";
+  for (const photo of photos) {
+    const figure = document.createElement("figure");
+    figure.className = "progress-photo";
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "progress-photo-btn";
+    button.setAttribute("aria-label", `View photo from ${photo.date}`);
+    const img = document.createElement("img");
+    img.src = photo.imageUrl;
+    img.alt = "";
+    img.loading = "lazy";
+    button.appendChild(img);
+    button.addEventListener("click", () => openPhotoModal(photo.imageUrl, formatStreakRange(photo.date, photo.date)));
+
+    const caption = document.createElement("figcaption");
+    caption.textContent = formatStreakRange(photo.date, photo.date);
+
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "progress-photo-del";
+    delBtn.innerHTML = ICONS.x;
+    delBtn.title = "Delete";
+    delBtn.setAttribute("aria-label", `Delete photo from ${photo.date}`);
+    delBtn.addEventListener("click", async () => {
+      await fetch(`/api/body/photos/${photo.id}`, { method: "DELETE" });
+      loadProgressPhotos();
+    });
+
+    figure.append(button, caption, delBtn);
+    progressPhotoGrid.appendChild(figure);
+  }
+}
+
+progressPhotoInput.addEventListener("change", async () => {
+  const file = progressPhotoInput.files?.[0];
+  if (!file) return;
+  progressPhotoError.hidden = true;
+  progressPhotoStatus.textContent = "Uploading…";
+
+  const data = new FormData();
+  data.append("photo", file);
+  data.append("date", todayDateValue());
+
+  try {
+    const res = await fetch("/api/body/photos", { method: "POST", body: data });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error ?? "Couldn't save that photo.");
+    }
+    loadProgressPhotos();
+  } catch (error) {
+    progressPhotoError.textContent = error.message ?? "Couldn't save that photo.";
+    progressPhotoError.hidden = false;
+  } finally {
+    progressPhotoInput.value = "";
+    progressPhotoStatus.textContent = "Add a photo";
+  }
+});
+
+
+// ── Eating window ──────────────────────────────────────────────────────────
+// First meal to last meal. Every entry already carried a timestamp, so this
+// needs nothing extra logged — it's a different reading of what's there.
+const eatingWindowCard = document.getElementById("eating-window-card");
+const windowAverage = document.getElementById("window-average");
+const windowFirst = document.getElementById("window-first");
+const windowLast = document.getElementById("window-last");
+const windowNote = document.getElementById("window-note");
+
+function minutesToClock(minutes) {
+  if (minutes === null || minutes === undefined) return "—";
+  const hours = Math.floor(minutes / 60) % 24;
+  const mins = Math.round(minutes % 60);
+  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+}
+
+function minutesToDuration(minutes) {
+  if (minutes === null || minutes === undefined) return "—";
+  const hours = Math.floor(minutes / 60);
+  const mins = Math.round(minutes % 60);
+  return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
+}
+
+async function loadEatingWindow() {
+  try {
+    const res = await fetch("/api/stats/eating-window?days=30");
+    if (!res.ok) throw new Error();
+    renderEatingWindow(await res.json());
+  } catch {
+    eatingWindowCard.hidden = true;
+  }
+}
+
+function renderEatingWindow(data) {
+  // A window needs two meals to span; days with one entry are excluded
+  // server-side, so a low count here means there's nothing to average yet.
+  if (!data || data.daysMeasured < 3) {
+    eatingWindowCard.hidden = true;
+    return;
+  }
+  eatingWindowCard.hidden = false;
+  windowAverage.textContent = minutesToDuration(data.avgWindowMin);
+  windowFirst.textContent = minutesToClock(data.avgFirstMealMin);
+  windowLast.textContent = minutesToClock(data.avgLastMealMin);
+  windowNote.textContent = `Averaged over the ${pluralDays(data.daysMeasured)} in the last 30 with more than one entry.`;
+}
+
+
+// ── Sign-in & security ─────────────────────────────────────────────────────
+// Everything here exists to answer one question the app previously couldn't:
+// what do you do when you're locked out, or when a device with a live session
+// is no longer yours?
+const settingsEmail = document.getElementById("settings-email");
+const settingsEmailNote = document.getElementById("settings-email-note");
+const settingsEmailSave = document.getElementById("settings-email-save");
+const settingsCurrentPassword = document.getElementById("settings-current-password");
+const currentPasswordWrap = document.getElementById("current-password-wrap");
+const settingsNewPassword = document.getElementById("settings-new-password");
+const settingsPasswordSave = document.getElementById("settings-password-save");
+const passwordSummary = document.getElementById("password-summary");
+const googleLinkStatus = document.getElementById("google-link-status");
+const googleLinkBtn = document.getElementById("google-link-btn");
+const logoutEverywhereBtn = document.getElementById("logout-everywhere-btn");
+const securityStatus = document.getElementById("security-status");
+const securityError = document.getElementById("security-error");
+
+let recoveryOptions = { email: false, google: false };
+
+function showSecurityMessage(text, isError = false) {
+  const target = isError ? securityError : securityStatus;
+  const other = isError ? securityStatus : securityError;
+  other.hidden = true;
+  target.textContent = text;
+  target.hidden = false;
+}
+
+function renderSecuritySection(user) {
+  // A Google-only account has no current password to prove, so the field is
+  // hidden and the action reads "Set a password" rather than "Change".
+  currentPasswordWrap.hidden = !user.hasPassword;
+  passwordSummary.textContent = user.hasPassword ? "Change password" : "Set a password";
+  settingsPasswordSave.textContent = user.hasPassword ? "Update password" : "Set password";
+
+  if (user.hasGoogle) {
+    googleLinkStatus.textContent = "Google is linked to this account — you can always sign in that way.";
+    googleLinkBtn.hidden = true;
+  } else if (recoveryOptions.google) {
+    googleLinkStatus.textContent = "Link a Google account so you can still get in without your password.";
+    googleLinkBtn.hidden = false;
+  } else {
+    googleLinkStatus.textContent = "Google sign-in isn't set up on this server.";
+    googleLinkBtn.hidden = true;
+  }
+
+  settingsEmailNote.textContent = recoveryOptions.email
+    ? "Used only to send you a reset link if you forget your password."
+    : "Email reset isn't set up on this server yet, so an address here is stored but unused.";
+}
+
+async function loadRecoveryOptions() {
+  try {
+    const res = await fetch("/api/auth/recovery-options");
+    if (res.ok) recoveryOptions = await res.json();
+  } catch {
+    // Leave the defaults: both off, which reads as "no recovery configured"
+    // — the honest answer when the server can't be reached.
+  }
+  if (currentUser) renderSecuritySection(currentUser);
+}
+
+settingsEmailSave.addEventListener("click", async () => {
+  try {
+    const res = await fetch("/api/auth/email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: settingsEmail.value.trim() || null }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error ?? "Couldn't save that address.");
+    currentUser = data;
+    showSecurityMessage(settingsEmail.value.trim() ? "Recovery email saved." : "Recovery email removed.");
+  } catch (error) {
+    showSecurityMessage(error.message ?? "Couldn't save that address.", true);
+  }
+});
+
+settingsPasswordSave.addEventListener("click", async () => {
+  const newPassword = settingsNewPassword.value;
+  if (newPassword.length < 8) {
+    showSecurityMessage("Choose a password of at least 8 characters.", true);
+    return;
+  }
+  try {
+    const res = await fetch("/api/auth/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        currentPassword: settingsCurrentPassword.value || undefined,
+        newPassword,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error ?? "Couldn't change your password.");
+    settingsCurrentPassword.value = "";
+    settingsNewPassword.value = "";
+    // Changing a password signs every other device out, which is the point —
+    // say so rather than letting it be a surprise.
+    showSecurityMessage("Password updated. Any other device is now signed out.");
+    if (currentUser) {
+      currentUser = { ...currentUser, hasPassword: true };
+      renderSecuritySection(currentUser);
+    }
+  } catch (error) {
+    showSecurityMessage(error.message ?? "Couldn't change your password.", true);
+  }
+});
+
+logoutEverywhereBtn.addEventListener("click", async () => {
+  if (!window.confirm("Sign out on every device, including this one?")) return;
+  await fetch("/api/auth/logout-everywhere", { method: "POST" });
+  window.location.reload();
+});
+
+
+// ── Delete account ─────────────────────────────────────────────────────────
+const deleteConfirmInput = document.getElementById("delete-confirm");
+const deletePasswordWrap = document.getElementById("delete-password-wrap");
+const deletePassword = document.getElementById("delete-password");
+const deleteAccountBtn = document.getElementById("delete-account-btn");
+const deleteError = document.getElementById("delete-error");
+
+deleteAccountBtn.addEventListener("click", async () => {
+  deleteError.hidden = true;
+  if (deleteConfirmInput.value !== currentUser?.username) {
+    deleteError.textContent = "Type your username exactly to confirm.";
+    deleteError.hidden = false;
+    return;
+  }
+  if (!window.confirm("This deletes every entry, weigh-in, measurement and photo. There is no undo. Continue?")) {
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/auth/me", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: deleteConfirmInput.value, password: deletePassword.value || undefined }),
+    });
+    if (!res.ok && res.status !== 204) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error ?? "Couldn't delete the account.");
+    }
+    window.location.href = "/";
+  } catch (error) {
+    deleteError.textContent = error.message ?? "Couldn't delete the account.";
+    deleteError.hidden = false;
+  }
+});
+
+
+// ── Diagnostics ────────────────────────────────────────────────────────────
+// Errors used to go to stdout only, which on Fly rolls away — a WHOOP sync
+// that started failing overnight left nothing to find in the morning.
+const diagnosticsBackup = document.getElementById("diagnostics-backup");
+const diagnosticsBackupBtn = document.getElementById("diagnostics-backup-btn");
+const diagnosticsClearBtn = document.getElementById("diagnostics-clear-btn");
+const diagnosticsErrors = document.getElementById("diagnostics-errors");
+const diagnosticsError = document.getElementById("diagnostics-error");
+
+const diagnosticsTimeFmt = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+async function loadDiagnostics() {
+  diagnosticsError.hidden = true;
+  try {
+    const res = await fetch("/api/diagnostics");
+    if (!res.ok) throw new Error();
+    renderDiagnostics(await res.json());
+  } catch {
+    diagnosticsBackup.textContent = "Couldn't read the diagnostics just now.";
+    diagnosticsErrors.innerHTML = "";
+  }
+}
+
+function renderDiagnostics(data) {
+  const backup = data.backup ?? {};
+  if (!backup.latest) {
+    diagnosticsBackup.textContent = "No backup has run yet. One runs nightly at 03:30.";
+  } else {
+    const when = backup.latestAt ? diagnosticsTimeFmt.format(new Date(backup.latestAt)) : "an unknown time";
+    const offsite = backup.offsite ? "copied to Google Drive" : "on this machine only — connect Drive for an off-box copy";
+    diagnosticsBackup.textContent = `Last backup ${when} · ${backup.count} kept · ${offsite}.`;
+  }
+
+  diagnosticsErrors.innerHTML = "";
+  if (!data.errors || data.errors.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "No errors recorded.";
+    diagnosticsErrors.appendChild(empty);
+    return;
+  }
+
+  const heading = document.createElement("p");
+  heading.className = "muted";
+  heading.textContent = `${data.errorCount} recorded, most recent first:`;
+  diagnosticsErrors.appendChild(heading);
+
+  for (const error of data.errors) {
+    const row = document.createElement("div");
+    row.className = "diagnostics-row";
+
+    const when = document.createElement("span");
+    when.className = "diagnostics-when";
+    when.textContent = diagnosticsTimeFmt.format(new Date(error.createdAt));
+
+    const context = document.createElement("span");
+    context.className = "diagnostics-context";
+    context.textContent = error.context;
+
+    const message = document.createElement("span");
+    message.className = "diagnostics-message";
+    message.textContent = error.message;
+
+    row.append(when, context, message);
+    diagnosticsErrors.appendChild(row);
+  }
+}
+
+diagnosticsBackupBtn.addEventListener("click", async () => {
+  diagnosticsError.hidden = true;
+  diagnosticsBackupBtn.disabled = true;
+  diagnosticsBackupBtn.textContent = "Backing up…";
+  try {
+    const res = await fetch("/api/diagnostics/backup", { method: "POST" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error ?? "The backup failed.");
+    }
+    await loadDiagnostics();
+  } catch (error) {
+    diagnosticsError.textContent = error.message ?? "The backup failed.";
+    diagnosticsError.hidden = false;
+  } finally {
+    diagnosticsBackupBtn.disabled = false;
+    diagnosticsBackupBtn.textContent = "Back up now";
+  }
+});
+
+diagnosticsClearBtn.addEventListener("click", async () => {
+  await fetch("/api/diagnostics/errors", { method: "DELETE" });
+  loadDiagnostics();
+});
+
+
+// ── Forgotten password ─────────────────────────────────────────────────────
+const authForgotBtn = document.getElementById("auth-forgot-btn");
+const forgotForm = document.getElementById("forgot-form");
+const forgotUsername = document.getElementById("forgot-username");
+const forgotStatus = document.getElementById("forgot-status");
+const forgotError = document.getElementById("forgot-error");
+const forgotCancel = document.getElementById("forgot-cancel");
+const resetForm = document.getElementById("reset-form");
+const resetPassword = document.getElementById("reset-password");
+const resetError = document.getElementById("reset-error");
+
+function showForgotForm(show) {
+  forgotForm.hidden = !show;
+  authForm.hidden = show;
+  authForgotBtn.parentElement.hidden = show;
+  authToggleBtn.parentElement.hidden = show;
+  googleSigninBtn.hidden = show || !googleSigninBtn.dataset.ready;
+  authDivider.hidden = show || !googleSigninBtn.dataset.ready;
+  forgotStatus.hidden = true;
+  forgotError.hidden = true;
+}
+
+authForgotBtn.addEventListener("click", () => showForgotForm(true));
+forgotCancel.addEventListener("click", () => showForgotForm(false));
+
+forgotForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  forgotError.hidden = true;
+  forgotStatus.hidden = true;
+
+  try {
+    const res = await fetch("/api/auth/forgot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: forgotUsername.value.trim() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error ?? "Couldn't send a reset link.");
+    // Deliberately non-committal: the server answers the same way whether or
+    // not the account exists, so the page mustn't claim more than it knows.
+    forgotStatus.textContent =
+      "If that account has a recovery email on file, a reset link is on its way. It's good for an hour.";
+    forgotStatus.hidden = false;
+  } catch (error) {
+    forgotError.textContent = error.message ?? "Couldn't send a reset link.";
+    forgotError.hidden = false;
+  }
+});
+
+resetForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  resetError.hidden = true;
+
+  const token = new URLSearchParams(window.location.search).get("reset");
+  try {
+    const res = await fetch("/api/auth/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, password: resetPassword.value }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error ?? "That reset link didn't work.");
+    window.history.replaceState({}, "", "/");
+    resetForm.hidden = true;
+    showApp(data);
+  } catch (error) {
+    resetError.textContent = error.message ?? "That reset link didn't work.";
+    resetError.hidden = false;
+  }
+});
+
+
+// ── Bootstrap ──────────────────────────────────────────────────────────────
+// Last, so every const above it is initialised before anything runs.
+checkAuth();
+loadGoogleConfig();

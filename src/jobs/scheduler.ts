@@ -3,6 +3,9 @@ import { config } from "../config";
 import { closeMatchWeeksNeedingReport } from "./weeklyReport";
 import { sendDueReminders } from "./reminders";
 import { syncAllConnectedUsers } from "../whoop/sync";
+import { runBackup } from "./backup";
+import { cleanupOrphanedUploads } from "./cleanupUploads";
+import { recordError } from "../errorLog";
 
 export function startScheduler(): void {
   // Hourly rather than a single fixed weekly tick, since each user now has
@@ -43,6 +46,32 @@ export function startScheduler(): void {
     },
     { timezone: config.TIMEZONE },
   );
+
+  // 03:30 local — after the last plausible late-night entry and well clear
+  // of the Monday 17:00 rollover, so a backup never runs mid-week-close.
+  cron.schedule(
+    "30 3 * * *",
+    () => {
+      runBackup().catch((error) => recordError("backup", error));
+    },
+    { timezone: config.TIMEZONE },
+  );
+
+  // Straight after the backup, so a sweep that deletes something it shouldn't
+  // is always recoverable from a copy taken minutes earlier.
+  cron.schedule(
+    "45 3 * * *",
+    () => {
+      cleanupOrphanedUploads().catch((error) => recordError("cleanupUploads", error));
+    },
+    { timezone: config.TIMEZONE },
+  );
+
+  // A first backup shortly after boot, so a machine that never survives to
+  // 03:30 still leaves one behind.
+  setTimeout(() => {
+    runBackup().catch((error) => recordError("backup.startup", error));
+  }, 30_000);
 
   console.log(`Weekly report scheduler started (hourly checks, ${config.TIMEZONE}).`);
 }
