@@ -6,8 +6,12 @@ import { config } from "./config";
 import { ensureUploadsDir, UPLOADS_DIR } from "./lib/storage";
 import { ensureSessionSecret } from "./auth";
 import { ensureVapidKeys } from "./push";
+import { recordError } from "./errorLog";
 import { authRouter } from "./routes/auth";
+import { bodyRouter } from "./routes/body";
 import { dataRouter } from "./routes/dataExport";
+import { daysRouter } from "./routes/days";
+import { diagnosticsRouter } from "./routes/diagnostics";
 import { entriesRouter } from "./routes/entries";
 import { exercisesRouter } from "./routes/exercises";
 import { foodsRouter } from "./routes/foods";
@@ -30,7 +34,10 @@ app.use("/uploads", express.static(UPLOADS_DIR));
 app.use(express.static(path.join(process.cwd(), "public")));
 
 app.use("/api/auth", authRouter);
+app.use("/api/body", bodyRouter);
 app.use("/api/data", dataRouter);
+app.use("/api/days", daysRouter);
+app.use("/api/diagnostics", diagnosticsRouter);
 app.use("/api/entries", entriesRouter);
 app.use("/api/exercises", exercisesRouter);
 app.use("/api/foods", foodsRouter);
@@ -66,7 +73,10 @@ app.use((err: unknown, _req: express.Request, res: express.Response, next: expre
     res.status(413).json({ error: message });
     return;
   }
-  console.error("Unhandled request error:", err);
+  // Recorded rather than only logged, so a 500 at 3am is still findable at
+  // 9am (see src/errorLog.ts). Deliberately not awaited: the response
+  // shouldn't wait on a database write and a webhook.
+  void recordError(`request ${_req.method} ${_req.path}`, err, _req.userId);
   res.status(500).json({ error: "Something went wrong." });
 });
 

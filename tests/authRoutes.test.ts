@@ -5,13 +5,33 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   users: [] as any[],
+  resetTokens: [] as any[],
   nextId: 1,
+  nextTokenId: 1,
+}));
+
+// Captures what the app would have emailed, so the reset link can be read out
+// of the "inbox" the way a user would read it out of theirs.
+const { sentMail } = vi.hoisted(() => ({ sentMail: [] as { to: string; subject: string; text: string }[] }));
+
+vi.mock("../src/mailer", () => ({
+  canSendMail: () => true,
+  sendMail: async (mail: any) => {
+    sentMail.push(mail);
+    return true;
+  },
 }));
 
 const { verifyIdTokenMock } = vi.hoisted(() => ({ verifyIdTokenMock: vi.fn() }));
 
 vi.mock("../src/config", () => ({
-  config: { GOOGLE_SIGNIN_CLIENT_ID: "test-google-client-id" },
+  config: { GOOGLE_SIGNIN_CLIENT_ID: "test-google-client-id", APP_BASE_URL: "https://example.test" },
+}));
+
+vi.mock("../src/deleteAccount", () => ({
+  deleteAccount: vi.fn(async (userId: number) => {
+    state.users = state.users.filter((u: any) => u.id !== userId);
+  }),
 }));
 
 vi.mock("google-auth-library", () => ({
@@ -25,6 +45,7 @@ vi.mock("../src/db", () => {
     if (where.id !== undefined) return state.users.find((u) => u.id === where.id) ?? null;
     if (where.username !== undefined) return state.users.find((u) => u.username === where.username) ?? null;
     if (where.googleId !== undefined) return state.users.find((u) => u.googleId === where.googleId) ?? null;
+    if (where.email !== undefined) return state.users.find((u) => u.email === where.email) ?? null;
     return null;
   }
 
@@ -61,7 +82,34 @@ vi.mock("../src/db", () => {
     matchWeek: {
       updateMany: vi.fn(async () => ({ count: 0 })),
     },
-    $transaction: vi.fn(async (fn: any) => fn(prisma)),
+    passwordResetToken: {
+      create: vi.fn(async ({ data }: any) => {
+        const token = { id: state.nextTokenId++, usedAt: null, createdAt: new Date(), ...data };
+        state.resetTokens.push(token);
+        return token;
+      }),
+      findUnique: vi.fn(async ({ where }: any) =>
+        state.resetTokens.find((t: any) => t.tokenHash === where.tokenHash) ?? null,
+      ),
+      update: vi.fn(async ({ where, data }: any) => {
+        const token = state.resetTokens.find((t: any) => t.id === where.id);
+        Object.assign(token, data);
+        return token;
+      }),
+      updateMany: vi.fn(async ({ where, data }: any) => {
+        let count = 0;
+        for (const token of state.resetTokens) {
+          if (token.userId === where.userId && token.usedAt === null) {
+            Object.assign(token, data);
+            count += 1;
+          }
+        }
+        return { count };
+      }),
+    },
+    // The real $transaction takes an array of already-built promises for the
+    // reset flow and a callback for signup; both shapes have to work.
+    $transaction: vi.fn(async (arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma))),
   };
 
   return { prisma };
@@ -69,13 +117,20 @@ vi.mock("../src/db", () => {
 
 import { prisma } from "../src/db";
 import { authRouter } from "../src/routes/auth";
+import { resetAll as resetRateLimits } from "../src/rateLimit";
 
 let server: http.Server;
 let baseUrl: string;
 
 beforeEach(async () => {
   state.users.length = 0;
+  state.resetTokens.length = 0;
+  sentMail.length = 0;
   state.nextId = 1;
+  state.nextTokenId = 1;
+  // The limiter is module-level state shared by every test in this file, so
+  // without this a later test inherits an earlier one's spent allowance.
+  resetRateLimits();
   vi.clearAllMocks();
   verifyIdTokenMock.mockReset();
 
@@ -126,7 +181,13 @@ describe("POST /api/auth/signup", () => {
       activityLevel: null,
       weeklyGoalKg: null,
       goalWeightKg: null,
+      dailyCalorieTarget: null,
       reminderHour: null,
+      email: null,
+      // Signed up with a password and no Google account, so the settings
+      // screen knows a password change is possible and a Google unlink isn't.
+      hasGoogle: false,
+      hasPassword: true,
     });
     expect(sessionCookieFrom(res)).toMatch(/^session=/);
   });
@@ -383,5 +444,263 @@ describe("POST /api/auth/logout", () => {
     const clearedCookie = sessionCookieFrom(logoutRes);
     const meRes = await fetch(`${baseUrl}/api/auth/me`, { headers: { Cookie: clearedCookie } });
     expect(meRes.status).toBe(401);
+  });
+});
+
+// ── Account recovery ───────────────────────────────────────────────────────
+
+async function signUpAlice(): Promise<string> {
+  const res = await fetch(`${baseUrl}/api/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "alice", password: "password123" }),
+  });
+  return sessionCookieFrom(res);
+}
+
+function tokenFromLastEmail(): string {
+  const link = sentMail[sentMail.length - 1]!.text.match(/\?reset=([a-f0-9]+)/);
+  if (!link) throw new Error("No reset link in the email");
+  return link[1]!;
+}
+
+describe("POST /api/auth/forgot", () => {
+  it("emails a reset link when the account has an address on file", async () => {
+    const cookie = await signUpAlice();
+    await fetch(`${baseUrl}/api/auth/email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ email: "alice@example.test" }),
+    });
+
+    const res = await fetch(`${baseUrl}/api/auth/forgot`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "alice" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(sentMail).toHaveLength(1);
+    expect(sentMail[0]!.to).toBe("alice@example.test");
+  });
+
+  it("answers the same for an account that doesn't exist, and sends nothing", async () => {
+    const res = await fetch(`${baseUrl}/api/auth/forgot`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "nobody" }),
+    });
+
+    // Identical to the success case on purpose: this endpoint must not be a
+    // way to find out which usernames are real.
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(sentMail).toHaveLength(0);
+  });
+
+  it("stores only a hash of the token, never the token itself", async () => {
+    const cookie = await signUpAlice();
+    await fetch(`${baseUrl}/api/auth/email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ email: "alice@example.test" }),
+    });
+    await fetch(`${baseUrl}/api/auth/forgot`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "alice" }),
+    });
+
+    const token = tokenFromLastEmail();
+    expect(state.resetTokens).toHaveLength(1);
+    expect(state.resetTokens[0].tokenHash).not.toBe(token);
+  });
+});
+
+describe("POST /api/auth/reset", () => {
+  async function requestReset(): Promise<string> {
+    const cookie = await signUpAlice();
+    await fetch(`${baseUrl}/api/auth/email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ email: "alice@example.test" }),
+    });
+    await fetch(`${baseUrl}/api/auth/forgot`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "alice" }),
+    });
+    return tokenFromLastEmail();
+  }
+
+  it("sets a new password and signs the user in", async () => {
+    const token = await requestReset();
+
+    const res = await fetch(`${baseUrl}/api/auth/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, password: "brand-new-password" }),
+    });
+    expect(res.status).toBe(200);
+    expect(sessionCookieFrom(res)).toMatch(/^session=/);
+
+    const login = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "alice", password: "brand-new-password" }),
+    });
+    expect(login.status).toBe(200);
+  });
+
+  it("burns the token, so the same link can't be used twice", async () => {
+    const token = await requestReset();
+    await fetch(`${baseUrl}/api/auth/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, password: "brand-new-password" }),
+    });
+
+    const second = await fetch(`${baseUrl}/api/auth/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, password: "another-password" }),
+    });
+    expect(second.status).toBe(400);
+  });
+
+  it("rejects an expired token", async () => {
+    const token = await requestReset();
+    state.resetTokens[0].expiresAt = new Date(Date.now() - 1000);
+
+    const res = await fetch(`${baseUrl}/api/auth/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, password: "brand-new-password" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a token that was never issued", async () => {
+    await signUpAlice();
+    const res = await fetch(`${baseUrl}/api/auth/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: "deadbeef".repeat(8), password: "brand-new-password" }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /api/auth/password", () => {
+  it("refuses without the current password", async () => {
+    const cookie = await signUpAlice();
+    const res = await fetch(`${baseUrl}/api/auth/password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ currentPassword: "wrong-password", newPassword: "a-new-password" }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("changes the password when the current one is right", async () => {
+    const cookie = await signUpAlice();
+    const res = await fetch(`${baseUrl}/api/auth/password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ currentPassword: "password123", newPassword: "a-new-password" }),
+    });
+    expect(res.status).toBe(200);
+
+    const login = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "alice", password: "a-new-password" }),
+    });
+    expect(login.status).toBe(200);
+  });
+});
+
+describe("DELETE /api/auth/me", () => {
+  it("refuses unless the username is typed back exactly", async () => {
+    const cookie = await signUpAlice();
+    const res = await fetch(`${baseUrl}/api/auth/me`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ confirm: "Alice", password: "password123" }),
+    });
+    expect(res.status).toBe(400);
+    expect(state.users).toHaveLength(1);
+  });
+
+  it("refuses on a wrong password even with the right username", async () => {
+    const cookie = await signUpAlice();
+    const res = await fetch(`${baseUrl}/api/auth/me`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ confirm: "alice", password: "not-my-password" }),
+    });
+    expect(res.status).toBe(403);
+    expect(state.users).toHaveLength(1);
+  });
+
+  it("deletes the account when both checks pass", async () => {
+    const cookie = await signUpAlice();
+    const res = await fetch(`${baseUrl}/api/auth/me`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ confirm: "alice", password: "password123" }),
+    });
+    expect(res.status).toBe(204);
+    expect(state.users).toHaveLength(0);
+  });
+});
+
+describe("POST /api/auth/login throttling", () => {
+  it("locks out after repeated wrong passwords and stays locked for a correct one", async () => {
+    await signUpAlice();
+
+    for (let i = 0; i < 8; i++) {
+      const res = await fetch(`${baseUrl}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: "alice", password: `wrong-${i}` }),
+      });
+      expect(res.status).toBe(401);
+    }
+
+    const ninth = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "alice", password: "password123" }),
+    });
+    expect(ninth.status).toBe(429);
+  });
+});
+
+describe("POST /api/auth/forgot throttling", () => {
+  it("stops a reset link being used to spam an inbox", async () => {
+    const cookie = await signUpAlice();
+    await fetch(`${baseUrl}/api/auth/email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ email: "alice@example.test" }),
+    });
+
+    for (let i = 0; i < 5; i++) {
+      const res = await fetch(`${baseUrl}/api/auth/forgot`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: "alice" }),
+      });
+      expect(res.status).toBe(200);
+    }
+
+    const sixth = await fetch(`${baseUrl}/api/auth/forgot`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "alice" }),
+    });
+    expect(sixth.status).toBe(429);
+    expect(sentMail).toHaveLength(5);
   });
 });

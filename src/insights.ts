@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config";
 import { localDayLabel } from "./matchWeek";
+import { recordError } from "./errorLog";
 
 const client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
 
@@ -21,6 +22,9 @@ Rules:
   never guilt-tripping, no macro breakdowns, no calorie-counting-app tone.
 - The diary timestamps are when entries were LOGGED, not when the food was eaten. \
   Never comment on meal timing, eating times, or time of day.
+- Some days may come with a note the member wrote about what was going on \
+  (illness, travel, an occasion). Take those at face value and let them \
+  explain the week — never second-guess them or treat them as excuses.
 - If a week is too sparse to say something specific and genuine for a section, \
   it's fine for that section to have fewer points, or even none, rather than \
   inventing detail.
@@ -47,6 +51,12 @@ export interface InsightsInput {
   dailyAverage: number;
   daysLogged: number;
   timeZone: string;
+  /**
+   * What the user wrote about particular days — "food poisoning", "stag do".
+   * Without these the review could only guess at why a week looked odd, and
+   * a guess about someone's bad week reads badly.
+   */
+  dayNotes?: { date: string; note: string }[];
 }
 
 function buildPrompt(input: InsightsInput): string {
@@ -56,12 +66,15 @@ function buildPrompt(input: InsightsInput): string {
     return `- ${day}: ${entry.label} — ${kcal}`;
   });
 
+  const noteLines = (input.dayNotes ?? []).map((note) => `- ${note.date}: ${note.note}`);
+
   return [
     `Week total: ${input.totalKcal} kcal`,
     `Daily average: ${input.dailyAverage} kcal over ${input.daysLogged} day${input.daysLogged === 1 ? "" : "s"} logged`,
     "",
     "Entries:",
     ...lines,
+    ...(noteLines.length > 0 ? ["", "What they said was going on those days:", ...noteLines] : []),
   ].join("\n");
 }
 
@@ -107,7 +120,7 @@ export async function generateWeekInsights(input: InsightsInput): Promise<WeekIn
     const isEmpty = Object.values(insights).every((list) => list.length === 0);
     return isEmpty ? null : insights;
   } catch (error) {
-    console.error("Week insights generation failed:", error);
+    void recordError("insights", error);
     return null;
   }
 }

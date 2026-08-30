@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config";
+import { recordError } from "./errorLog";
 
 const client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
 
@@ -76,7 +77,7 @@ export async function estimateExercise(
     if (!textBlock || textBlock.type !== "text") throw new Error("No text in response");
     return parseResponse(textBlock.text);
   } catch (error) {
-    console.error("Exercise estimation failed:", error);
+    void recordError("estimateExercise", error);
     const fallbackDescription = text?.trim()?.slice(0, 50) || "Exercise";
     return { description: fallbackDescription, kcalBurned: null };
   }

@@ -31,6 +31,15 @@ model User {
   // Target weight. weeklyGoalKg is the desired *rate*; this is the
   // destination, which is what makes a projected arrival date possible.
   goalWeightKg     Float?
+  // A kcal figure the user has chosen to aim at. Deliberately separate from
+  // the derived budget: the app can work one out from body stats or WHOOP,
+  // but "what am I aiming at today" should be a number the user owns and can
+  // override, not one that silently moves when a wearable syncs.
+  dailyCalorieTarget Int?
+  // Every session token issued before this instant is rejected (see
+  // src/auth.ts). Setting it to now is what "sign out everywhere" does —
+  // it revokes stateless tokens without needing a session table.
+  sessionsValidFrom DateTime?
   // Local hour (0-23) to send the "you haven't logged today" nudge, or null
   // for no reminder at all. Off by default: an app that starts nagging
   // without being asked gets its notifications turned off for good.
@@ -46,6 +55,108 @@ model User {
   weighIns         WeighIn[]
   savedMeals       SavedMeal[]
   pushSubscriptions PushSubscription[]
+  passwordResets   PasswordResetToken[]
+  measurements     Measurement[]
+  progressPhotos   ProgressPhoto[]
+  dayNotes         DayNote[]
+  waterLogs        WaterLog[]
+}
+
+// A single-use token for resetting a forgotten password. Only the hash is
+// stored, so a leaked database still doesn't hand anyone a working reset
+// link — the same reason passwordHash exists rather than the password.
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Tape measurements for one calendar day. Weight alone stalls for weeks at a
+// time on a training programme; waist keeps moving, which is why it's the
+// one measurement that's always shown and the rest are optional.
+model Measurement {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  date      String
+  waistCm   Float?
+  chestCm   Float?
+  hipsCm    Float?
+  thighCm   Float?
+  armCm     Float?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+// A progress photo, kept apart from Entry.imageUrl: a food photo belongs to
+// one meal in one week, whereas these are the series you look back through,
+// so they're keyed by day and never swept up by entry deletion.
+model ProgressPhoto {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  date      String
+  imageUrl  String
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, date])
+}
+
+// Free text about a day — "food poisoning", "stag do", "first week back
+// running". Fed to the weekly review so it can explain an odd week instead
+// of guessing at it.
+model DayNote {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  date      String
+  note      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+// One running millilitre total per calendar day rather than a row per glass:
+// nobody wants to scroll a list of eight identical 250ml entries, and the
+// only question ever asked of this data is "how much today".
+model WaterLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  date      String
+  ml        Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+// Server-side errors, kept in the database so a failure that happens at 3am
+// is still visible at 9am. stdout on Fly rolls away; this doesn't, and it's
+// what the Diagnostics panel in Settings reads.
+model AppError {
+  id        Int      @id @default(autoincrement())
+  // Where it happened — "whoop.sync", "estimate", "request", etc.
+  context   String
+  message   String
+  stack     String?
+  // Null for failures with no signed-in user (a cron job, an auth attempt).
+  userId    Int?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 // A starred food, keyed by the entry label normalized (trimmed, lowercased)
@@ -221,6 +332,11 @@ model Entry {
   // because every row that predates this column was AI-estimated.
   source      String    @default("ai")
   edited      Boolean   @default(false)
+  // How many of this item were eaten. kcal is always the *total* for the
+  // whole entry, not one unit — so the diary keeps summing straight whether
+  // or not anything ever sets a quantity, and changing it here rescales kcal
+  // proportionally (see routes/entries.ts).
+  quantity    Float     @default(1)
   matchWeekId Int
   matchWeek   MatchWeek @relation(fields: [matchWeekId], references: [id])
   createdAt   DateTime  @default(now())

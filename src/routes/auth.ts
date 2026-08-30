@@ -1,9 +1,20 @@
+import crypto from "node:crypto";
 import { Router } from "express";
 import { OAuth2Client } from "google-auth-library";
 import { z } from "zod";
 import { config } from "../config";
 import { prisma } from "../db";
-import { hashPassword, verifyPassword, setSessionCookie, clearSessionCookie, requireAuth } from "../auth";
+import {
+  hashPassword,
+  verifyPassword,
+  setSessionCookie,
+  clearSessionCookie,
+  requireAuth,
+  revokeAllSessions,
+} from "../auth";
+import { deleteAccount } from "../deleteAccount";
+import { canSendMail, sendMail } from "../mailer";
+import { consume, reset as resetRateLimit, LOGIN_BURST, RESET_BURST } from "../rateLimit";
 
 export const authRouter = Router();
 
@@ -27,6 +38,7 @@ const settingsSchema = z.object({
   activityLevel: z.enum(["sedentary", "light", "moderate", "active"]).nullable().optional(),
   weeklyGoalKg: z.number().min(0.1).max(1.5).nullable().optional(),
   goalWeightKg: z.number().min(30).max(700).nullable().optional(),
+  dailyCalorieTarget: z.number().int().min(800).max(8000).nullable().optional(),
   // Null turns the daily reminder off entirely.
   reminderHour: z.number().int().min(0).max(23).nullable().optional(),
 });
@@ -51,7 +63,11 @@ function toPublicUser(user: {
   activityLevel?: string | null;
   weeklyGoalKg?: number | null;
   goalWeightKg?: number | null;
+  dailyCalorieTarget?: number | null;
   reminderHour?: number | null;
+  email?: string | null;
+  googleId?: string | null;
+  passwordHash?: string | null;
 }) {
   return {
     id: user.id,
@@ -65,7 +81,13 @@ function toPublicUser(user: {
     activityLevel: user.activityLevel ?? null,
     weeklyGoalKg: user.weeklyGoalKg ?? null,
     goalWeightKg: user.goalWeightKg ?? null,
+    dailyCalorieTarget: user.dailyCalorieTarget ?? null,
     reminderHour: user.reminderHour ?? null,
+    email: user.email ?? null,
+    // The settings screen needs to know which recovery routes exist for this
+    // account without being told the secrets behind them.
+    hasGoogle: Boolean(user.googleId),
+    hasPassword: Boolean(user.passwordHash),
   };
 }
 
@@ -125,6 +147,18 @@ authRouter.post("/login", async (req, res) => {
   }
   const { username, password } = parsed.data;
 
+  // Throttled per username *and* per source address: keying on the username
+  // alone would let anyone lock a known account out by failing at it, and
+  // keying on the address alone does nothing against a spread-out attempt.
+  const throttleKey = `login:${username.toLowerCase()}:${req.ip ?? "unknown"}`;
+  const verdict = consume(throttleKey, LOGIN_BURST);
+  if (!verdict.allowed) {
+    res.status(429).json({
+      error: `Too many attempts. Try again in ${Math.ceil(verdict.retryAfterSec / 60)} minute(s).`,
+    });
+    return;
+  }
+
   const user = await prisma.user.findUnique({ where: { username } });
   // user.passwordHash is null for Google-only accounts — no password to check.
   const valid = user?.passwordHash ? await verifyPassword(password, user.passwordHash) : false;
@@ -133,6 +167,9 @@ authRouter.post("/login", async (req, res) => {
     return;
   }
 
+  // A correct password clears the count, so a run of typos before getting it
+  // right doesn't leave the account near its limit for the next quarter hour.
+  resetRateLimit(throttleKey);
   await setSessionCookie(res, user.id);
   res.json(toPublicUser(user));
 });
@@ -222,4 +259,272 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
 
   const user = await prisma.user.update({ where: { id: req.userId! }, data: parsed.data });
   res.json(toPublicUser(user));
+});
+
+// ---------------------------------------------------------------------------
+// Account recovery
+//
+// Two routes back into a locked-out account, because neither works on its
+// own for every account: an emailed reset link needs both a mail provider and
+// an address on file, and Google sign-in only helps if the account is linked.
+// GET /recovery-options says which apply before the user commits to one.
+// ---------------------------------------------------------------------------
+
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+
+function hashResetToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+authRouter.get("/recovery-options", (_req, res) => {
+  res.json({
+    email: canSendMail(),
+    google: Boolean(config.GOOGLE_SIGNIN_CLIENT_ID),
+  });
+});
+
+const forgotSchema = z.object({ username: z.string().trim().min(1).max(200) });
+
+authRouter.post("/forgot", async (req, res) => {
+  const parsed = forgotSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const verdict = consume(`forgot:${req.ip ?? "unknown"}`, RESET_BURST);
+  if (!verdict.allowed) {
+    res.status(429).json({ error: "Too many reset requests. Try again later." });
+    return;
+  }
+
+  if (!canSendMail()) {
+    res.status(503).json({
+      error: "Email reset isn't set up on this server. If your account is linked to Google, sign in with Google instead.",
+    });
+    return;
+  }
+
+  const identifier = parsed.data.username;
+  // Accepts either, because someone who has forgotten their password may well
+  // have forgotten which of the two they signed up with.
+  const user =
+    (await prisma.user.findUnique({ where: { username: identifier } })) ??
+    (await prisma.user.findUnique({ where: { email: identifier } }));
+
+  if (user?.email) {
+    const token = crypto.randomBytes(32).toString("hex");
+    await prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashResetToken(token),
+        expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+      },
+    });
+
+    const link = `${config.APP_BASE_URL}/?reset=${token}`;
+    await sendMail({
+      to: user.email,
+      subject: "Reset your food diary password",
+      text: `Someone asked to reset the password for "${user.username}".\n\nOpen this link within the hour to choose a new one:\n${link}\n\nIf that wasn't you, ignore this email — nothing has changed.`,
+    });
+  }
+
+  // Deliberately the same answer whether or not the account exists, so this
+  // endpoint can't be used to find out which usernames are real.
+  res.json({ ok: true });
+});
+
+const resetSchema = z.object({
+  token: z.string().min(10),
+  password: z.string().min(8).max(200),
+});
+
+authRouter.post("/reset", async (req, res) => {
+  const parsed = resetSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Choose a password of at least 8 characters." });
+    return;
+  }
+
+  const record = await prisma.passwordResetToken.findUnique({
+    where: { tokenHash: hashResetToken(parsed.data.token) },
+  });
+  if (!record || record.usedAt || record.expiresAt < new Date()) {
+    res.status(400).json({ error: "That reset link has expired. Request a new one." });
+    return;
+  }
+
+  const passwordHash = await hashPassword(parsed.data.password);
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: record.userId }, data: { passwordHash } }),
+    prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
+    // Any other outstanding link for this account stops working too — a reset
+    // that leaves a second live link behind hasn't really secured anything.
+    prisma.passwordResetToken.updateMany({
+      where: { userId: record.userId, usedAt: null },
+      data: { usedAt: new Date() },
+    }),
+  ]);
+
+  // A reset is the response to "someone may have my password", so every
+  // existing session goes with it.
+  await revokeAllSessions(record.userId);
+
+  const user = await prisma.user.findUnique({ where: { id: record.userId } });
+  if (!user) {
+    res.status(400).json({ error: "That account no longer exists." });
+    return;
+  }
+  await setSessionCookie(res, user.id);
+  res.json(toPublicUser(user));
+});
+
+// ---------------------------------------------------------------------------
+// Signed-in account management
+// ---------------------------------------------------------------------------
+
+const passwordChangeSchema = z.object({
+  // Absent for a Google-only account setting its first password — there is no
+  // current password to prove.
+  currentPassword: z.string().optional(),
+  newPassword: z.string().min(8).max(200),
+});
+
+authRouter.post("/password", requireAuth, async (req, res) => {
+  const parsed = passwordChangeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Choose a password of at least 8 characters." });
+    return;
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: req.userId! } });
+  if (!user) {
+    res.status(401).json({ error: "Not signed in" });
+    return;
+  }
+
+  if (user.passwordHash) {
+    const ok = parsed.data.currentPassword
+      ? await verifyPassword(parsed.data.currentPassword, user.passwordHash)
+      : false;
+    if (!ok) {
+      res.status(403).json({ error: "That's not your current password." });
+      return;
+    }
+  }
+
+  const passwordHash = await hashPassword(parsed.data.newPassword);
+  await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+  await revokeAllSessions(user.id);
+  // The device that just changed the password shouldn't be signed out by its
+  // own action, so it gets a fresh token on the way out.
+  await setSessionCookie(res, user.id);
+  res.json({ ok: true });
+});
+
+const emailSchema = z.object({ email: z.string().trim().email().max(200).nullable() });
+
+authRouter.post("/email", requireAuth, async (req, res) => {
+  const parsed = emailSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "That doesn't look like an email address." });
+    return;
+  }
+
+  const email = parsed.data.email;
+  if (email) {
+    const clash = await prisma.user.findUnique({ where: { email } });
+    if (clash && clash.id !== req.userId) {
+      res.status(409).json({ error: "Another account already uses that address." });
+      return;
+    }
+  }
+
+  const user = await prisma.user.update({ where: { id: req.userId! }, data: { email } });
+  res.json(toPublicUser(user));
+});
+
+authRouter.post("/link-google", requireAuth, async (req, res) => {
+  if (!googleClient || !config.GOOGLE_SIGNIN_CLIENT_ID) {
+    res.status(503).json({ error: "Google sign-in is not configured." });
+    return;
+  }
+
+  const parsed = googleSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  let payload;
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: parsed.data.credential,
+      audience: config.GOOGLE_SIGNIN_CLIENT_ID,
+    });
+    payload = ticket.getPayload();
+  } catch {
+    res.status(401).json({ error: "Invalid Google credential." });
+    return;
+  }
+  if (!payload?.sub || !payload.email || !payload.email_verified) {
+    res.status(401).json({ error: "Invalid Google credential." });
+    return;
+  }
+
+  const claimed = await prisma.user.findUnique({ where: { googleId: payload.sub } });
+  if (claimed && claimed.id !== req.userId) {
+    res.status(409).json({ error: "That Google account is already linked to another account." });
+    return;
+  }
+  // Linking is only ever done deliberately by someone already signed in —
+  // never inferred from a matching email address, which anyone can type into
+  // the settings screen.
+  const existingEmail = await prisma.user.findUnique({ where: { email: payload.email } });
+  const user = await prisma.user.update({
+    where: { id: req.userId! },
+    data: {
+      googleId: payload.sub,
+      email: existingEmail && existingEmail.id !== req.userId ? undefined : payload.email,
+    },
+  });
+  res.json(toPublicUser(user));
+});
+
+authRouter.post("/logout-everywhere", requireAuth, async (req, res) => {
+  await revokeAllSessions(req.userId!);
+  clearSessionCookie(res);
+  res.status(204).end();
+});
+
+const deleteSchema = z.object({
+  // Typed back by the user, so a mis-tap on a destructive button can't take
+  // the account with it.
+  confirm: z.string(),
+  password: z.string().optional(),
+});
+
+authRouter.delete("/me", requireAuth, async (req, res) => {
+  const parsed = deleteSchema.safeParse(req.body);
+  const user = await prisma.user.findUnique({ where: { id: req.userId! } });
+  if (!user) {
+    res.status(401).json({ error: "Not signed in" });
+    return;
+  }
+  if (!parsed.success || parsed.data.confirm !== user.username) {
+    res.status(400).json({ error: "Type your username exactly to confirm." });
+    return;
+  }
+  if (user.passwordHash) {
+    const ok = parsed.data.password ? await verifyPassword(parsed.data.password, user.passwordHash) : false;
+    if (!ok) {
+      res.status(403).json({ error: "That's not your password." });
+      return;
+    }
+  }
+
+  await deleteAccount(user.id);
+  clearSessionCookie(res);
+  res.status(204).end();
 });

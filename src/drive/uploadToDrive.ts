@@ -61,13 +61,27 @@ export interface DriveUploadResult {
 }
 
 export async function uploadReportToDrive(fileName: string, pdfBuffer: Buffer): Promise<DriveUploadResult> {
+  return uploadFileToDrive(fileName, pdfBuffer, "application/pdf");
+}
+
+/**
+ * The generic form behind uploadReportToDrive. The nightly database backup
+ * uses it to put a copy of the SQLite file somewhere that isn't the same Fly
+ * volume as the original — a backup on the disk it exists to survive is not a
+ * backup.
+ */
+export async function uploadFileToDrive(
+  fileName: string,
+  buffer: Buffer,
+  mimeType: string,
+): Promise<DriveUploadResult> {
   const auth = getOAuthClient();
   const drive = google.drive({ version: "v3", auth });
   const folderId = await resolveFolderId(drive);
 
   const response = await drive.files.create({
     requestBody: { name: fileName, parents: [folderId] },
-    media: { mimeType: "application/pdf", body: Readable.from(pdfBuffer) },
+    media: { mimeType, body: Readable.from(buffer) },
     fields: "id, webViewLink",
   });
 

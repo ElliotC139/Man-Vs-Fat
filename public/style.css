@@ -630,7 +630,9 @@ h2 {
 .day-heading {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  /* Centred, not baseline: the note button is a 28px box with no text in it,
+     and baseline alignment hung it below the row. */
+  align-items: center;
   gap: 8px;
   font-family: var(--font-heading);
   font-weight: 600;
@@ -2920,4 +2922,389 @@ tr.has-tooltip:active {
   margin: 12px 0 0;
   font-size: 0.78rem;
   line-height: 1.45;
+}
+
+/* ── Today's target ────────────────────────────────────────────────────────
+   A single bar rather than a ring: it sits inside the week summary card, and
+   a ring there would compete with the form guide directly above it. */
+.target-today {
+  padding: 0 0 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--hairline);
+}
+.target-today-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.target-today-label {
+  font-family: var(--font-heading);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+.target-today-figures {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.target-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--hairline);
+  overflow: hidden;
+}
+.target-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--pitch), var(--pitch-light));
+  transition: width 400ms var(--ease);
+}
+/* Over the target is the floodlight, matching what "over" already means on
+   the form guide — not the danger red, which this app doesn't use to judge
+   a day's eating. */
+.target-fill--over {
+  background: linear-gradient(90deg, var(--amber), var(--floodlight));
+}
+.target-today-note {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .target-fill { transition: none; }
+}
+
+/* ── Water ── */
+.water-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.water-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.water-title {
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.water-total {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--pitch-dark);
+}
+.water-buttons {
+  display: flex;
+  gap: 8px;
+}
+.water-buttons .water-btn {
+  flex: 1 1 0;
+}
+
+/* ── Entry photos ── */
+.entry-thumb {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  min-height: 0;
+  box-shadow: none;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: none;
+  cursor: pointer;
+}
+.entry-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.entry-qty {
+  margin-left: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+/* Narrower than the label and kcal fields it sits between — a quantity is
+   one or two characters, and giving it an equal share squeezed both. */
+.entry-edit-row .entry-qty-input {
+  max-width: 72px;
+}
+
+.photo-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  background: rgba(8, 14, 11, 0.92);
+}
+.photo-modal img {
+  max-width: 100%;
+  max-height: 78vh;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+.photo-modal-caption {
+  margin: 0;
+  color: #fff;
+  font-size: 0.9rem;
+  text-align: center;
+}
+.photo-modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  min-height: 0;
+  box-shadow: none;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  cursor: pointer;
+}
+
+/* ── Day notes ── */
+.day-note-btn {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  box-shadow: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+/* A day with a note reads differently before you tap anything — that's the
+   whole point of putting the marker on the heading. */
+.day-note-btn--set {
+  color: var(--pitch);
+  background: rgba(31, 157, 82, 0.12);
+}
+.day-note {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  font-style: italic;
+  color: var(--muted);
+  border-left: 3px solid var(--hairline);
+}
+.day-note-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+}
+.day-note-editor textarea {
+  width: 100%;
+  margin: 0;
+}
+.day-note-editor button {
+  align-self: flex-start;
+}
+
+/* ── Copy a day ── */
+.copy-day-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.copy-day-fields {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.copy-day-fields .settings-field {
+  flex: 1 1 140px;
+}
+
+/* ── Measurements ── */
+.measurement-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.measurement-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.measurement-row:last-child {
+  border-bottom: none;
+}
+.measurement-date {
+  flex: 0 0 auto;
+  min-width: 72px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.measurement-values {
+  flex: 1 1 auto;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.measurement-del {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: none;
+  box-shadow: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+/* ── Progress photos ── */
+.progress-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.progress-photo {
+  position: relative;
+  margin: 0;
+}
+.progress-photo-btn {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  min-height: 0;
+  box-shadow: none;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: none;
+  cursor: pointer;
+}
+.progress-photo-btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.progress-photo figcaption {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-align: center;
+}
+.progress-photo-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 26px;
+  height: 26px;
+  min-height: 0;
+  box-shadow: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(8, 14, 11, 0.6);
+  color: #fff;
+  cursor: pointer;
+}
+
+/* ── Diagnostics ── */
+.diagnostics-errors {
+  margin-top: 10px;
+}
+.diagnostics-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 4px 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 0.8rem;
+}
+.diagnostics-when {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.diagnostics-context {
+  font-weight: 600;
+  color: var(--amber);
+  white-space: nowrap;
+}
+.diagnostics-message {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  /* A stack trace or a long API error must not push the settings card
+     sideways on a phone. */
+  overflow-wrap: anywhere;
+}
+
+/* ── Danger zone ── */
+.settings-fieldset--danger {
+  border-color: var(--danger);
+}
+.settings-fieldset--danger legend {
+  color: var(--danger);
+}
+.danger-btn {
+  width: 100%;
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  /* The shared button rule glows green; on a delete button that reads as
+     reassurance, which is the opposite of what this one is. */
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.28);
+}
+.danger-btn:hover {
+  filter: brightness(0.94);
+}
+
+.settings-legal,
+.auth-legal {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 0.82rem;
+}
+
+/* The day's total stays hard right whatever sits between it and the label. */
+.day-heading-label {
+  min-width: 0;
+}
+.day-heading-kcal {
+  margin-left: auto;
+  white-space: nowrap;
 }
