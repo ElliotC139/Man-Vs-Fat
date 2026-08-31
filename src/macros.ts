@@ -17,6 +17,18 @@ export const MACRO_MODES = ["grams", "percent"] as const;
 export type MacroMode = (typeof MACRO_MODES)[number];
 
 /**
+ * How to read a gram target. The three macros are rarely wanted the same way
+ * round — protein is usually a floor you're trying to clear, carbs or fat a
+ * ceiling you're trying to stay under — so each carries its own comparison
+ * rather than all three being read as "hit this number".
+ *
+ * Percent mode is always "eq": percentages have to sum to 100, so "at least
+ * 40% protein" can't be satisfied without saying what gives way.
+ */
+export const MACRO_OPS = ["min", "max", "eq"] as const;
+export type MacroOp = (typeof MACRO_OPS)[number];
+
+/**
  * Atwater factors — the conventional kcal per gram used by every food label
  * and nutrition database, which is what makes a percentage target mean the
  * same thing here as it does everywhere else.
@@ -33,12 +45,24 @@ export interface MacroGrams {
   fat: number;
 }
 
+/** One macro's target: a gram figure and how to read it. */
+export interface MacroTarget {
+  grams: number;
+  op: MacroOp;
+}
+
+/** Null for a macro that simply isn't tracked — blank in the settings form. */
+export type MacroTargetSet = Record<MacroKey, MacroTarget | null>;
+
 export interface MacroTargetUser {
   dailyCalorieTarget?: number | null;
   macroMode?: string | null;
   proteinTargetG?: number | null;
   carbsTargetG?: number | null;
   fatTargetG?: number | null;
+  proteinOp?: string | null;
+  carbsOp?: string | null;
+  fatOp?: string | null;
   proteinPct?: number | null;
   carbsPct?: number | null;
   fatPct?: number | null;
@@ -46,13 +70,32 @@ export interface MacroTargetUser {
 
 export interface ResolvedMacroTargets {
   mode: MacroMode;
-  grams: MacroGrams;
-  /** Percentages, whether stored directly or derived from the gram targets. */
-  percent: MacroGrams;
-  /** What the three gram targets add up to in kcal. */
-  kcalFromMacros: number;
+  /** Per macro, or null where it isn't being tracked. */
+  targets: MacroTargetSet;
+  /**
+   * What the tracked targets come to in kcal — only meaningful when every one
+   * of them is an "about" figure. A floor plus a ceiling doesn't describe a
+   * total, so this is null rather than a number that looks like one.
+   */
+  kcalFromMacros: number | null;
   /** The user's own calorie target, when one is set. */
   calorieTarget: number | null;
+}
+
+function readOp(value: unknown): MacroOp {
+  // Anything unrecognised — including the null every target set before this
+  // column existed carries — reads as "about", which is what those meant.
+  return value === "min" || value === "max" ? value : "eq";
+}
+
+/**
+ * A gram figure that's actually a target. Zero counts as untracked as well as
+ * null: a 0g target means nothing, and treating it as one would put a row on
+ * the diary that can only ever read "0g over".
+ */
+function readGrams(value: number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  return value > 0 ? value : null;
 }
 
 /**
@@ -76,35 +119,37 @@ export function resolveMacroTargets(user: MacroTargetUser): ResolvedMacroTargets
     };
     if (!calorieTarget || pct.protein + pct.carbs + pct.fat === 0) return null;
 
-    const grams = {
-      protein: Math.round((calorieTarget * pct.protein) / 100 / KCAL_PER_GRAM.protein),
-      carbs: Math.round((calorieTarget * pct.carbs) / 100 / KCAL_PER_GRAM.carbs),
-      fat: Math.round((calorieTarget * pct.fat) / 100 / KCAL_PER_GRAM.fat),
+    const targets: MacroTargetSet = {
+      protein: { grams: Math.round((calorieTarget * pct.protein) / 100 / KCAL_PER_GRAM.protein), op: "eq" },
+      carbs: { grams: Math.round((calorieTarget * pct.carbs) / 100 / KCAL_PER_GRAM.carbs), op: "eq" },
+      fat: { grams: Math.round((calorieTarget * pct.fat) / 100 / KCAL_PER_GRAM.fat), op: "eq" },
     };
-    return { mode, grams, percent: pct, kcalFromMacros: kcalOf(grams), calorieTarget };
+    return { mode, targets, kcalFromMacros: kcalOfTargets(targets), calorieTarget };
   }
 
-  const grams = {
-    protein: user.proteinTargetG ?? 0,
-    carbs: user.carbsTargetG ?? 0,
-    fat: user.fatTargetG ?? 0,
+  const targets: MacroTargetSet = {
+    protein: buildTarget(user.proteinTargetG, user.proteinOp),
+    carbs: buildTarget(user.carbsTargetG, user.carbsOp),
+    fat: buildTarget(user.fatTargetG, user.fatOp),
   };
-  if (grams.protein + grams.carbs + grams.fat === 0) return null;
+  // Every macro blank is the same as macros being off.
+  if (MACRO_KEYS.every((key) => targets[key] === null)) return null;
 
-  // In gram mode the percentages are reported back as a share of what those
-  // grams themselves come to, not of the calorie target — the two can
-  // legitimately differ, and showing a share of a number the grams don't add
-  // up to would be a lie about the split.
-  const kcalFromMacros = kcalOf(grams);
-  const percent = kcalFromMacros === 0
-    ? { protein: 0, carbs: 0, fat: 0 }
-    : {
-        protein: Math.round((grams.protein * KCAL_PER_GRAM.protein * 100) / kcalFromMacros),
-        carbs: Math.round((grams.carbs * KCAL_PER_GRAM.carbs * 100) / kcalFromMacros),
-        fat: Math.round((grams.fat * KCAL_PER_GRAM.fat * 100) / kcalFromMacros),
-      };
+  return { mode, targets, kcalFromMacros: kcalOfTargets(targets), calorieTarget };
+}
 
-  return { mode, grams, percent, kcalFromMacros, calorieTarget };
+function buildTarget(grams: number | null | undefined, op: unknown): MacroTarget | null {
+  const value = readGrams(grams);
+  return value === null ? null : { grams: value, op: readOp(op) };
+}
+
+/** Only a real total when every tracked macro is an "about" figure. */
+function kcalOfTargets(targets: MacroTargetSet): number | null {
+  const tracked = MACRO_KEYS.map((key) => targets[key]).filter((t): t is MacroTarget => t !== null);
+  if (tracked.length === 0 || tracked.some((t) => t.op !== "eq")) return null;
+  return Math.round(
+    MACRO_KEYS.reduce((sum, key) => sum + (targets[key]?.grams ?? 0) * KCAL_PER_GRAM[key], 0),
+  );
 }
 
 /** What a set of gram figures comes to in calories. */
@@ -114,6 +159,73 @@ export function kcalOf(grams: MacroGrams): number {
       grams.carbs * KCAL_PER_GRAM.carbs +
       grams.fat * KCAL_PER_GRAM.fat,
   );
+}
+
+export type MacroVerdict = "under" | "met" | "over";
+
+export interface MacroProgress {
+  key: MacroKey;
+  target: MacroTarget;
+  eaten: number;
+  /**
+   * "under" — short of a floor, or still inside a ceiling with room to spare.
+   * "met"   — a floor cleared, or an "about" figure hit closely enough.
+   * "over"  — past a ceiling, or well past an "about" figure.
+   *
+   * Note that "over" is a warning for a ceiling and a *good* outcome for a
+   * floor, which is why the verdict and the colour are decided separately —
+   * see `isGood` below.
+   */
+  verdict: MacroVerdict;
+  /** True when the day currently satisfies this target. */
+  isGood: boolean;
+  /** Grams still to go (positive) or past the figure (negative). */
+  remaining: number;
+  /** 0-100, for the bar. */
+  percentOfTarget: number;
+}
+
+/**
+ * An "about" target can't mean exactly-to-the-gram — nobody lands a food
+ * diary on 200.0g of carbs — so it counts as met inside this margin either
+ * side. A floor or a ceiling has a hard edge and doesn't use it.
+ */
+const EQ_TOLERANCE = 0.05;
+
+/**
+ * The single place a macro is judged against its target. The diary mirrors
+ * this in JavaScript to render the Today card without a round trip; if the
+ * rules here change, that copy has to change with it.
+ */
+export function macroProgress(key: MacroKey, target: MacroTarget, eaten: number): MacroProgress {
+  const remaining = Math.round((target.grams - eaten) * 10) / 10;
+  const percentOfTarget = target.grams === 0 ? 0 : Math.max(0, Math.min(100, (eaten / target.grams) * 100));
+
+  let verdict: MacroVerdict;
+  let isGood: boolean;
+
+  if (target.op === "min") {
+    verdict = eaten >= target.grams ? "met" : "under";
+    isGood = verdict === "met";
+  } else if (target.op === "max") {
+    verdict = eaten > target.grams ? "over" : "under";
+    isGood = verdict === "under";
+  } else {
+    const margin = target.grams * EQ_TOLERANCE;
+    if (eaten > target.grams + margin) verdict = "over";
+    else if (eaten < target.grams - margin) verdict = "under";
+    else verdict = "met";
+    isGood = verdict === "met";
+  }
+
+  return { key, target, eaten, verdict, isGood, remaining, percentOfTarget };
+}
+
+/** Plain-English restatement of a target, used in settings and the PDF. */
+export function describeTarget(key: MacroKey, target: MacroTarget): string {
+  const name = key === "carbs" ? "carbs" : key;
+  const phrase = target.op === "min" ? "at least" : target.op === "max" ? "at most" : "about";
+  return `${name} ${phrase} ${target.grams}g`;
 }
 
 export interface MacroSource {

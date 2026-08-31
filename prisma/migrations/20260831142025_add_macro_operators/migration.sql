@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN "carbsOp" TEXT;
+ALTER TABLE "User" ADD COLUMN "fatOp" TEXT;
+ALTER TABLE "User" ADD COLUMN "proteinOp" TEXT;

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   clampMacrosToKcal,
+  describeTarget,
   kcalOf,
+  macroProgress,
   resolveMacroTargets,
   scaleMacros,
   sumMacros,
@@ -13,7 +15,7 @@ describe("resolveMacroTargets", () => {
     expect(resolveMacroTargets({})).toBeNull();
   });
 
-  it("uses gram targets directly and reports the split they imply", () => {
+  it("uses gram targets directly, defaulting an unset operator to 'about'", () => {
     const resolved = resolveMacroTargets({
       macroMode: "grams",
       dailyCalorieTarget: 2200,
@@ -22,11 +24,72 @@ describe("resolveMacroTargets", () => {
       fatTargetG: 60,
     })!;
 
-    expect(resolved.grams).toEqual({ protein: 180, carbs: 200, fat: 60 });
-    // 720 + 800 + 540 = 2060 kcal, which is deliberately allowed to differ
-    // from the 2200 calorie target — the percentages describe the grams.
+    // Every target set before operators existed meant "about", so a null
+    // operator has to keep reading that way.
+    expect(resolved.targets.protein).toEqual({ grams: 180, op: "eq" });
+    expect(resolved.targets.carbs).toEqual({ grams: 200, op: "eq" });
+    expect(resolved.targets.fat).toEqual({ grams: 60, op: "eq" });
+    // 720 + 800 + 540, deliberately allowed to differ from the 2200 target.
     expect(resolved.kcalFromMacros).toBe(2060);
-    expect(resolved.percent.protein + resolved.percent.carbs + resolved.percent.fat).toBeCloseTo(100, 0);
+  });
+
+  it("carries each macro's own operator", () => {
+    const resolved = resolveMacroTargets({
+      macroMode: "grams",
+      proteinTargetG: 180,
+      proteinOp: "min",
+      carbsTargetG: 200,
+      carbsOp: "max",
+      fatTargetG: 60,
+      fatOp: "eq",
+    })!;
+
+    expect(resolved.targets.protein).toEqual({ grams: 180, op: "min" });
+    expect(resolved.targets.carbs).toEqual({ grams: 200, op: "max" });
+    expect(resolved.targets.fat).toEqual({ grams: 60, op: "eq" });
+  });
+
+  it("leaves a blank macro untracked rather than targeting zero", () => {
+    const resolved = resolveMacroTargets({
+      macroMode: "grams",
+      proteinTargetG: 180,
+      proteinOp: "min",
+      carbsTargetG: null,
+      // A stored 0 is the same thing: a 0g target means nothing, and reading
+      // it as one would put a row on the diary that can only read "0g over".
+      fatTargetG: 0,
+    })!;
+
+    expect(resolved.targets.protein).toEqual({ grams: 180, op: "min" });
+    expect(resolved.targets.carbs).toBeNull();
+    expect(resolved.targets.fat).toBeNull();
+  });
+
+  it("gives no kcal total once a target is a floor or a ceiling", () => {
+    const resolved = resolveMacroTargets({
+      macroMode: "grams",
+      proteinTargetG: 180,
+      proteinOp: "min",
+      carbsTargetG: 200,
+      carbsOp: "eq",
+      fatTargetG: 60,
+      fatOp: "eq",
+    })!;
+
+    // "At least 180g protein" describes a range, not a day, so there is no
+    // honest single kcal figure to report.
+    expect(resolved.kcalFromMacros).toBeNull();
+  });
+
+  it("tracking protein alone is a valid setup", () => {
+    const resolved = resolveMacroTargets({
+      macroMode: "grams",
+      proteinTargetG: 180,
+      proteinOp: "min",
+    })!;
+    expect(resolved.targets.protein).not.toBeNull();
+    expect(resolved.targets.carbs).toBeNull();
+    expect(resolved.kcalFromMacros).toBeNull();
   });
 
   it("derives grams from percentages of the calorie target", () => {
@@ -39,8 +102,12 @@ describe("resolveMacroTargets", () => {
     })!;
 
     // 600 kcal protein / 4 = 150g, 800 / 4 = 200g, 600 / 9 = 66.7 -> 67g
-    expect(resolved.grams).toEqual({ protein: 150, carbs: 200, fat: 67 });
-    expect(resolved.percent).toEqual({ protein: 30, carbs: 40, fat: 30 });
+    expect(resolved.targets.protein).toEqual({ grams: 150, op: "eq" });
+    expect(resolved.targets.carbs).toEqual({ grams: 200, op: "eq" });
+    expect(resolved.targets.fat).toEqual({ grams: 67, op: "eq" });
+    // Percentages have to sum to 100, so they're always "about" — "at least
+    // 40% protein" can't be satisfied without saying what gives way.
+    expect(resolved.kcalFromMacros).toBe(2003);
   });
 
   it("moves the gram targets when the calorie target changes, in percent mode", () => {
@@ -49,8 +116,8 @@ describe("resolveMacroTargets", () => {
     const large = resolveMacroTargets({ ...base, dailyCalorieTarget: 3000 })!;
     // The whole reason percentages are stored as percentages rather than as
     // pre-computed grams: a bigger day means proportionally more of each.
-    expect(large.grams.protein).toBeGreaterThan(small.grams.protein);
-    expect(large.grams.protein).toBe(225);
+    expect(large.targets.protein!.grams).toBeGreaterThan(small.targets.protein!.grams);
+    expect(large.targets.protein!.grams).toBe(225);
   });
 
   it("refuses percent mode with no calorie target to divide up", () => {
@@ -59,9 +126,9 @@ describe("resolveMacroTargets", () => {
     ).toBeNull();
   });
 
-  it("treats all-zero targets as not set", () => {
+  it("treats every macro blank as macros being off", () => {
     expect(
-      resolveMacroTargets({ macroMode: "grams", proteinTargetG: 0, carbsTargetG: 0, fatTargetG: 0 }),
+      resolveMacroTargets({ macroMode: "grams", proteinTargetG: 0, carbsTargetG: null, fatTargetG: 0 }),
     ).toBeNull();
   });
 });
@@ -149,5 +216,93 @@ describe("scaleMacros", () => {
 describe("kcalOf", () => {
   it("uses 4/4/9", () => {
     expect(kcalOf({ protein: 100, carbs: 100, fat: 100 })).toBe(1700);
+  });
+});
+
+describe("macroProgress", () => {
+  describe("a floor (at least)", () => {
+    const target = { grams: 180, op: "min" as const };
+
+    it("counts down while short of it", () => {
+      const p = macroProgress("protein", target, 125);
+      expect(p.verdict).toBe("under");
+      expect(p.isGood).toBe(false);
+      expect(p.remaining).toBe(55);
+      expect(p.percentOfTarget).toBeCloseTo(69.4, 0);
+    });
+
+    it("is met exactly on the line", () => {
+      const p = macroProgress("protein", target, 180);
+      expect(p.verdict).toBe("met");
+      expect(p.isGood).toBe(true);
+    });
+
+    it("stays good past it — clearing a floor is the point", () => {
+      const p = macroProgress("protein", target, 210);
+      expect(p.verdict).toBe("met");
+      expect(p.isGood).toBe(true);
+      // The bar stops at full rather than overflowing.
+      expect(p.percentOfTarget).toBe(100);
+    });
+  });
+
+  describe("a ceiling (at most)", () => {
+    const target = { grams: 200, op: "max" as const };
+
+    it("is fine with room to spare", () => {
+      const p = macroProgress("carbs", target, 150);
+      expect(p.verdict).toBe("under");
+      expect(p.isGood).toBe(true);
+      expect(p.remaining).toBe(50);
+    });
+
+    it("is still fine exactly on the line", () => {
+      const p = macroProgress("carbs", target, 200);
+      expect(p.verdict).toBe("under");
+      expect(p.isGood).toBe(true);
+    });
+
+    it("goes bad the moment it's passed", () => {
+      const p = macroProgress("carbs", target, 215);
+      expect(p.verdict).toBe("over");
+      expect(p.isGood).toBe(false);
+      expect(p.remaining).toBe(-15);
+    });
+  });
+
+  describe("an about figure", () => {
+    const target = { grams: 60, op: "eq" as const };
+
+    it("counts a near miss as met — nobody lands a diary on the gram", () => {
+      expect(macroProgress("fat", target, 58).verdict).toBe("met");
+      expect(macroProgress("fat", target, 62).verdict).toBe("met");
+    });
+
+    it("is under when short of the margin", () => {
+      const p = macroProgress("fat", target, 40);
+      expect(p.verdict).toBe("under");
+      expect(p.isGood).toBe(false);
+    });
+
+    it("is over when past the margin", () => {
+      const p = macroProgress("fat", target, 80);
+      expect(p.verdict).toBe("over");
+      expect(p.isGood).toBe(false);
+    });
+  });
+
+  it("the same intake reads differently depending on the operator", () => {
+    // The whole point of the feature: 210g against a target of 180 is a good
+    // day for a protein floor and a bad one for a carb ceiling.
+    expect(macroProgress("protein", { grams: 180, op: "min" }, 210).isGood).toBe(true);
+    expect(macroProgress("carbs", { grams: 180, op: "max" }, 210).isGood).toBe(false);
+  });
+});
+
+describe("describeTarget", () => {
+  it("reads each operator back in plain English", () => {
+    expect(describeTarget("protein", { grams: 180, op: "min" })).toBe("protein at least 180g");
+    expect(describeTarget("carbs", { grams: 200, op: "max" })).toBe("carbs at most 200g");
+    expect(describeTarget("fat", { grams: 60, op: "eq" })).toBe("fat about 60g");
   });
 });

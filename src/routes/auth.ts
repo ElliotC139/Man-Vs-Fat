@@ -15,7 +15,7 @@ import {
 import { deleteAccount } from "../deleteAccount";
 import { canSendMail, sendMail } from "../mailer";
 import { consume, reset as resetRateLimit, LOGIN_BURST, RESET_BURST } from "../rateLimit";
-import { MACRO_MODES, resolveMacroTargets } from "../macros";
+import { MACRO_MODES, MACRO_OPS, resolveMacroTargets } from "../macros";
 
 export const authRouter = Router();
 
@@ -46,6 +46,9 @@ const settingsSchema = z.object({
   proteinTargetG: z.number().int().min(0).max(600).nullable().optional(),
   carbsTargetG: z.number().int().min(0).max(1200).nullable().optional(),
   fatTargetG: z.number().int().min(0).max(500).nullable().optional(),
+  proteinOp: z.enum(MACRO_OPS).nullable().optional(),
+  carbsOp: z.enum(MACRO_OPS).nullable().optional(),
+  fatOp: z.enum(MACRO_OPS).nullable().optional(),
   proteinPct: z.number().int().min(0).max(100).nullable().optional(),
   carbsPct: z.number().int().min(0).max(100).nullable().optional(),
   fatPct: z.number().int().min(0).max(100).nullable().optional(),
@@ -78,6 +81,9 @@ function toPublicUser(user: {
   proteinTargetG?: number | null;
   carbsTargetG?: number | null;
   fatTargetG?: number | null;
+  proteinOp?: string | null;
+  carbsOp?: string | null;
+  fatOp?: string | null;
   proteinPct?: number | null;
   carbsPct?: number | null;
   fatPct?: number | null;
@@ -103,6 +109,9 @@ function toPublicUser(user: {
     proteinTargetG: user.proteinTargetG ?? null,
     carbsTargetG: user.carbsTargetG ?? null,
     fatTargetG: user.fatTargetG ?? null,
+    proteinOp: user.proteinOp ?? null,
+    carbsOp: user.carbsOp ?? null,
+    fatOp: user.fatOp ?? null,
     proteinPct: user.proteinPct ?? null,
     carbsPct: user.carbsPct ?? null,
     fatPct: user.fatPct ?? null,
@@ -329,6 +338,9 @@ function validateMacroSettings(user: {
     return null;
   }
 
+  // Blanks are allowed and mean "don't track this one", so the only thing
+  // that has to hold is that at least one macro is being tracked — otherwise
+  // macros are on with nothing to show, which is just a worse "off".
   const grams = (user.proteinTargetG ?? 0) + (user.carbsTargetG ?? 0) + (user.fatTargetG ?? 0);
   if (grams === 0) return "Set at least one macro target, or turn macros off.";
   return null;

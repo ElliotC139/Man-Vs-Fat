@@ -202,14 +202,19 @@
           </div>
 
           <div id="target-today" class="target-today" hidden>
-            <div class="target-today-head">
-              <span class="target-today-label">Today</span>
-              <span id="target-today-figures" class="target-today-figures"></span>
+            <div id="target-calories" class="target-calories">
+              <div class="target-today-head">
+                <span class="target-today-label">Today</span>
+                <span id="target-today-figures" class="target-today-figures"></span>
+              </div>
+              <div class="target-track"><div id="target-fill" class="target-fill"></div></div>
+              <span id="target-today-note" class="target-today-note"></span>
             </div>
-            <div class="target-track"><div id="target-fill" class="target-fill"></div></div>
-            <span id="target-today-note" class="target-today-note"></span>
 
             <div id="macro-today" class="macro-today" hidden>
+              <div id="macro-today-heading" class="target-today-head" hidden>
+                <span class="target-today-label">Today</span>
+              </div>
               <div class="macro-row" data-macro="protein">
                 <span class="macro-name">Protein</span>
                 <div class="macro-track"><div class="macro-fill"></div></div>
@@ -598,18 +603,44 @@
             </div>
 
             <div id="macro-targets-grams" class="macro-targets" hidden>
-              <div class="settings-row">
-                <div class="settings-field">
-                  <label for="macro-protein-g">Protein (g)</label>
-                  <input type="number" id="macro-protein-g" min="0" max="600" step="5" placeholder="e.g. 180" />
+              <p class="muted">
+                Each one reads however you want it. Leave any of them blank and it isn't tracked
+                at all — a protein floor on its own is a perfectly good setup.
+              </p>
+              <div class="macro-target-row">
+                <label class="macro-target-name" for="macro-protein-g">Protein</label>
+                <select id="macro-protein-op" aria-label="How to read the protein target">
+                  <option value="min">at least</option>
+                  <option value="max">at most</option>
+                  <option value="eq">about</option>
+                </select>
+                <div class="macro-target-value">
+                  <input type="number" id="macro-protein-g" min="0" max="600" step="5" placeholder="180" />
+                  <span>g</span>
                 </div>
-                <div class="settings-field">
-                  <label for="macro-carbs-g">Carbs (g)</label>
-                  <input type="number" id="macro-carbs-g" min="0" max="1200" step="5" placeholder="e.g. 200" />
+              </div>
+              <div class="macro-target-row">
+                <label class="macro-target-name" for="macro-carbs-g">Carbs</label>
+                <select id="macro-carbs-op" aria-label="How to read the carbs target">
+                  <option value="min">at least</option>
+                  <option value="max">at most</option>
+                  <option value="eq">about</option>
+                </select>
+                <div class="macro-target-value">
+                  <input type="number" id="macro-carbs-g" min="0" max="1200" step="5" placeholder="200" />
+                  <span>g</span>
                 </div>
-                <div class="settings-field">
-                  <label for="macro-fat-g">Fat (g)</label>
-                  <input type="number" id="macro-fat-g" min="0" max="500" step="5" placeholder="e.g. 60" />
+              </div>
+              <div class="macro-target-row">
+                <label class="macro-target-name" for="macro-fat-g">Fat</label>
+                <select id="macro-fat-op" aria-label="How to read the fat target">
+                  <option value="min">at least</option>
+                  <option value="max">at most</option>
+                  <option value="eq">about</option>
+                </select>
+                <div class="macro-target-value">
+                  <input type="number" id="macro-fat-g" min="0" max="500" step="5" placeholder="60" />
+                  <span>g</span>
                 </div>
               </div>
             </div>

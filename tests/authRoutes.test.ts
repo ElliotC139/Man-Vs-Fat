@@ -186,6 +186,9 @@ describe("POST /api/auth/signup", () => {
       proteinTargetG: null,
       carbsTargetG: null,
       fatTargetG: null,
+      proteinOp: null,
+      carbsOp: null,
+      fatOp: null,
       proteinPct: null,
       carbsPct: null,
       fatPct: null,
@@ -787,7 +790,11 @@ describe("PATCH /api/auth/me — macro targets", () => {
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as any;
-    expect(body.macroTargets.grams).toEqual({ protein: 150, carbs: 200, fat: 67 });
+    expect(body.macroTargets.targets).toEqual({
+      protein: { grams: 150, op: "eq" },
+      carbs: { grams: 200, op: "eq" },
+      fat: { grams: 67, op: "eq" },
+    });
   });
 
   it("refuses gram mode with nothing set", async () => {
@@ -814,5 +821,74 @@ describe("PATCH /api/auth/me — macro targets", () => {
     });
     expect(res.status).toBe(200);
     expect(((await res.json()) as any).macroTargets).toBeNull();
+  });
+});
+
+describe("PATCH /api/auth/me — macro operators and blanks", () => {
+  it("stores an operator per macro and leaves blanks untracked", async () => {
+    const cookie = await signUpAlice();
+    const res = await fetch(`${baseUrl}/api/auth/me`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        macroMode: "grams",
+        proteinTargetG: 180,
+        proteinOp: "min",
+        carbsTargetG: 200,
+        carbsOp: "max",
+        // Blank: not tracked at all.
+        fatTargetG: null,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.macroTargets.targets.protein).toEqual({ grams: 180, op: "min" });
+    expect(body.macroTargets.targets.carbs).toEqual({ grams: 200, op: "max" });
+    expect(body.macroTargets.targets.fat).toBeNull();
+    // A floor plus a ceiling doesn't describe a day, so there's no total.
+    expect(body.macroTargets.kcalFromMacros).toBeNull();
+  });
+
+  it("accepts a protein floor on its own", async () => {
+    const cookie = await signUpAlice();
+    const res = await fetch(`${baseUrl}/api/auth/me`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        macroMode: "grams",
+        proteinTargetG: 180,
+        proteinOp: "min",
+        carbsTargetG: null,
+        fatTargetG: null,
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as any).macroTargets.targets.protein).toEqual({ grams: 180, op: "min" });
+  });
+
+  it("still refuses grams mode with every macro blank", async () => {
+    const cookie = await signUpAlice();
+    const res = await fetch(`${baseUrl}/api/auth/me`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        macroMode: "grams",
+        proteinTargetG: null,
+        carbsTargetG: null,
+        fatTargetG: null,
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an operator it doesn't recognise", async () => {
+    const cookie = await signUpAlice();
+    const res = await fetch(`${baseUrl}/api/auth/me`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ macroMode: "grams", proteinTargetG: 180, proteinOp: "roughly" }),
+    });
+    expect(res.status).toBe(400);
   });
 });
