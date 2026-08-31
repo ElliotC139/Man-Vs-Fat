@@ -212,6 +212,35 @@ so it's never regenerated automatically. A failure on one week doesn't block
 others, and leaves that week's `reportGeneratedAt` null so the next tick
 retries it.
 
+## Macros
+
+Off by default, and the whole feature is gated behind `User.macroMode` being
+set — with it null the app tracks calories only, exactly as it did before
+macros existed.
+
+Targets can be set two ways, and both are stored as given rather than
+converted into one canonical form (see `src/macros.ts`). Grams are a fixed
+figure whatever the calorie target does; percentages are a share of it, so
+raising the calorie target raises every macro with it. Storing the derived
+grams for a percentage target instead would go stale the moment that target
+changed, which is why `User` carries both sets of columns.
+
+`Entry.proteinG/carbsG/fatG` are nullable on purpose. Null means "nobody
+worked it out" — every row logged before this shipped — which is a different
+thing from a food genuinely containing none, and the diary distinguishes
+them: a day mixing the two says its totals are short rather than presenting a
+partial sum as complete. `sumMacros()` is the only place that judgement is
+made.
+
+Figures come from three sources, in descending order of trust: real per-100g
+data off a barcode (Open Food Facts), a number typed by the user, and the
+model's estimate. The estimator applies the same 12% buffer to the macros as
+to the calories — the under-reporting it corrects for is under-reported
+*food*, so the fat in an unmentioned splash of oil is missing too — and caps
+each macro at what the stated calories could physically hold, since a model
+asked for four numbers at once will occasionally put 90g of protein in a
+300 kcal item.
+
 ## Backups
 
 Everything the app has recorded lives in one SQLite file on one volume, so

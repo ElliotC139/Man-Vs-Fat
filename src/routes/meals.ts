@@ -5,6 +5,7 @@ import { config } from "../config";
 import { requireAuth } from "../auth";
 import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart } from "../matchWeek";
 import { MEAL_TYPES, inferMealType, type MealType } from "../mealType";
+import { scaleMacros, sumMacros } from "../macros";
 
 export const mealsRouter = Router();
 mealsRouter.use(requireAuth);
@@ -14,6 +15,9 @@ const KINDS = ["template", "recipe"] as const;
 const itemSchema = z.object({
   label: z.string().trim().min(1).max(200),
   kcal: z.number().int().min(0).max(20000).nullable().optional(),
+  proteinG: z.number().min(0).max(1000).nullable().optional(),
+  carbsG: z.number().min(0).max(1000).nullable().optional(),
+  fatG: z.number().min(0).max(1000).nullable().optional(),
 });
 
 const saveSchema = z.object({
@@ -33,22 +37,45 @@ function present(meal: {
   kind: string;
   servings: number;
   updatedAt: Date;
-  items: { id: number; label: string; kcal: number | null; sortOrder: number }[];
+  items: {
+    id: number;
+    label: string;
+    kcal: number | null;
+    proteinG: number | null;
+    carbsG: number | null;
+    fatG: number | null;
+    sortOrder: number;
+  }[];
 }) {
   const items = [...meal.items].sort((a, b) => a.sortOrder - b.sortOrder);
   // A meal with any un-costed item can't honestly claim a total, so it
   // reports null rather than a figure that silently omits an ingredient.
   const anyUnknown = items.some((i) => i.kcal === null);
   const totalKcal = anyUnknown ? null : items.reduce((sum, i) => sum + (i.kcal ?? 0), 0);
+  // Same rule applied to the macros, judged separately: a meal can have a
+  // complete calorie total while one ingredient's macros were never worked
+  // out, and reporting a macro total there would under-count it.
+  const macroTotals = sumMacros(items);
+  const macrosComplete = macroTotals.unknownEntries === 0;
   return {
     id: meal.id,
     name: meal.name,
     kind: meal.kind,
     servings: meal.servings,
     updatedAt: meal.updatedAt,
-    items: items.map((i) => ({ id: i.id, label: i.label, kcal: i.kcal })),
+    items: items.map((i) => ({
+      id: i.id,
+      label: i.label,
+      kcal: i.kcal,
+      proteinG: i.proteinG,
+      carbsG: i.carbsG,
+      fatG: i.fatG,
+    })),
     totalKcal,
     kcalPerServing: totalKcal === null ? null : Math.round(totalKcal / meal.servings),
+    macros: macrosComplete
+      ? { protein: macroTotals.protein, carbs: macroTotals.carbs, fat: macroTotals.fat }
+      : null,
   };
 }
 
@@ -82,7 +109,16 @@ mealsRouter.post("/", async (req, res) => {
       name,
       kind,
       servings,
-      items: { create: items.map((it, i) => ({ label: it.label, kcal: it.kcal ?? null, sortOrder: i })) },
+      items: {
+        create: items.map((it, i) => ({
+          label: it.label,
+          kcal: it.kcal ?? null,
+          proteinG: it.proteinG ?? null,
+          carbsG: it.carbsG ?? null,
+          fatG: it.fatG ?? null,
+          sortOrder: i,
+        })),
+      },
     },
     include: { items: true },
   });
@@ -111,7 +147,7 @@ mealsRouter.post("/from-entries", async (req, res) => {
   const entries = await prisma.entry.findMany({
     where: { id: { in: entryIds }, matchWeek: { userId: req.userId! } },
     orderBy: { timestamp: "asc" },
-    select: { label: true, kcal: true },
+    select: { label: true, kcal: true, proteinG: true, carbsG: true, fatG: true },
   });
   if (entries.length === 0) {
     res.status(404).json({ error: "None of those entries were found." });
@@ -130,7 +166,16 @@ mealsRouter.post("/from-entries", async (req, res) => {
       name,
       kind,
       servings,
-      items: { create: entries.map((e, i) => ({ label: e.label, kcal: e.kcal, sortOrder: i })) },
+      items: {
+        create: entries.map((e, i) => ({
+          label: e.label,
+          kcal: e.kcal,
+          proteinG: e.proteinG,
+          carbsG: e.carbsG,
+          fatG: e.fatG,
+          sortOrder: i,
+        })),
+      },
     },
     include: { items: true },
   });
@@ -164,6 +209,9 @@ mealsRouter.patch("/:id", async (req, res) => {
           savedMealId: id,
           label: it.label,
           kcal: it.kcal ?? null,
+          proteinG: it.proteinG ?? null,
+          carbsG: it.carbsG ?? null,
+          fatG: it.fatG ?? null,
           sortOrder: i,
         })),
       });
@@ -231,11 +279,25 @@ mealsRouter.post("/:id/log", async (req, res) => {
           const total = anyUnknown ? null : items.reduce((sum, i) => sum + (i.kcal ?? 0), 0);
           const kcal = total === null ? null : Math.round((total / meal.servings) * eaten);
           const portionLabel = eaten === 1 ? "1 portion" : `${round2(eaten)} portions`;
-          return [{ label: `${meal.name} (${portionLabel})`, kcal }];
+
+          // The macros follow the same rule as the calories: a batch with one
+          // un-costed ingredient gives a portion with unknown macros rather
+          // than a total quietly missing that ingredient.
+          const macroTotals = sumMacros(items);
+          const perPortion =
+            macroTotals.unknownEntries > 0
+              ? { proteinG: null, carbsG: null, fatG: null }
+              : scaleMacros(
+                  { proteinG: macroTotals.protein, carbsG: macroTotals.carbs, fatG: macroTotals.fat },
+                  eaten / meal.servings,
+                );
+
+          return [{ label: `${meal.name} (${portionLabel})`, kcal, ...perPortion }];
         })()
       : items.map((i) => ({
           label: eaten === 1 ? i.label : `${i.label} (x${round2(eaten)})`,
           kcal: i.kcal === null ? null : Math.round(i.kcal * eaten),
+          ...scaleMacros(i, eaten),
         }));
 
   const created = await prisma.$transaction(
@@ -246,6 +308,9 @@ mealsRouter.post("/:id/log", async (req, res) => {
           rawInput: null,
           label: row.label,
           kcal: row.kcal,
+          proteinG: row.proteinG ?? null,
+          carbsG: row.carbsG ?? null,
+          fatG: row.fatG ?? null,
           imageUrl: null,
           mealType,
           source: "meal",

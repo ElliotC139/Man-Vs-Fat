@@ -16,6 +16,7 @@ import { foodRecoveryFindings } from "../foodRecovery";
 import { latestWeightKg, weightRate } from "../weightStats";
 import { computeDeficitStreak, type DayVerdict } from "../deficitStreak";
 import { recordError } from "../errorLog";
+import { resolveMacroTargets, sumMacros } from "../macros";
 
 export const statsRouter = Router();
 statsRouter.use(requireAuth);
@@ -640,6 +641,74 @@ statsRouter.get("/deficit-streak", async (req, res) => {
   }
 
   res.json(computeDeficitStreak(verdicts));
+});
+
+// ── Macros ───────────────────────────────────────────────────────────────
+//
+// Trailing averages per day, plus how well the days actually match the
+// targets. Averaged over days *with macro data*, not all logged days:
+// including the pre-macro back catalogue as zeroes would put the average on
+// the floor and keep it there for weeks.
+
+const MACRO_DEFAULT_DAYS = 7;
+const MACRO_MIN_DAYS = 3;
+const MACRO_MAX_DAYS = 90;
+
+statsRouter.get("/macros", async (req, res) => {
+  const userId = req.userId!;
+  const days = clampInt(req.query.days, MACRO_MIN_DAYS, MACRO_MAX_DAYS, MACRO_DEFAULT_DAYS);
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const [user, entries] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId } }),
+    prisma.entry.findMany({
+      where: { matchWeek: { userId }, timestamp: { gte: since } },
+      select: { timestamp: true, kcal: true, proteinG: true, carbsG: true, fatG: true },
+    }),
+  ]);
+
+  const targets = user ? resolveMacroTargets(user) : null;
+
+  const byDay = new Map<string, typeof entries>();
+  for (const entry of entries) {
+    const key = localDayKey(entry.timestamp, config.TIMEZONE);
+    const list = byDay.get(key) ?? [];
+    list.push(entry);
+    byDay.set(key, list);
+  }
+
+  const dayRows = [...byDay.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, dayEntries]) => {
+      const totals = sumMacros(dayEntries);
+      return {
+        date,
+        kcal: dayEntries.reduce((sum, e) => sum + (e.kcal ?? 0), 0),
+        protein: totals.protein,
+        carbs: totals.carbs,
+        fat: totals.fat,
+        // A day is only comparable against a target once every entry on it
+        // has macros; a half-covered day would read as a miss it isn't.
+        complete: totals.unknownEntries === 0 && totals.knownEntries > 0,
+      };
+    });
+
+  const complete = dayRows.filter((row) => row.complete);
+  const average = (pick: (row: (typeof complete)[number]) => number) =>
+    complete.length === 0 ? null : Math.round((complete.reduce((sum, row) => sum + pick(row), 0) / complete.length) * 10) / 10;
+
+  res.json({
+    targets,
+    days: dayRows,
+    daysComplete: complete.length,
+    daysLogged: dayRows.length,
+    averages: {
+      protein: average((row) => row.protein),
+      carbs: average((row) => row.carbs),
+      fat: average((row) => row.fat),
+      kcal: average((row) => row.kcal),
+    },
+  });
 });
 
 // ── Eating window ────────────────────────────────────────────────────────

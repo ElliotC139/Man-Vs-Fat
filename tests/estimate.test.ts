@@ -25,13 +25,19 @@ beforeEach(() => {
 describe("estimateMeal", () => {
   it("returns a single item for a single dish described with multiple ingredients, with the buffer applied", async () => {
     createMock.mockResolvedValueOnce(
-      textResponse({ items: [{ label: "Chicken stir fry with rice", kcal: 650 }] }),
+      textResponse({
+        items: [{ label: "Chicken stir fry with rice", kcal: 650, protein: 40, carbs: 70, fat: 18 }],
+      }),
     );
 
     const result = await estimateMeal({ text: "chicken stir fry with rice" });
 
     // 650 * 1.12 = 728
-    expect(result).toEqual([{ label: "Chicken stir fry with rice", kcal: 728 }]);
+    // The buffer goes on the macros as well as the calories, so an entry's
+    // four figures stay consistent with each other.
+    expect(result).toEqual([
+      { label: "Chicken stir fry with rice", kcal: 728, proteinG: 44.8, carbsG: 78.4, fatG: 20.2 },
+    ]);
     expect(createMock).toHaveBeenCalledTimes(1);
   });
 
@@ -39,8 +45,8 @@ describe("estimateMeal", () => {
     createMock.mockResolvedValueOnce(
       textResponse({
         items: [
-          { label: "Chicken stir fry with rice", kcal: 650 },
-          { label: "Small handful of crisps", kcal: 120 },
+          { label: "Chicken stir fry with rice", kcal: 650, protein: 40, carbs: 70, fat: 18 },
+          { label: "Small handful of crisps", kcal: 120, protein: 1, carbs: 13, fat: 7 },
         ],
       }),
     );
@@ -51,20 +57,22 @@ describe("estimateMeal", () => {
 
     // 650 * 1.12 = 728, 120 * 1.12 = 134.4 -> rounds to 134
     expect(result).toEqual([
-      { label: "Chicken stir fry with rice", kcal: 728 },
-      { label: "Small handful of crisps", kcal: 134 },
+      { label: "Chicken stir fry with rice", kcal: 728, proteinG: 44.8, carbsG: 78.4, fatG: 20.2 },
+      { label: "Small handful of crisps", kcal: 134, proteinG: 1.1, carbsG: 14.6, fatG: 7.8 },
     ]);
   });
 
   it("retries a transient stream failure and still returns a real, buffered estimate", async () => {
     createMock
       .mockRejectedValueOnce(new Error("ERR_STREAM_PREMATURE_CLOSE"))
-      .mockResolvedValueOnce(textResponse({ items: [{ label: "Sandwich", kcal: 400 }] }));
+      .mockResolvedValueOnce(
+        textResponse({ items: [{ label: "Sandwich", kcal: 400, protein: 20, carbs: 45, fat: 14 }] }),
+      );
 
     const result = await estimateMeal({ text: "a sandwich" });
 
     // 400 * 1.12 = 448
-    expect(result).toEqual([{ label: "Sandwich", kcal: 448 }]);
+    expect(result).toEqual([{ label: "Sandwich", kcal: 448, proteinG: 22.4, carbsG: 50.4, fatG: 15.7 }]);
     expect(createMock).toHaveBeenCalledTimes(2);
   });
 
@@ -74,6 +82,10 @@ describe("estimateMeal", () => {
     const result = await estimateMeal({ text: "mystery meal" });
 
     expect(createMock).toHaveBeenCalledTimes(4);
-    expect(result).toEqual([{ label: "mystery meal", kcal: null }]);
+    // Nulls, not zeroes: nobody worked these out, which is a different thing
+    // from the food containing none of them.
+    expect(result).toEqual([
+      { label: "mystery meal", kcal: null, proteinG: null, carbsG: null, fatG: null },
+    ]);
   }, 15000);
 });

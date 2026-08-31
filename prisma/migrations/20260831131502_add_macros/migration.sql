@@ -1,0 +1,18 @@
+-- AlterTable
+ALTER TABLE "Entry" ADD COLUMN "carbsG" REAL;
+ALTER TABLE "Entry" ADD COLUMN "fatG" REAL;
+ALTER TABLE "Entry" ADD COLUMN "proteinG" REAL;
+
+-- AlterTable
+ALTER TABLE "SavedMealItem" ADD COLUMN "carbsG" REAL;
+ALTER TABLE "SavedMealItem" ADD COLUMN "fatG" REAL;
+ALTER TABLE "SavedMealItem" ADD COLUMN "proteinG" REAL;
+
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN "carbsPct" INTEGER;
+ALTER TABLE "User" ADD COLUMN "carbsTargetG" INTEGER;
+ALTER TABLE "User" ADD COLUMN "fatPct" INTEGER;
+ALTER TABLE "User" ADD COLUMN "fatTargetG" INTEGER;
+ALTER TABLE "User" ADD COLUMN "macroMode" TEXT;
+ALTER TABLE "User" ADD COLUMN "proteinPct" INTEGER;
+ALTER TABLE "User" ADD COLUMN "proteinTargetG" INTEGER;

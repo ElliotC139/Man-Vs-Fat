@@ -81,6 +81,13 @@ async function collectExport(userId: number) {
       weeklyGoalKg: user.weeklyGoalKg,
       goalWeightKg: user.goalWeightKg,
       dailyCalorieTarget: user.dailyCalorieTarget,
+      macroMode: user.macroMode,
+      proteinTargetG: user.proteinTargetG,
+      carbsTargetG: user.carbsTargetG,
+      fatTargetG: user.fatTargetG,
+      proteinPct: user.proteinPct,
+      carbsPct: user.carbsPct,
+      fatPct: user.fatPct,
     },
     matchWeeks: matchWeeks.map((w) => ({ startsAt: w.startsAt.toISOString(), endsAt: w.endsAt.toISOString() })),
     entries: entries.map((e) => ({
@@ -89,6 +96,9 @@ async function collectExport(userId: number) {
       kcal: e.kcal,
       mealType: e.mealType,
       quantity: e.quantity,
+      proteinG: e.proteinG,
+      carbsG: e.carbsG,
+      fatG: e.fatG,
       rawInput: e.rawInput,
       source: e.source,
       edited: e.edited,
@@ -118,7 +128,13 @@ async function collectExport(userId: number) {
       servings: m.servings,
       items: [...m.items]
         .sort((a, b) => a.sortOrder - b.sortOrder)
-        .map((i) => ({ label: i.label, kcal: i.kcal })),
+        .map((i) => ({
+          label: i.label,
+          kcal: i.kcal,
+          proteinG: i.proteinG,
+          carbsG: i.carbsG,
+          fatG: i.fatG,
+        })),
     })),
     // Read-only mirror of WHOOP's data — see the note at the top of the file.
     whoop: {
@@ -145,12 +161,15 @@ dataRouter.get("/export.json", async (req, res) => {
 dataRouter.get("/export/entries.csv", async (req, res) => {
   const entries = await prisma.entry.findMany({ where: { matchWeek: { userId: req.userId! } }, orderBy: { timestamp: "asc" } });
   const csv = toCsv(
-    ["date", "time", "label", "kcal", "meal_type", "source", "raw_input"],
+    ["date", "time", "label", "kcal", "protein_g", "carbs_g", "fat_g", "meal_type", "source", "raw_input"],
     entries.map((e) => [
       localDayKey(e.timestamp, config.TIMEZONE),
       e.timestamp.toISOString().slice(11, 16),
       e.label,
       e.kcal,
+      e.proteinG,
+      e.carbsG,
+      e.fatG,
       e.mealType,
       e.source,
       e.rawInput,
@@ -181,6 +200,14 @@ const importSchema = z.object({
       activityLevel: z.string().nullable().optional(),
       weeklyGoalKg: z.number().nullable().optional(),
       goalWeightKg: z.number().nullable().optional(),
+      dailyCalorieTarget: z.number().int().nullable().optional(),
+      macroMode: z.string().nullable().optional(),
+      proteinTargetG: z.number().int().nullable().optional(),
+      carbsTargetG: z.number().int().nullable().optional(),
+      fatTargetG: z.number().int().nullable().optional(),
+      proteinPct: z.number().int().nullable().optional(),
+      carbsPct: z.number().int().nullable().optional(),
+      fatPct: z.number().int().nullable().optional(),
     })
     .optional(),
   entries: z
@@ -189,6 +216,10 @@ const importSchema = z.object({
         timestamp: z.string(),
         label: z.string().min(1),
         kcal: z.number().int().nullable().optional(),
+        quantity: z.number().positive().optional(),
+        proteinG: z.number().nullable().optional(),
+        carbsG: z.number().nullable().optional(),
+        fatG: z.number().nullable().optional(),
         mealType: z.string().optional(),
         rawInput: z.string().nullable().optional(),
         source: z.string().optional(),
@@ -218,7 +249,17 @@ const importSchema = z.object({
         name: z.string().min(1),
         kind: z.string().optional(),
         servings: z.number().positive().optional(),
-        items: z.array(z.object({ label: z.string().min(1), kcal: z.number().int().nullable().optional() })).min(1),
+        items: z
+          .array(
+            z.object({
+              label: z.string().min(1),
+              kcal: z.number().int().nullable().optional(),
+              proteinG: z.number().nullable().optional(),
+              carbsG: z.number().nullable().optional(),
+              fatG: z.number().nullable().optional(),
+            }),
+          )
+          .min(1),
       }),
     )
     .optional(),
@@ -261,6 +302,14 @@ dataRouter.post("/import", async (req, res) => {
         ...(p.activityLevel !== undefined ? { activityLevel: p.activityLevel } : {}),
         ...(p.weeklyGoalKg !== undefined ? { weeklyGoalKg: p.weeklyGoalKg } : {}),
         ...(p.goalWeightKg !== undefined ? { goalWeightKg: p.goalWeightKg } : {}),
+        ...(p.dailyCalorieTarget !== undefined ? { dailyCalorieTarget: p.dailyCalorieTarget } : {}),
+        ...(p.macroMode !== undefined ? { macroMode: p.macroMode } : {}),
+        ...(p.proteinTargetG !== undefined ? { proteinTargetG: p.proteinTargetG } : {}),
+        ...(p.carbsTargetG !== undefined ? { carbsTargetG: p.carbsTargetG } : {}),
+        ...(p.fatTargetG !== undefined ? { fatTargetG: p.fatTargetG } : {}),
+        ...(p.proteinPct !== undefined ? { proteinPct: p.proteinPct } : {}),
+        ...(p.carbsPct !== undefined ? { carbsPct: p.carbsPct } : {}),
+        ...(p.fatPct !== undefined ? { fatPct: p.fatPct } : {}),
       },
     });
   }
@@ -325,7 +374,14 @@ dataRouter.post("/import", async (req, res) => {
   for (const m of data.savedMeals ?? []) {
     const kind = m.kind === "recipe" ? "recipe" : "template";
     const servings = kind === "recipe" ? (m.servings ?? 1) : 1;
-    const items = m.items.map((it, i) => ({ label: it.label, kcal: it.kcal ?? null, sortOrder: i }));
+    const items = m.items.map((it, i) => ({
+      label: it.label,
+      kcal: it.kcal ?? null,
+      proteinG: it.proteinG ?? null,
+      carbsG: it.carbsG ?? null,
+      fatG: it.fatG ?? null,
+      sortOrder: i,
+    }));
     // Name is the natural key here (it's unique per user), so importing the
     // same file twice rewrites the meal rather than making a second copy.
     const existing = await prisma.savedMeal.findFirst({ where: { userId, name: m.name }, select: { id: true } });
@@ -363,6 +419,10 @@ dataRouter.post("/import", async (req, res) => {
           timestamp,
           label: e.label,
           kcal: e.kcal ?? null,
+          quantity: e.quantity ?? 1,
+          proteinG: e.proteinG ?? null,
+          carbsG: e.carbsG ?? null,
+          fatG: e.fatG ?? null,
           mealType: e.mealType ?? "snack",
           rawInput: e.rawInput ?? null,
           source: e.source ?? "ai",

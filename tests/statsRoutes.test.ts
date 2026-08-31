@@ -397,12 +397,22 @@ describe("GET /api/stats/weekly-breakdown", () => {
 
   it("counts the distinct days with a logged entry within the week", async () => {
     const { cookie, userId } = await signUp("alice");
-    const now = daysAgo(0);
-    // Two entries on today count as one logged day, plus one more on yesterday.
+
+    // Anchored to the week's own second and third calendar days rather than
+    // to "today" and "yesterday". Relative days made this test fail every
+    // Monday: Monday is the rollover day, so it counts as half, and two
+    // logged days came to 1.5 rather than 2 through no fault of the code.
+    const before = await fetchBreakdown(cookie, 4);
+    const target = before[before.length - 1]!;
+    const midday = new Date(`${target.weekStart}T12:00:00Z`);
+    const dayTwo = new Date(midday.getTime() + 86_400_000);
+    const dayThree = new Date(midday.getTime() + 2 * 86_400_000);
+
+    // Two entries on one day still count as one logged day.
     state.entries.push(
-      { userId, timestamp: now, kcal: 500 },
-      { userId, timestamp: now, kcal: 300 },
-      { userId, timestamp: daysAgo(1), kcal: 400 },
+      { userId, timestamp: dayTwo, kcal: 500 },
+      { userId, timestamp: dayTwo, kcal: 300 },
+      { userId, timestamp: dayThree, kcal: 400 },
     );
 
     const weeks = await fetchBreakdown(cookie, 4);

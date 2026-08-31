@@ -3246,6 +3246,11 @@ tr.has-tooltip:active {
 /* ── Diagnostics ── */
 .diagnostics-errors {
   margin-top: 10px;
+  /* Capped and scrolled: a run of failures overnight otherwise pushes Save,
+     Log out and the delete panel several screens down, which is exactly when
+     you most need to reach them. */
+  max-height: 320px;
+  overflow-y: auto;
 }
 .diagnostics-row {
   display: grid;
@@ -3307,4 +3312,113 @@ tr.has-tooltip:active {
 .day-heading-kcal {
   margin-left: auto;
   white-space: nowrap;
+}
+
+/* ── Macros ────────────────────────────────────────────────────────────────
+   The three rows sit under the calorie bar in the same card, not in a tab of
+   their own: they answer a question asked while deciding what to eat.
+
+   Each macro gets its own hue so the rows are distinguishable at a glance
+   without reading the labels, but all three stay inside the app's existing
+   palette rather than introducing a fourth accent — protein takes the pitch
+   green, carbs the floodlight amber, fat a muted slate. */
+.macro-today {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.macro-row {
+  display: grid;
+  /* Fixed label and figure columns so the three bars line up with each other
+     rather than each starting wherever its own label ends. */
+  grid-template-columns: 52px 1fr 68px;
+  align-items: center;
+  gap: 10px;
+}
+.macro-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.macro-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--hairline);
+  overflow: hidden;
+}
+.macro-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  transition: width 400ms var(--ease);
+}
+.macro-row[data-macro="protein"] .macro-fill { background: var(--pitch); }
+.macro-row[data-macro="carbs"] .macro-fill { background: var(--amber); }
+.macro-row[data-macro="fat"] .macro-fill { background: var(--muted); }
+/* Over target is the same floodlight signal the calorie bar uses, so "over"
+   reads consistently wherever it appears. */
+.macro-fill--over { background: var(--floodlight) !important; }
+.macro-figures {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.macro-today-note {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+@media (prefers-reduced-motion: reduce) {
+  .macro-fill { transition: none; }
+}
+
+/* Macros on an entry row, under the label. */
+.entry-macros {
+  margin-top: 2px;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  /* Kept on one line: a long food name squeezes this column, and wrapping
+     split "F 12g" across two lines rather than shortening the name above. */
+  white-space: nowrap;
+}
+
+/* The three gram fields shown in edit mode and on the result card. */
+.entry-macro-edit,
+.result-macro-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.entry-macro-field {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+/* The global input[type="number"] rule sets width:100%, which is what's
+   wanted here — but it also outranks a plain class selector, so anything
+   that needs to differ has to be at least as specific (see .meal-item-row). */
+.entry-macro-field input[type="number"] {
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 8px;
+  font-size: 0.9rem;
+}
+
+/* Settings: the two target forms. */
+.macro-targets {
+  margin-top: 10px;
+}
+.product-macros {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
 }
