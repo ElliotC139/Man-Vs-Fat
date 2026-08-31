@@ -90,6 +90,20 @@ function dailyTotals(
   });
 }
 
+/**
+ * "31 Aug – 6 Sept", in the app's timezone. The end instant is exclusive —
+ * the week ends the moment the next one begins — so the label steps back one
+ * second to name the last day actually inside it.
+ */
+function weekRangeLabel(start: Date, end: Date): string {
+  const fmt = new Intl.DateTimeFormat("en-GB", {
+    timeZone: config.TIMEZONE,
+    day: "numeric",
+    month: "short",
+  });
+  return `${fmt.format(start)} – ${fmt.format(new Date(end.getTime() - 1000))}`;
+}
+
 function parseWeeksAgo(value: unknown): number {
   const n = Number.parseInt(String(value ?? "0"), 10);
   return Number.isFinite(n) && n > 0 ? n : 0;
@@ -115,6 +129,12 @@ matchWeeksRouter.get("/current", async (req, res) => {
     id: week?.id ?? null,
     startsAt: start,
     endsAt: end,
+    // Formatted here rather than in the browser. The client used to render
+    // this from the boundary instants in *its* timezone, which agrees with
+    // the app's only by luck: a 17:00 rollover is 16:00 UTC, the same date
+    // either way, but a whole-day week starts at local midnight and lands on
+    // the previous date for any viewer behind the app's timezone.
+    rangeLabel: weekRangeLabel(start, end),
     weeksAgo,
     entries,
     // whoopWorkoutId is a BigInt (unserializable) and only exists to key

@@ -188,14 +188,33 @@ export function getMatchWeekBoundariesForWeeksAgo(
 }
 
 /**
- * The (up to 8) local calendar dates a match week touches, in order: the
- * Monday it opens on (from 17:00), the six full days after, and the
- * following Monday (up to 17:00).
+ * Whether a week runs over whole calendar days (Monday 00:00 -> Monday
+ * 00:00, so Mon–Sun) rather than rolling over part-way through one
+ * (Monday 17:00 -> Monday 17:00, which splits both Mondays).
+ *
+ * Derived from the week's own start instant rather than passed in, so it
+ * can't disagree with the boundary it's describing — every caller already
+ * has the start Date, and none of them can now get this wrong.
+ */
+export function isWholeDayWeek(start: Date, timeZone: string): boolean {
+  const local = getLocalParts(start, timeZone);
+  return local.hour === 0 && local.minute === 0;
+}
+
+/**
+ * The local calendar dates a match week touches, in order.
+ *
+ * A week that rolls over mid-day touches 8 of them: the Monday it opens on
+ * (from 17:00), the six full days after, and the following Monday (up to
+ * 17:00). A whole-day week touches exactly 7 — the eighth date belongs
+ * entirely to the next week, and including it would put a day on the diary
+ * that no entry can ever land in.
  */
 export function matchWeekCalendarDays(start: Date, timeZone: string): string[] {
   const startLocal = getLocalParts(start, timeZone);
+  const dayCount = isWholeDayWeek(start, timeZone) ? 7 : 8;
   const days: string[] = [];
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < dayCount; i++) {
     const { year, month, day } = addDaysToCalendarDate(startLocal.year, startLocal.month, startLocal.day, i);
     days.push(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
   }
@@ -225,14 +244,20 @@ export async function findOrCreateMatchWeek(
 
 /**
  * Number of days represented by a set of locally-logged calendar-day keys
- * within a match week. The week's two edge dates — the opening Monday
- * (from 17:00) and the closing Monday (until 17:00) — together span only
- * one real day, so each counts as half a day rather than a full one; a
- * fully-logged week then sums to 7 days, not 8.
+ * within a match week.
+ *
+ * On a week that rolls over mid-day the two edge dates — the opening Monday
+ * (from 17:00) and the closing Monday (until 17:00) — together span only one
+ * real day, so each counts as half; a fully-logged week then sums to 7, not
+ * 8. A whole-day week has no split days at all, so every date counts once
+ * and a full week is simply 7. Halving the edges there would report a fully
+ * logged week as 6 days.
  */
 export function weightedDaysLogged(loggedDayKeys: Iterable<string>, weekStart: Date, timeZone: string): number {
   const calendarDays = matchWeekCalendarDays(weekStart, timeZone);
-  const halfDayKeys = new Set([calendarDays[0], calendarDays[calendarDays.length - 1]]);
+  const halfDayKeys = isWholeDayWeek(weekStart, timeZone)
+    ? new Set<string | undefined>()
+    : new Set<string | undefined>([calendarDays[0], calendarDays[calendarDays.length - 1]]);
   let total = 0;
   for (const key of loggedDayKeys) {
     total += halfDayKeys.has(key) ? 0.5 : 1;

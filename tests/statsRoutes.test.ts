@@ -186,6 +186,26 @@ function daysAgo(n: number): Date {
   return new Date(Date.now() - n * 24 * 60 * 60 * 1000);
 }
 
+/**
+ * Midday on the nth date of the current match week, counting the rollover
+ * date as 0.
+ *
+ * daysAgo() looks equivalent for "put this in the current week" and isn't: a
+ * mid-day week rolls over part-way through a date, so "yesterday" lands in
+ * the *previous* week whenever the suite runs after the rollover time — a
+ * failure that only shows up in the evening, and only on some weekdays.
+ * Anchoring to the week's own start makes these tests independent of the
+ * clock.
+ *
+ * Pass 1 or more: midday on day 0 is before a 17:00 rollover, so it belongs
+ * to the week that's closing rather than the one that's opening.
+ */
+async function middayInCurrentWeek(cookie: string, dayOffset: number): Promise<Date> {
+  const weeks = await fetchBreakdown(cookie, 4);
+  const current = weeks[weeks.length - 1]!;
+  return new Date(new Date(`${current.weekStart}T12:00:00Z`).getTime() + dayOffset * 86_400_000);
+}
+
 interface SummaryResponse {
   avgKcalPerDay: number | null;
   weightPace: { kgPerWeek: number; goalKgPerWeek: number; onTrack: boolean } | null;
@@ -398,15 +418,10 @@ describe("GET /api/stats/weekly-breakdown", () => {
   it("counts the distinct days with a logged entry within the week", async () => {
     const { cookie, userId } = await signUp("alice");
 
-    // Anchored to the week's own second and third calendar days rather than
-    // to "today" and "yesterday". Relative days made this test fail every
-    // Monday: Monday is the rollover day, so it counts as half, and two
-    // logged days came to 1.5 rather than 2 through no fault of the code.
-    const before = await fetchBreakdown(cookie, 4);
-    const target = before[before.length - 1]!;
-    const midday = new Date(`${target.weekStart}T12:00:00Z`);
-    const dayTwo = new Date(midday.getTime() + 86_400_000);
-    const dayThree = new Date(midday.getTime() + 2 * 86_400_000);
+    // Anchored to the week's own second and third dates rather than to
+    // "today" and "yesterday" — see middayInCurrentWeek for why.
+    const dayTwo = await middayInCurrentWeek(cookie, 1);
+    const dayThree = await middayInCurrentWeek(cookie, 2);
 
     // Two entries on one day still count as one logged day.
     state.entries.push(
@@ -460,8 +475,8 @@ describe("GET /api/stats/weekly-breakdown", () => {
   it("averages the week's sleep", async () => {
     const { cookie, userId } = await signUp("alice");
     state.whoopSleeps.push(
-      { userId, start: daysAgo(1), timeAsleepMin: 420, performancePercent: 80 },
-      { userId, start: daysAgo(2), timeAsleepMin: 480, performancePercent: 90 },
+      { userId, start: await middayInCurrentWeek(cookie, 1), timeAsleepMin: 420, performancePercent: 80 },
+      { userId, start: await middayInCurrentWeek(cookie, 2), timeAsleepMin: 480, performancePercent: 90 },
     );
 
     const weeks = await fetchBreakdown(cookie, 4);

@@ -269,7 +269,7 @@
             </div>
             <div class="balance-cell">
               <span id="balance-out-total" class="balance-number"></span>
-              <span class="balance-caption">kcal out</span>
+              <span id="balance-out-caption" class="balance-caption">kcal out</span>
             </div>
             <div id="balance-diff-cell" class="balance-cell">
               <span id="balance-diff" class="balance-number"></span>
@@ -508,8 +508,19 @@
               <option value="5">Saturday</option>
               <option value="6">Sunday</option>
             </select>
-            <label for="settings-time">at</label>
-            <input type="time" id="settings-time" />
+
+            <span class="field-label">Week runs over</span>
+            <div class="meal-kind-btns">
+              <button type="button" id="week-style-whole" class="meal-kind-btn">Whole days</button>
+              <button type="button" id="week-style-time" class="meal-kind-btn meal-kind-btn--active">From a set time</button>
+            </div>
+
+            <div id="week-time-row" class="settings-field">
+              <label for="settings-time">Rolls over at</label>
+              <input type="time" id="settings-time" />
+            </div>
+
+            <p id="week-style-note" class="muted"></p>
           </fieldset>
 
           <fieldset class="settings-fieldset">

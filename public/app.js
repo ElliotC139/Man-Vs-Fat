@@ -43,6 +43,10 @@ const settingsBack = document.getElementById("settings-back");
 const settingsUsername = document.getElementById("settings-username");
 const settingsWeekday = document.getElementById("settings-weekday");
 const settingsTime = document.getElementById("settings-time");
+const weekStyleWhole = document.getElementById("week-style-whole");
+const weekStyleTime = document.getElementById("week-style-time");
+const weekTimeRow = document.getElementById("week-time-row");
+const weekStyleNote = document.getElementById("week-style-note");
 const settingsWeight = document.getElementById("settings-weight");
 const settingsHeight = document.getElementById("settings-height");
 const settingsHeightFt = document.getElementById("settings-height-ft");
@@ -72,6 +76,7 @@ const budgetWidget = document.getElementById("budget-widget");
 const budgetSourceLabel = document.getElementById("budget-source-label");
 const balanceInTotal = document.getElementById("balance-in-total");
 const balanceOutTotal = document.getElementById("balance-out-total");
+const balanceOutCaption = document.getElementById("balance-out-caption");
 const balanceDiffCell = document.getElementById("balance-diff-cell");
 const balanceDiff = document.getElementById("balance-diff");
 const balanceDiffCaption = document.getElementById("balance-diff-caption");
@@ -234,6 +239,8 @@ const exportPdfEl = document.getElementById("export-pdf");
 let weeksAgo = 0;
 let userWeekStartWeekday = 0; // 0=Mon … 6=Sun (same encoding as settings select)
 let userWeekStartHour = 17;
+let userWeekStartMinute = 0;
+let weekStyle = "time"; // "whole" | "time"
 let currentUser = null;
 let useImperial = localStorage.getItem("units") === "imperial";
 
@@ -254,6 +261,9 @@ logWeekLastBtn.addEventListener("click", () => {
 });
 
 function isRolloverDay(dateInputValue) {
+  // A whole-day week has no split day, so nothing is ever ambiguous about
+  // which week a date belongs to.
+  if (userWeekStartHour === 0 && userWeekStartMinute === 0) return false;
   if (!dateInputValue) return false;
   const [year, month, day] = dateInputValue.split("-").map(Number);
   // App weekday: 0=Mon…6=Sun → JS getDay(): Mon=1…Sun=0, so JS day = (appWeekday+1)%7
@@ -349,9 +359,9 @@ async function loadWeek() {
   // hold up the week the user actually asked for.
   loadQuickAdd();
 
-  weekRangeEl.textContent = `${dateFmt.format(new Date(week.startsAt))} – ${dateFmt.format(
-    new Date(new Date(week.endsAt).getTime() - 1000),
-  )}`;
+  // Server-formatted in the app's timezone — see weekRangeLabel in
+  // routes/matchWeeks.ts for why the browser can't be trusted to do this.
+  weekRangeEl.textContent = week.rangeLabel;
   weekNextBtn.disabled = weeksAgo === 0;
   weekTotalEl.textContent = (week.totalKcal ?? 0).toLocaleString();
   weekAvgEl.textContent = week.dailyAverage;
@@ -363,7 +373,12 @@ async function loadWeek() {
   exerciseToggle.hidden = weeksAgo !== 0;
   if (weeksAgo !== 0) { exerciseForm.hidden = true; exerciseToggle.innerHTML = `${ICONS.plus} Log exercise`; }
   const todayJsDay = new Date().getDay();
-  logWeekRow.hidden = weeksAgo !== 0 || todayJsDay !== (userWeekStartWeekday + 1) % 7;
+  logWeekRow.hidden =
+    weeksAgo !== 0
+    || todayJsDay !== (userWeekStartWeekday + 1) % 7
+    // Nothing to choose between on a whole-day week: today falls in exactly
+    // one week whatever time it is.
+    || (userWeekStartHour === 0 && userWeekStartMinute === 0);
 
   if (week.pendingEstimates > 0) {
     const plural = week.pendingEstimates > 1 ? "entries" : "entry";
@@ -403,10 +418,10 @@ function renderFormGuide(days, whoopDailyBurn) {
   // never wraps.
   formGuideDaysEl.style.gridTemplateColumns = `repeat(${Math.max(days.length, 1)}, 1fr)`;
 
-  // Without a tracker there's still a verdict to give: the same
-  // Mifflin-St Jeor estimate the balance widget falls back to. A form guide
+  // Without a tracker there's still a verdict to give — the user's own
+  // calorie target, or failing that a Mifflin-St Jeor estimate. A form guide
   // that only works for WHOOP users would be worse than no form guide.
-  const estimatedDailyBurn = calculateTdee(currentUser);
+  const reference = dailyReference();
 
   let under = 0;
   let over = 0;
@@ -425,7 +440,7 @@ function renderFormGuide(days, whoopDailyBurn) {
     const measuredBurn = !burn?.future && burn?.kcalWeighted != null ? burn.kcalWeighted : null;
     // Today is still in progress, so judging it would call a result at
     // half-time.
-    const burnForDay = measuredBurn ?? (day.isToday ? null : estimatedDailyBurn);
+    const burnForDay = measuredBurn ?? (day.isToday ? null : reference?.kcal ?? null);
 
     if (burnForDay != null && day.kcal > 0) {
       const net = day.kcal - burnForDay;
@@ -433,7 +448,9 @@ function renderFormGuide(days, whoopDailyBurn) {
       if (net <= 0) under += 1;
       else over += 1;
       const word = net <= 0 ? "under" : "over";
-      const source = measuredBurn != null ? "" : " (est.)";
+      // Says what the verdict was measured against, because "300 over" means
+      // something different against a measured burn and against a target.
+      const source = measuredBurn != null ? "" : reference?.kind === "target" ? " (vs target)" : " (est.)";
       detail = `${day.label}: ${Math.abs(Math.round(net)).toLocaleString()} kcal ${word}${source}`;
     } else if (day.kcal > 0) {
       state = "logged";
@@ -1066,7 +1083,6 @@ logoutBtn.addEventListener("click", async () => {
 
 settingsSave.addEventListener("click", async () => {
   settingsError.hidden = true;
-  const [hour, minute] = settingsTime.value.split(":").map(Number);
 
   settingsSave.disabled = true;
   try {
@@ -1091,8 +1107,7 @@ settingsSave.addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         weekStartWeekday: Number(settingsWeekday.value),
-        weekStartHour: hour,
-        weekStartMinute: minute,
+        ...weekStartTimePayload(),
         weightKg: weightVal,
         heightCm: heightVal,
         ageYears: ageVal,
@@ -1130,6 +1145,10 @@ function populateSettings(user) {
   settingsTime.value = `${String(user.weekStartHour).padStart(2, "0")}:${String(user.weekStartMinute).padStart(2, "0")}`;
   userWeekStartWeekday = user.weekStartWeekday;
   userWeekStartHour = user.weekStartHour;
+  userWeekStartMinute = user.weekStartMinute;
+  // A whole-day week is just a rollover at midnight — no separate stored
+  // flag to drift out of step with the boundary it describes.
+  setWeekStyle(user.weekStartHour === 0 && user.weekStartMinute === 0 ? "whole" : "time");
   applyUnitPreference();
   if (user.weightKg) {
     settingsWeight.value = useImperial ? +(user.weightKg * 2.20462).toFixed(1) : user.weightKg;
@@ -1419,6 +1438,27 @@ async function deleteExercise(id) {
 // ── Calorie balance widget ──────────────────────────────────────────────────
 // TDEE (Mifflin-St Jeor) — used as the "calories out" estimate only when
 // WHOOP isn't connected and there's no measured burn to use instead.
+/**
+ * What to measure a day's eating against when there's no tracker.
+ *
+ * The manual target wins over the body-stats estimate: a figure someone typed
+ * in is a statement of what they're aiming at, and quietly showing them a
+ * Mifflin-St Jeor guess instead ignores the thing they told us. Only a real
+ * measurement (WHOOP) beats it, and that's handled per-day by the callers,
+ * which have the burn data this doesn't.
+ *
+ * Returns the kind as well as the number, because the two aren't
+ * interchangeable: a burn estimate supports "deficit" and a projected weight
+ * change, a target only supports "under" and "over".
+ */
+function dailyReference() {
+  const target = currentUser?.dailyCalorieTarget ?? null;
+  if (target) return { kcal: target, kind: "target" };
+  const tdee = calculateTdee(currentUser);
+  if (tdee) return { kcal: tdee, kind: "estimate" };
+  return null;
+}
+
 function calculateTdee(user) {
   const { weightKg, heightCm, ageYears, activityLevel } = user ?? {};
   if (!weightKg || !heightCm || !ageYears || !activityLevel) return null;
@@ -1434,6 +1474,10 @@ function renderBudgetWidget(week) {
 
   let caloriesOut = null;
   let sourceLabel = "";
+  // A measured burn supports "deficit" and a projected weight change; a
+  // target only supports "under" and "over". Tracked so the labels below can
+  // say what the number actually is rather than calling a target a burn.
+  let comparedAgainst = "burn";
 
   if (whoop?.connected && whoop.dailyBurn) {
     caloriesOut = 0;
@@ -1443,10 +1487,11 @@ function renderBudgetWidget(week) {
     }
     sourceLabel = "WHOOP";
   } else {
-    const tdee = calculateTdee(currentUser);
-    if (tdee && week.daysLogged > 0) {
-      caloriesOut = Math.round(tdee * week.daysLogged);
-      sourceLabel = "estimated";
+    const reference = dailyReference();
+    if (reference && week.daysLogged > 0) {
+      caloriesOut = Math.round(reference.kcal * week.daysLogged);
+      sourceLabel = reference.kind === "target" ? "your target" : "estimated";
+      comparedAgainst = reference.kind === "target" ? "target" : "burn";
     }
   }
 
@@ -1459,6 +1504,7 @@ function renderBudgetWidget(week) {
   budgetSourceLabel.textContent = sourceLabel ? `· ${sourceLabel}` : "";
   balanceInTotal.textContent = caloriesIn.toLocaleString();
   balanceOutTotal.textContent = caloriesOut.toLocaleString();
+  balanceOutCaption.textContent = comparedAgainst === "target" ? "target so far" : "kcal out";
 
   // Direct so-far numbers — no projection to the rest of the week.
   const net = caloriesIn - caloriesOut; // positive = surplus, negative = deficit
@@ -1470,12 +1516,18 @@ function renderBudgetWidget(week) {
   if (net <= 0) {
     balanceDiffCell.classList.add("balance-cell--loss");
     balanceDiff.textContent = `−${Math.abs(net).toLocaleString()}`;
-    balanceDiffCaption.textContent = "kcal deficit";
+    balanceDiffCaption.textContent = comparedAgainst === "target" ? "under target" : "kcal deficit";
   } else {
     balanceDiffCell.classList.add("balance-cell--gain");
     balanceDiff.textContent = `+${net.toLocaleString()}`;
-    balanceDiffCaption.textContent = "kcal surplus";
+    balanceDiffCaption.textContent = comparedAgainst === "target" ? "over target" : "kcal surplus";
   }
+
+  // A weight projection needs a burn figure. Against a target it would be
+  // predicting the scale from what you meant to eat, which it can't do — so
+  // the cell goes rather than showing a number with no basis.
+  balanceKgCell.hidden = comparedAgainst === "target";
+  if (comparedAgainst === "target") return;
 
   if (kgChange >= 0) {
     balanceKgCell.classList.add("balance-cell--loss");
@@ -5831,6 +5883,54 @@ resetForm.addEventListener("submit", async (event) => {
 // Last, so every const above it is initialised before anything runs.
 checkAuth();
 loadGoogleConfig();
+
+
+// ── Week style ─────────────────────────────────────────────────────────────
+// A whole-day week and a mid-day one are the same stored setting — the
+// rollover time — so this is a presentation choice over one field rather than
+// a second source of truth that could contradict the first.
+const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+function setWeekStyle(style) {
+  weekStyle = style;
+  weekStyleWhole.classList.toggle("meal-kind-btn--active", style === "whole");
+  weekStyleTime.classList.toggle("meal-kind-btn--active", style === "time");
+  weekTimeRow.hidden = style === "whole";
+  refreshWeekStyleNote();
+}
+
+function refreshWeekStyleNote() {
+  const startDay = WEEKDAY_NAMES[Number(settingsWeekday.value) || 0] ?? "Monday";
+  const endDay = WEEKDAY_NAMES[(Number(settingsWeekday.value) + 6) % 7] ?? "Sunday";
+
+  if (weekStyle === "whole") {
+    weekStyleNote.textContent =
+      `Your week runs ${startDay} to ${endDay} — seven whole days, and every day counts once.`;
+    return;
+  }
+  const time = settingsTime.value || "17:00";
+  weekStyleNote.textContent =
+    `Your week runs ${startDay} ${time} to the following ${startDay} ${time}. It touches eight dates, `
+    + `so both ${startDay}s count as half a day and a full week still totals seven.`;
+}
+
+weekStyleWhole.addEventListener("click", () => setWeekStyle("whole"));
+weekStyleTime.addEventListener("click", () => {
+  setWeekStyle("time");
+  // Midnight in the time field would silently be a whole-day week, which is
+  // the other option — nudge it to the original default instead.
+  if (settingsTime.value === "00:00" || !settingsTime.value) settingsTime.value = "17:00";
+  refreshWeekStyleNote();
+});
+settingsWeekday.addEventListener("change", refreshWeekStyleNote);
+settingsTime.addEventListener("input", refreshWeekStyleNote);
+
+/** The rollover time to save, which is what encodes the choice. */
+function weekStartTimePayload() {
+  if (weekStyle === "whole") return { weekStartHour: 0, weekStartMinute: 0 };
+  const [hour, minute] = (settingsTime.value || "17:00").split(":").map(Number);
+  return { weekStartHour: hour, weekStartMinute: minute };
+}
 
 
 // ── Macro target settings ──────────────────────────────────────────────────
