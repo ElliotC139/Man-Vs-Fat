@@ -4,7 +4,8 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { config } from "../config";
 import { requireAuth } from "../auth";
-import { estimateMeal } from "../estimate";
+import { estimateMeal, type EstimateItem } from "../estimate";
+import { scaleMacros } from "../macros";
 import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart, localDayKey, zonedTimeToUtc } from "../matchWeek";
 import { MEAL_TYPES, MEAL_TYPE_DEFAULT_HOUR, inferMealType, type MealType } from "../mealType";
 import { saveUploadedImage, deleteUploadedImage } from "../lib/storage";
@@ -27,6 +28,12 @@ const createEntrySchema = z.object({
   timestamp: z.string().datetime().optional(),
   lastWeek: z.string().optional(),
   directKcal: z.coerce.number().int().positive().optional(),
+  // Sent alongside directKcal by the barcode scanner and food search when
+  // Open Food Facts has per-100g macro data. Real label figures, so they skip
+  // estimation entirely — same reasoning as directKcal.
+  directProteinG: z.coerce.number().min(0).max(1000).optional(),
+  directCarbsG: z.coerce.number().min(0).max(1000).optional(),
+  directFatG: z.coerce.number().min(0).max(1000).optional(),
 });
 
 entriesRouter.post("/", upload.single("photo"), async (req, res) => {
@@ -36,7 +43,7 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
     return;
   }
 
-  const { text, timestamp, lastWeek, directKcal } = parsed.data;
+  const { text, timestamp, lastWeek, directKcal, directProteinG, directCarbsG, directFatG } = parsed.data;
   const rawPhoto = req.file;
 
   if (!text?.trim() && !rawPhoto) {
@@ -88,8 +95,16 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
     }
   }
 
-  const items = directKcal
-    ? [{ label: text?.trim() || "Scanned item", kcal: directKcal }]
+  const items: EstimateItem[] = directKcal
+    ? [
+        {
+          label: text?.trim() || "Scanned item",
+          kcal: directKcal,
+          proteinG: directProteinG ?? null,
+          carbsG: directCarbsG ?? null,
+          fatG: directFatG ?? null,
+        },
+      ]
     : await estimateMeal({
         text,
         imageBase64: photo?.buffer.toString("base64"),
@@ -108,6 +123,9 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
           rawInput: text ?? null,
           label: item.label,
           kcal: item.kcal,
+          proteinG: item.proteinG,
+          carbsG: item.carbsG,
+          fatG: item.fatG,
           imageUrl,
           mealType,
           source,
@@ -133,6 +151,11 @@ const updateEntrySchema = z.object({
   // How many were eaten. Changing this rescales kcal from the old quantity,
   // so "two of those" is one tap rather than re-describing the food.
   quantity: z.number().min(0.25).max(50).optional(),
+  // Typed over an estimate the same way kcal can be. Null clears a figure
+  // back to "not known" rather than setting it to zero.
+  proteinG: z.number().min(0).max(1000).nullable().optional(),
+  carbsG: z.number().min(0).max(1000).nullable().optional(),
+  fatG: z.number().min(0).max(1000).nullable().optional(),
 });
 
 entriesRouter.patch("/:id", async (req, res) => {
@@ -165,6 +188,9 @@ entriesRouter.patch("/:id", async (req, res) => {
       timestamp?: Date;
       matchWeekId?: number;
       quantity?: number;
+      proteinG?: number | null;
+      carbsG?: number | null;
+      fatG?: number | null;
     } = {
       ...rest,
       edited: true,
@@ -176,13 +202,21 @@ entriesRouter.patch("/:id", async (req, res) => {
 
     if (quantity !== undefined) {
       data.quantity = quantity;
-      // kcal stores the total for the whole entry, so a quantity change has
-      // to move it too — scaled from the previous quantity rather than from
-      // one unit, since the entry may already have been "two of those". An
-      // explicit kcal in the same request wins: that's the user overriding
-      // the arithmetic, which is the whole point of being able to type it.
-      if (rest.kcal === undefined && existing.kcal !== null && existing.quantity > 0) {
-        data.kcal = Math.round((existing.kcal / existing.quantity) * quantity);
+      // kcal and the macros store the total for the whole entry, so a
+      // quantity change has to move them too — scaled from the previous
+      // quantity rather than from one unit, since the entry may already have
+      // been "two of those". An explicit figure in the same request wins:
+      // that's the user overriding the arithmetic, which is the whole point
+      // of being able to type it.
+      if (existing.quantity > 0) {
+        const factor = quantity / existing.quantity;
+        if (rest.kcal === undefined && existing.kcal !== null) {
+          data.kcal = Math.round(existing.kcal * factor);
+        }
+        const scaled = scaleMacros(existing, factor);
+        if (rest.proteinG === undefined) data.proteinG = scaled.proteinG;
+        if (rest.carbsG === undefined) data.carbsG = scaled.carbsG;
+        if (rest.fatG === undefined) data.fatG = scaled.fatG;
       }
     }
 
@@ -227,6 +261,9 @@ entriesRouter.post("/:id/repeat", async (req, res) => {
       label: existing.label,
       kcal: existing.kcal,
       quantity: existing.quantity,
+      proteinG: existing.proteinG,
+      carbsG: existing.carbsG,
+      fatG: existing.fatG,
       imageUrl: existing.imageUrl,
       mealType,
       // A repeat is only as trustworthy as what it copies, so it inherits
@@ -299,6 +336,9 @@ entriesRouter.post("/copy-day", async (req, res) => {
           label: entry.label,
           kcal: entry.kcal,
           quantity: entry.quantity,
+          proteinG: entry.proteinG,
+          carbsG: entry.carbsG,
+          fatG: entry.fatG,
           // The photo is left behind on purpose: it is a picture of a meal
           // eaten on the original day, and carrying it over would make the
           // copy claim to be evidence of something that didn't happen.

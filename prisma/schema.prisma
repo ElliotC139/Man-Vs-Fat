@@ -36,6 +36,29 @@ model User {
   // but "what am I aiming at today" should be a number the user owns and can
   // override, not one that silently moves when a wearable syncs.
   dailyCalorieTarget Int?
+  // Macro targets. Null macroMode means macros are off entirely and the app
+  // behaves exactly as it did before they existed — the diary shows calories
+  // and nothing else.
+  //
+  // Two modes, because the two ways people think about macros don't convert
+  // cleanly into one stored form:
+  //   "grams"   — the target IS the gram figure, fixed whatever the calorie
+  //               target does. Someone on "180g of protein, full stop" means
+  //               180g even on a big training day.
+  //   "percent" — the target is a share of the calorie target, so raising
+  //               that raises every macro with it. Storing the derived grams
+  //               instead would silently go stale the moment the calorie
+  //               target changed, which is why both sets of columns exist
+  //               rather than one "value" column plus a unit flag.
+  // See resolveMacroTargets() in src/macros.ts, which is the only thing that
+  // should read these.
+  macroMode          String?
+  proteinTargetG     Int?
+  carbsTargetG       Int?
+  fatTargetG         Int?
+  proteinPct         Int?
+  carbsPct           Int?
+  fatPct             Int?
   // Every session token issued before this instant is rejected (see
   // src/auth.ts). Setting it to now is what "sign out everywhere" does —
   // it revokes stateless tokens without needing a session table.
@@ -335,8 +358,16 @@ model Entry {
   // How many of this item were eaten. kcal is always the *total* for the
   // whole entry, not one unit — so the diary keeps summing straight whether
   // or not anything ever sets a quantity, and changing it here rescales kcal
-  // proportionally (see routes/entries.ts).
+  // and the macros below proportionally (see routes/entries.ts).
   quantity    Float     @default(1)
+  // Grams for the whole entry, same convention as kcal. Null means "not
+  // known" rather than zero, which matters: every entry logged before macros
+  // existed has null here, and a day containing one of those can't honestly
+  // claim a complete macro total — the diary says so rather than quietly
+  // under-counting.
+  proteinG    Float?
+  carbsG      Float?
+  fatG        Float?
   matchWeekId Int
   matchWeek   MatchWeek @relation(fields: [matchWeekId], references: [id])
   createdAt   DateTime  @default(now())
@@ -401,6 +432,11 @@ model SavedMealItem {
   savedMeal   SavedMeal @relation(fields: [savedMealId], references: [id], onDelete: Cascade)
   label       String
   kcal        Int?
+  // Carried through to the Entry rows this item creates, so a saved meal
+  // logged in two taps is as complete as one typed out in full.
+  proteinG    Float?
+  carbsG      Float?
+  fatG        Float?
   sortOrder   Int       @default(0)
 
   @@index([savedMealId])

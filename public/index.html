@@ -173,6 +173,7 @@
             <input type="number" id="product-serving-input" min="1" step="1" />
             <span id="product-kcal-el" class="product-kcal-badge"></span>
           </div>
+          <p id="product-macros-el" class="muted product-macros" hidden></p>
           <p id="product-nodata-el" class="muted" hidden>No calorie data found — AI will estimate from the name.</p>
           <div class="result-actions">
             <button type="button" id="product-log-btn">Log it</button>
@@ -207,6 +208,25 @@
             </div>
             <div class="target-track"><div id="target-fill" class="target-fill"></div></div>
             <span id="target-today-note" class="target-today-note"></span>
+
+            <div id="macro-today" class="macro-today" hidden>
+              <div class="macro-row" data-macro="protein">
+                <span class="macro-name">Protein</span>
+                <div class="macro-track"><div class="macro-fill"></div></div>
+                <span class="macro-figures"></span>
+              </div>
+              <div class="macro-row" data-macro="carbs">
+                <span class="macro-name">Carbs</span>
+                <div class="macro-track"><div class="macro-fill"></div></div>
+                <span class="macro-figures"></span>
+              </div>
+              <div class="macro-row" data-macro="fat">
+                <span class="macro-name">Fat</span>
+                <div class="macro-track"><div class="macro-fill"></div></div>
+                <span class="macro-figures"></span>
+              </div>
+              <p id="macro-today-note" class="macro-today-note" hidden></p>
+            </div>
           </div>
 
           <div class="summary-total"><span id="week-total">0</span> kcal this week</div>
@@ -561,6 +581,62 @@
               <button type="button" id="suggest-target-btn" class="link-btn">Suggest one from my data</button>
             </p>
             <p id="suggest-target-note" class="muted" hidden></p>
+          </fieldset>
+
+          <fieldset class="settings-fieldset">
+            <legend>Macros</legend>
+            <p class="muted">
+              Off by default. Turn them on and every new entry gets a protein, carb and fat
+              estimate alongside its calories, and today's card shows what's left of each.
+            </p>
+
+            <span class="field-label">Track macros</span>
+            <div class="meal-kind-btns">
+              <button type="button" id="macro-mode-off" class="meal-kind-btn meal-kind-btn--active">Off</button>
+              <button type="button" id="macro-mode-grams" class="meal-kind-btn">In grams</button>
+              <button type="button" id="macro-mode-percent" class="meal-kind-btn">As %</button>
+            </div>
+
+            <div id="macro-targets-grams" class="macro-targets" hidden>
+              <div class="settings-row">
+                <div class="settings-field">
+                  <label for="macro-protein-g">Protein (g)</label>
+                  <input type="number" id="macro-protein-g" min="0" max="600" step="5" placeholder="e.g. 180" />
+                </div>
+                <div class="settings-field">
+                  <label for="macro-carbs-g">Carbs (g)</label>
+                  <input type="number" id="macro-carbs-g" min="0" max="1200" step="5" placeholder="e.g. 200" />
+                </div>
+                <div class="settings-field">
+                  <label for="macro-fat-g">Fat (g)</label>
+                  <input type="number" id="macro-fat-g" min="0" max="500" step="5" placeholder="e.g. 60" />
+                </div>
+              </div>
+            </div>
+
+            <div id="macro-targets-percent" class="macro-targets" hidden>
+              <div class="settings-row">
+                <div class="settings-field">
+                  <label for="macro-protein-pct">Protein (%)</label>
+                  <input type="number" id="macro-protein-pct" min="0" max="100" step="1" placeholder="30" />
+                </div>
+                <div class="settings-field">
+                  <label for="macro-carbs-pct">Carbs (%)</label>
+                  <input type="number" id="macro-carbs-pct" min="0" max="100" step="1" placeholder="40" />
+                </div>
+                <div class="settings-field">
+                  <label for="macro-fat-pct">Fat (%)</label>
+                  <input type="number" id="macro-fat-pct" min="0" max="100" step="1" placeholder="30" />
+                </div>
+              </div>
+              <div class="export-row">
+                <button type="button" id="macro-preset-balanced" class="ghost-sm">Balanced 30/40/30</button>
+                <button type="button" id="macro-preset-high-protein" class="ghost-sm">High protein 40/35/25</button>
+              </div>
+            </div>
+
+            <p id="macro-summary" class="muted" hidden></p>
+            <p id="macro-warning" class="error" hidden></p>
           </fieldset>
 
           <fieldset class="settings-fieldset">
@@ -1071,6 +1147,28 @@
                 <span class="balance-caption">avg sleep</span>
               </div>
             </div>
+          </section>
+
+          <section id="macro-stats-card" class="card" hidden>
+            <div class="section-header">
+              <h2>Macros</h2>
+              <span id="macro-stats-window" class="muted averages-window"></span>
+            </div>
+            <div class="balance-grid">
+              <div class="balance-cell">
+                <span id="macro-avg-protein" class="balance-number">—</span>
+                <span class="balance-caption">protein/day</span>
+              </div>
+              <div class="balance-cell">
+                <span id="macro-avg-carbs" class="balance-number">—</span>
+                <span class="balance-caption">carbs/day</span>
+              </div>
+              <div class="balance-cell">
+                <span id="macro-avg-fat" class="balance-number">—</span>
+                <span class="balance-caption">fat/day</span>
+              </div>
+            </div>
+            <p id="macro-stats-note" class="muted"></p>
           </section>
 
           <section id="eating-window-card" class="card" hidden>

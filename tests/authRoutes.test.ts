@@ -182,6 +182,16 @@ describe("POST /api/auth/signup", () => {
       weeklyGoalKg: null,
       goalWeightKg: null,
       dailyCalorieTarget: null,
+      macroMode: null,
+      proteinTargetG: null,
+      carbsTargetG: null,
+      fatTargetG: null,
+      proteinPct: null,
+      carbsPct: null,
+      fatPct: null,
+      // Null rather than an empty object: macros are off until asked for, and
+      // the diary shows calories only.
+      macroTargets: null,
       reminderHour: null,
       email: null,
       // Signed up with a password and no Google account, so the settings
@@ -702,5 +712,107 @@ describe("POST /api/auth/forgot throttling", () => {
     });
     expect(sixth.status).toBe(429);
     expect(sentMail).toHaveLength(5);
+  });
+});
+
+describe("PATCH /api/auth/me — macro targets", () => {
+  it("refuses percentage targets with no calorie target to divide up", async () => {
+    const cookie = await signUpAlice();
+    const res = await fetch(`${baseUrl}/api/auth/me`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ macroMode: "percent", proteinPct: 30, carbsPct: 40, fatPct: 30 }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as any).error).toMatch(/calorie target/i);
+  });
+
+  it("refuses percentages that don't make 100", async () => {
+    const cookie = await signUpAlice();
+    const res = await fetch(`${baseUrl}/api/auth/me`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        dailyCalorieTarget: 2200,
+        macroMode: "percent",
+        proteinPct: 30,
+        carbsPct: 40,
+        fatPct: 40,
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as any).error).toContain("110%");
+  });
+
+  it("validates against the merged settings, not just the fields in this request", async () => {
+    const cookie = await signUpAlice();
+    // A calorie target arrives first...
+    await fetch(`${baseUrl}/api/auth/me`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ dailyCalorieTarget: 2000 }),
+    });
+    // ...and the percentages in a second request, which on its own says
+    // nothing about a calorie target. It has to pass because the stored one
+    // satisfies the rule.
+    const ok = await fetch(`${baseUrl}/api/auth/me`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ macroMode: "percent", proteinPct: 30, carbsPct: 40, fatPct: 30 }),
+    });
+    expect(ok.status).toBe(200);
+
+    // And clearing the calorie target afterwards must now fail, because the
+    // stored percentages would be left with nothing to divide up.
+    const broken = await fetch(`${baseUrl}/api/auth/me`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ dailyCalorieTarget: null }),
+    });
+    expect(broken.status).toBe(400);
+  });
+
+  it("resolves percentage targets into grams on the way out", async () => {
+    const cookie = await signUpAlice();
+    const res = await fetch(`${baseUrl}/api/auth/me`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        dailyCalorieTarget: 2000,
+        macroMode: "percent",
+        proteinPct: 30,
+        carbsPct: 40,
+        fatPct: 30,
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.macroTargets.grams).toEqual({ protein: 150, carbs: 200, fat: 67 });
+  });
+
+  it("refuses gram mode with nothing set", async () => {
+    const cookie = await signUpAlice();
+    const res = await fetch(`${baseUrl}/api/auth/me`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ macroMode: "grams", proteinTargetG: 0, carbsTargetG: 0, fatTargetG: 0 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("switching macros off clears the resolved targets and asks nothing else", async () => {
+    const cookie = await signUpAlice();
+    await fetch(`${baseUrl}/api/auth/me`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ macroMode: "grams", proteinTargetG: 180, carbsTargetG: 200, fatTargetG: 60 }),
+    });
+    const res = await fetch(`${baseUrl}/api/auth/me`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ macroMode: null }),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as any).macroTargets).toBeNull();
   });
 });

@@ -207,6 +207,7 @@ const productNodataEl = document.getElementById("product-nodata-el");
 const productLogBtn = document.getElementById("product-log-btn");
 const productRescanBtn = document.getElementById("product-rescan-btn");
 const productErrEl = document.getElementById("product-err-el");
+const productMacrosEl = document.getElementById("product-macros-el");
 
 const resultCard = document.getElementById("result-card");
 const resultWarning = document.getElementById("result-warning");
@@ -281,6 +282,32 @@ function renderResultRows(entries) {
     kcalInput.setAttribute("aria-label", "Kcal");
 
     row.append(labelInput, kcalInput);
+
+    // The moment right after logging is when a wrong macro estimate is
+    // easiest to correct, so the three fields sit here as well as in the
+    // entry's edit mode — but only when macros are switched on.
+    if (currentUser?.macroTargets) {
+      const macroRow = document.createElement("div");
+      macroRow.className = "result-macro-row";
+      for (const key of ["protein", "carbs", "fat"]) {
+        const field = document.createElement("label");
+        field.className = "entry-macro-field";
+        const caption = document.createElement("span");
+        caption.textContent = MACRO_LABELS[key];
+        const input = document.createElement("input");
+        input.type = "number";
+        input.min = "0";
+        input.step = "1";
+        input.placeholder = "g";
+        input.dataset.macro = key;
+        input.value = entry[`${key}G`] ?? "";
+        input.setAttribute("aria-label", `${MACRO_LABELS[key]} in grams`);
+        field.append(caption, input);
+        macroRow.appendChild(field);
+      }
+      row.appendChild(macroRow);
+    }
+
     resultRows.appendChild(row);
   }
 }
@@ -611,6 +638,15 @@ function renderEntryRow(entry) {
 
   main.append(label, time);
 
+  // Only shown once macros are switched on, and only for entries that have
+  // them — the back catalogue stays exactly as it looked before.
+  if (currentUser?.macroTargets && hasMacros(entry)) {
+    const macros = document.createElement("div");
+    macros.className = "entry-macros";
+    macros.textContent = macroLine(entry);
+    main.appendChild(macros);
+  }
+
   const kcal = document.createElement("div");
   kcal.className = "entry-kcal";
   kcal.textContent = entry.kcal === null ? "Add kcal" : `${entry.kcal} kcal`;
@@ -666,6 +702,31 @@ function enterEditMode(row, entry) {
   qtyInput.title = "How many";
   qtyInput.setAttribute("aria-label", "Quantity");
 
+  // Only offered when macros are on. Adding three more fields to every edit
+  // row for someone tracking calories alone would be pure clutter.
+  const macroInputs = {};
+  let macroRow = null;
+  if (currentUser?.macroTargets) {
+    macroRow = document.createElement("div");
+    macroRow.className = "entry-macro-edit";
+    for (const key of ["protein", "carbs", "fat"]) {
+      const field = document.createElement("label");
+      field.className = "entry-macro-field";
+      const caption = document.createElement("span");
+      caption.textContent = MACRO_LABELS[key];
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = "0";
+      input.step = "1";
+      input.placeholder = "g";
+      input.value = entry[`${key}G`] ?? "";
+      input.setAttribute("aria-label", `${MACRO_LABELS[key]} in grams`);
+      macroInputs[key] = input;
+      field.append(caption, input);
+      macroRow.appendChild(field);
+    }
+  }
+
   const dateInput = document.createElement("input");
   dateInput.type = "date";
   dateInput.value = toDateInputValue(entry.timestamp);
@@ -710,6 +771,16 @@ function enterEditMode(row, entry) {
     if (Number.isFinite(newQty) && newQty > 0 && newQty !== (entry.quantity ?? 1)) {
       body.quantity = newQty;
     }
+    // Sent only when edited, for the same reason as quantity: sending them
+    // unchanged would override the server's quantity rescaling with the old
+    // pre-scaled figures.
+    for (const key of ["protein", "carbs", "fat"]) {
+      const input = macroInputs[key];
+      if (!input) continue;
+      const typed = input.value === "" ? null : Number(input.value);
+      const current = entry[`${key}G`] ?? null;
+      if (typed !== current) body[`${key}G`] = typed;
+    }
     if (isRolloverDay(dateInput.value)) {
       body.hour = weekSelect.value === "last"
         ? Math.max(0, userWeekStartHour - 1)
@@ -725,6 +796,7 @@ function enterEditMode(row, entry) {
 
   editRow.append(labelInput, kcalInput, qtyInput, dateInput, weekSelect, saveBtn);
   row.appendChild(editRow);
+  if (macroRow) row.appendChild(macroRow);
 }
 
 async function deleteEntry(id) {
@@ -812,14 +884,21 @@ resultSave.addEventListener("click", async () => {
   const rows = resultRows.querySelectorAll(".result-row");
   await Promise.all(
     Array.from(rows).map((row) => {
-      const [labelInput, kcalInput] = row.querySelectorAll("input");
+      // Scoped to the row's own direct inputs so the macro fields below,
+      // which are read separately by name, don't shift these two positions.
+      const labelInput = row.querySelector('input[type="text"]');
+      const kcalInput = row.querySelector('input[type="number"]:not([data-macro])');
+      const body = {
+        label: labelInput.value.trim(),
+        kcal: kcalInput.value === "" ? null : Number(kcalInput.value),
+      };
+      for (const input of row.querySelectorAll("input[data-macro]")) {
+        body[`${input.dataset.macro}G`] = input.value === "" ? null : Number(input.value);
+      }
       return fetch(`/api/entries/${row.dataset.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          label: labelInput.value.trim(),
-          kcal: kcalInput.value === "" ? null : Number(kcalInput.value),
-        }),
+        body: JSON.stringify(body),
       });
     }),
   );
@@ -1023,6 +1102,7 @@ settingsSave.addEventListener("click", async () => {
         // Always kcal, never converted — a calorie is a calorie in either
         // unit system, unlike every other figure on this form.
         dailyCalorieTarget: settingsCalorieTarget.value === "" ? null : Number(settingsCalorieTarget.value),
+        ...macroSettingsPayload(),
         reminderHour: settingsReminderHour.value === "" ? null : Number(settingsReminderHour.value),
       }),
     });
@@ -1082,6 +1162,7 @@ function populateSettings(user) {
     settingsGoalWeight.value = "";
   }
   settingsCalorieTarget.value = user.dailyCalorieTarget ?? "";
+  populateMacroSettings(user);
   settingsEmail.value = user.email ?? "";
   renderSecuritySection(user);
   deleteConfirmInput.value = "";
@@ -1625,9 +1706,9 @@ async function lookupOpenFoodFacts(barcode) {
       `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}` +
       `?fields=product_name,brands,nutriments,serving_size,serving_quantity`;
     const res = await fetch(url);
-    if (!res.ok) return { barcode, name: null, brand: null, kcalPer100g: null, defaultServing: null };
+    if (!res.ok) return emptyProduct(barcode);
     const data = await res.json();
-    if (data.status !== 1) return { barcode, name: null, brand: null, kcalPer100g: null, defaultServing: null };
+    if (data.status !== 1) return emptyProduct(barcode);
     const p = data.product;
     const kcalPer100g =
       p.nutriments?.["energy-kcal_100g"] ??
@@ -1639,11 +1720,35 @@ async function lookupOpenFoodFacts(barcode) {
       name: p.product_name || null,
       brand: p.brands || null,
       kcalPer100g: kcalPer100g !== null ? Number(kcalPer100g) : null,
+      // Real label figures off the packet, so these skip the estimator
+      // entirely — the same reason the calories do.
+      macrosPer100g: {
+        protein: numberOrNull(p.nutriments?.["proteins_100g"]),
+        carbs: numberOrNull(p.nutriments?.["carbohydrates_100g"]),
+        fat: numberOrNull(p.nutriments?.["fat_100g"]),
+      },
       defaultServing,
     };
   } catch {
-    return { barcode, name: null, brand: null, kcalPer100g: null, defaultServing: null };
+    return emptyProduct(barcode);
   }
+}
+
+function emptyProduct(barcode) {
+  return {
+    barcode,
+    name: null,
+    brand: null,
+    kcalPer100g: null,
+    macrosPer100g: { protein: null, carbs: null, fat: null },
+    defaultServing: null,
+  };
+}
+
+function numberOrNull(value) {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 function showProductCard(product, barcode) {
@@ -1669,10 +1774,27 @@ function showProductCard(product, barcode) {
 }
 
 function updateKcalDisplay() {
-  if (!currentProduct?.kcalPer100g) { productKcalEl.textContent = ""; return; }
+  if (!currentProduct?.kcalPer100g) { productKcalEl.textContent = ""; productMacrosEl.hidden = true; return; }
   const g = Number(productServingInput.value) || 0;
   const kcal = Math.round((currentProduct.kcalPer100g * g) / 100);
   productKcalEl.textContent = g > 0 ? `${kcal} kcal` : "";
+
+  const macros = servingMacros(g);
+  const anyKnown = macros.protein !== null || macros.carbs !== null || macros.fat !== null;
+  if (g > 0 && anyKnown && currentUser?.macroTargets) {
+    productMacrosEl.textContent =
+      `P ${gramsOrDash(macros.protein)} · C ${gramsOrDash(macros.carbs)} · F ${gramsOrDash(macros.fat)}`;
+    productMacrosEl.hidden = false;
+  } else {
+    productMacrosEl.hidden = true;
+  }
+}
+
+/** The packet's per-100g macros scaled to the serving being logged. */
+function servingMacros(grams) {
+  const per100 = currentProduct?.macrosPer100g ?? { protein: null, carbs: null, fat: null };
+  const scale = (value) => (value === null ? null : Math.round((value * grams) / 100 * 10) / 10);
+  return { protein: scale(per100.protein), carbs: scale(per100.carbs), fat: scale(per100.fat) };
 }
 
 productServingInput.addEventListener("input", updateKcalDisplay);
@@ -1694,6 +1816,10 @@ productLogBtn.addEventListener("click", async () => {
     const body = new FormData();
     body.append("text", label);
     if (directKcal) body.append("directKcal", String(directKcal));
+    const macros = servingMacros(g);
+    if (macros.protein !== null) body.append("directProteinG", String(macros.protein));
+    if (macros.carbs !== null) body.append("directCarbsG", String(macros.carbs));
+    if (macros.fat !== null) body.append("directFatG", String(macros.fat));
 
     const res = await fetch("/api/entries", { method: "POST", body });
     if (!res.ok) {
@@ -2003,6 +2129,7 @@ function openStats() {
   loadMeasurements();
   loadProgressPhotos();
   loadEatingWindow();
+  loadMacroStats();
 }
 
 function closeStats() {
@@ -4685,6 +4812,18 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !photoModal.hidden) closePhotoModal();
 });
 
+function hasMacros(entry) {
+  return entry.proteinG !== null || entry.carbsG !== null || entry.fatG !== null;
+}
+
+function gramsOrDash(value) {
+  return value === null || value === undefined ? "—" : `${Math.round(value)}g`;
+}
+
+function macroLine(entry) {
+  return `P ${gramsOrDash(entry.proteinG)} · C ${gramsOrDash(entry.carbsG)} · F ${gramsOrDash(entry.fatG)}`;
+}
+
 function formatQuantity(quantity) {
   // 2 rather than 2.0, but 1.5 keeps its half.
   return Number.isInteger(quantity) ? String(quantity) : String(+quantity.toFixed(2));
@@ -4778,6 +4917,59 @@ function renderTargetToday(days) {
 
   targetTodayNote.textContent =
     left >= 0 ? `${left.toLocaleString()} kcal left today` : `${Math.abs(left).toLocaleString()} kcal over`;
+
+  renderMacroToday(today);
+}
+
+// ── Macros: today's remaining ──────────────────────────────────────────────
+// Deliberately on the diary screen rather than a tab of their own: "how much
+// protein have I got left?" is a question asked while deciding what to eat,
+// and a separate tab would only ever be seen afterwards.
+const macroToday = document.getElementById("macro-today");
+const macroTodayNote = document.getElementById("macro-today-note");
+
+const MACRO_LABELS = { protein: "Protein", carbs: "Carbs", fat: "Fat" };
+
+function renderMacroToday(today) {
+  const targets = currentUser?.macroTargets ?? null;
+  if (!targets || !today) {
+    macroToday.hidden = true;
+    return;
+  }
+  macroToday.hidden = false;
+
+  const eaten = today.macros ?? { protein: 0, carbs: 0, fat: 0, unknownEntries: 0 };
+
+  for (const key of ["protein", "carbs", "fat"]) {
+    const row = macroToday.querySelector(`[data-macro="${key}"]`);
+    if (!row) continue;
+
+    const target = targets.grams[key] ?? 0;
+    const value = eaten[key] ?? 0;
+    const fill = row.querySelector(".macro-fill");
+    const figures = row.querySelector(".macro-figures");
+
+    row.hidden = target === 0;
+    if (target === 0) continue;
+
+    const pct = Math.max(0, Math.min(100, (value / target) * 100));
+    fill.style.width = `${pct}%`;
+    fill.classList.toggle("macro-fill--over", value > target);
+
+    const left = Math.round(target - value);
+    figures.textContent = left >= 0 ? `${left}g left` : `${Math.abs(left)}g over`;
+    figures.title = `${Math.round(value)}g of ${target}g`;
+  }
+
+  // The honest caveat: entries logged before macros existed have none, so a
+  // day mixing old and new rows can't claim a complete total.
+  if (eaten.unknownEntries > 0) {
+    const n = eaten.unknownEntries;
+    macroTodayNote.textContent = `${n} ${n === 1 ? "entry has" : "entries have"} no macro breakdown, so these totals are short by whatever was in ${n === 1 ? "it" : "them"}.`;
+    macroTodayNote.hidden = false;
+  } else {
+    macroTodayNote.hidden = true;
+  }
 }
 
 suggestTargetBtn.addEventListener("click", async () => {
@@ -5579,3 +5771,216 @@ resetForm.addEventListener("submit", async (event) => {
 // Last, so every const above it is initialised before anything runs.
 checkAuth();
 loadGoogleConfig();
+
+
+// ── Macro target settings ──────────────────────────────────────────────────
+// Two ways of expressing the same thing, because people genuinely think both
+// ways: "180g of protein" is a fixed figure whatever the day looks like,
+// while "30% protein" moves with the calorie target. Both are stored as
+// given rather than converted to one canonical form — see src/macros.ts.
+const macroModeOff = document.getElementById("macro-mode-off");
+const macroModeGrams = document.getElementById("macro-mode-grams");
+const macroModePercent = document.getElementById("macro-mode-percent");
+const macroTargetsGrams = document.getElementById("macro-targets-grams");
+const macroTargetsPercent = document.getElementById("macro-targets-percent");
+const macroSummary = document.getElementById("macro-summary");
+const macroWarning = document.getElementById("macro-warning");
+
+const macroGramInputs = {
+  protein: document.getElementById("macro-protein-g"),
+  carbs: document.getElementById("macro-carbs-g"),
+  fat: document.getElementById("macro-fat-g"),
+};
+const macroPctInputs = {
+  protein: document.getElementById("macro-protein-pct"),
+  carbs: document.getElementById("macro-carbs-pct"),
+  fat: document.getElementById("macro-fat-pct"),
+};
+
+const KCAL_PER_GRAM = { protein: 4, carbs: 4, fat: 9 };
+
+let macroMode = null;
+
+function setMacroMode(mode) {
+  macroMode = mode;
+  macroModeOff.classList.toggle("meal-kind-btn--active", mode === null);
+  macroModeGrams.classList.toggle("meal-kind-btn--active", mode === "grams");
+  macroModePercent.classList.toggle("meal-kind-btn--active", mode === "percent");
+  macroTargetsGrams.hidden = mode !== "grams";
+  macroTargetsPercent.hidden = mode !== "percent";
+  refreshMacroSummary();
+}
+
+function readMacroInputs(inputs) {
+  const out = {};
+  for (const key of ["protein", "carbs", "fat"]) {
+    out[key] = inputs[key].value === "" ? null : Number(inputs[key].value);
+  }
+  return out;
+}
+
+/**
+ * Live arithmetic under the fields, so you can see what a split actually
+ * comes to before saving rather than finding out on the diary screen.
+ */
+function refreshMacroSummary() {
+  macroWarning.hidden = true;
+
+  if (macroMode === null) {
+    macroSummary.textContent = "Macros are off — the diary tracks calories only.";
+    macroSummary.hidden = false;
+    return;
+  }
+
+  if (macroMode === "percent") {
+    const pct = readMacroInputs(macroPctInputs);
+    const total = (pct.protein ?? 0) + (pct.carbs ?? 0) + (pct.fat ?? 0);
+    const calorieTarget = settingsCalorieTarget.value === "" ? null : Number(settingsCalorieTarget.value);
+
+    if (!calorieTarget) {
+      macroWarning.textContent = "Percentages need a daily calorie target to divide up — set one above first.";
+      macroWarning.hidden = false;
+      macroSummary.hidden = true;
+      return;
+    }
+    if (total !== 100) {
+      macroWarning.textContent = `Your percentages add up to ${total}%. They need to make 100%.`;
+      macroWarning.hidden = false;
+      macroSummary.hidden = true;
+      return;
+    }
+
+    const grams = {
+      protein: Math.round((calorieTarget * (pct.protein ?? 0)) / 100 / KCAL_PER_GRAM.protein),
+      carbs: Math.round((calorieTarget * (pct.carbs ?? 0)) / 100 / KCAL_PER_GRAM.carbs),
+      fat: Math.round((calorieTarget * (pct.fat ?? 0)) / 100 / KCAL_PER_GRAM.fat),
+    };
+    macroSummary.textContent = `That's ${grams.protein}g protein, ${grams.carbs}g carbs and ${grams.fat}g fat a day.`;
+    macroSummary.hidden = false;
+    return;
+  }
+
+  const grams = readMacroInputs(macroGramInputs);
+  const kcal =
+    (grams.protein ?? 0) * KCAL_PER_GRAM.protein +
+    (grams.carbs ?? 0) * KCAL_PER_GRAM.carbs +
+    (grams.fat ?? 0) * KCAL_PER_GRAM.fat;
+
+  if (kcal === 0) {
+    macroWarning.textContent = "Set at least one macro target, or switch macros off.";
+    macroWarning.hidden = false;
+    macroSummary.hidden = true;
+    return;
+  }
+
+  const calorieTarget = settingsCalorieTarget.value === "" ? null : Number(settingsCalorieTarget.value);
+  let text = `Those grams come to ${kcal.toLocaleString()} kcal.`;
+  if (calorieTarget) {
+    const diff = kcal - calorieTarget;
+    // Not an error: plenty of people set gram floors that don't add up to
+    // their calorie target on purpose. Worth pointing out, not blocking.
+    if (Math.abs(diff) >= 100) {
+      text += diff > 0
+        ? ` That's ${diff.toLocaleString()} more than your ${calorieTarget.toLocaleString()} kcal target.`
+        : ` That leaves ${Math.abs(diff).toLocaleString()} kcal of your target unallocated.`;
+    }
+  }
+  macroSummary.textContent = text;
+  macroSummary.hidden = false;
+}
+
+macroModeOff.addEventListener("click", () => setMacroMode(null));
+macroModeGrams.addEventListener("click", () => setMacroMode("grams"));
+macroModePercent.addEventListener("click", () => setMacroMode("percent"));
+
+for (const input of [...Object.values(macroGramInputs), ...Object.values(macroPctInputs)]) {
+  input.addEventListener("input", refreshMacroSummary);
+}
+settingsCalorieTarget.addEventListener("input", refreshMacroSummary);
+
+document.getElementById("macro-preset-balanced").addEventListener("click", () => {
+  macroPctInputs.protein.value = 30;
+  macroPctInputs.carbs.value = 40;
+  macroPctInputs.fat.value = 30;
+  refreshMacroSummary();
+});
+document.getElementById("macro-preset-high-protein").addEventListener("click", () => {
+  macroPctInputs.protein.value = 40;
+  macroPctInputs.carbs.value = 35;
+  macroPctInputs.fat.value = 25;
+  refreshMacroSummary();
+});
+
+function populateMacroSettings(user) {
+  macroGramInputs.protein.value = user.proteinTargetG ?? "";
+  macroGramInputs.carbs.value = user.carbsTargetG ?? "";
+  macroGramInputs.fat.value = user.fatTargetG ?? "";
+  macroPctInputs.protein.value = user.proteinPct ?? "";
+  macroPctInputs.carbs.value = user.carbsPct ?? "";
+  macroPctInputs.fat.value = user.fatPct ?? "";
+  setMacroMode(user.macroMode ?? null);
+}
+
+/** The macro fields of the settings PATCH body. */
+function macroSettingsPayload() {
+  if (macroMode === null) return { macroMode: null };
+  if (macroMode === "percent") {
+    const pct = readMacroInputs(macroPctInputs);
+    return {
+      macroMode: "percent",
+      proteinPct: pct.protein ?? 0,
+      carbsPct: pct.carbs ?? 0,
+      fatPct: pct.fat ?? 0,
+    };
+  }
+  const grams = readMacroInputs(macroGramInputs);
+  return {
+    macroMode: "grams",
+    proteinTargetG: grams.protein ?? 0,
+    carbsTargetG: grams.carbs ?? 0,
+    fatTargetG: grams.fat ?? 0,
+  };
+}
+
+
+// ── Macro averages on the Stats screen ─────────────────────────────────────
+const macroStatsCard = document.getElementById("macro-stats-card");
+const macroStatsWindow = document.getElementById("macro-stats-window");
+const macroStatsNote = document.getElementById("macro-stats-note");
+const macroAvgProtein = document.getElementById("macro-avg-protein");
+const macroAvgCarbs = document.getElementById("macro-avg-carbs");
+const macroAvgFat = document.getElementById("macro-avg-fat");
+
+async function loadMacroStats() {
+  try {
+    const res = await fetch("/api/stats/macros?days=7");
+    if (!res.ok) throw new Error();
+    renderMacroStats(await res.json());
+  } catch {
+    macroStatsCard.hidden = true;
+  }
+}
+
+function renderMacroStats(data) {
+  if (!data?.targets || data.daysComplete === 0) {
+    macroStatsCard.hidden = true;
+    return;
+  }
+  macroStatsCard.hidden = false;
+  macroStatsWindow.textContent = "last 7 days";
+
+  macroAvgProtein.textContent = data.averages.protein === null ? "—" : `${Math.round(data.averages.protein)}g`;
+  macroAvgCarbs.textContent = data.averages.carbs === null ? "—" : `${Math.round(data.averages.carbs)}g`;
+  macroAvgFat.textContent = data.averages.fat === null ? "—" : `${Math.round(data.averages.fat)}g`;
+
+  const t = data.targets.grams;
+  const parts = [`Against ${t.protein}g / ${t.carbs}g / ${t.fat}g.`];
+  // Says which days the average is actually over, since days with a
+  // pre-macro entry on them are excluded rather than counted as low.
+  parts.push(
+    data.daysComplete === data.daysLogged
+      ? `Averaged over ${pluralDays(data.daysComplete)}.`
+      : `Averaged over the ${pluralDays(data.daysComplete)} where every entry had a breakdown, of ${data.daysLogged} logged.`,
+  );
+  macroStatsNote.textContent = parts.join(" ");
+}

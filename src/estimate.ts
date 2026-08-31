@@ -1,15 +1,22 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config";
 import { recordError } from "./errorLog";
+import { clampMacrosToKcal } from "./macros";
+
+function round1(value: number | null): number | null {
+  return value === null ? null : Math.round(value * 10) / 10;
+}
 
 const client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
 
 const SYSTEM_PROMPT = `You help someone keep a deliberately rough, low-friction food diary. \
-You are not a calorie-counting app and must not behave like one: no macro \
-breakdowns, no health commentary, no warnings, no guilt-tripping, no ranges. \
 Given a short free-text description and/or a photo, identify each distinct \
-food/meal/snack/drink being logged and give each one its own best-guess kcal \
-estimate.
+food/meal/snack/drink being logged and give each one its own best-guess \
+figures: calories, and grams of protein, carbohydrate and fat.
+
+You estimate, you do not advise. No health commentary, no warnings, no \
+guilt-tripping, no ranges, no comment on whether the numbers are good or bad. \
+Return figures and nothing else.
 
 Rules:
 - Treat the components of a single dish as ONE item — "chicken stir fry with \
@@ -19,12 +26,20 @@ Rules:
   newlines, or just listed one after another. Most entries are a single item.
 - Always give exactly one whole-number kcal guess per item, even for vague \
   input ("just a sandwich", "some crisps").
+- Give protein, carbs and fat in grams for every item, to the nearest gram. \
+  Guess them for vague input the same way you guess the calories — a typical \
+  example of that food is the right basis. Use 0 where a macro genuinely \
+  isn't present (black coffee is 0/0/0); never omit a field or return null.
+- Keep the macros roughly consistent with the calories you gave, at 4 kcal \
+  per gram of protein and carbs and 9 per gram of fat. They will not \
+  reconcile exactly and that is fine — but they should not imply far more \
+  energy than the item contains.
 - If there's a photo but no text, estimate from the photo alone — split into \
   multiple items only if the photo clearly shows separate distinct foods.
 - Each label should be short (max 6 words), plain, and human-readable, e.g. \
   "Chicken stir fry with rice" or "Small handful of crisps".
 - Respond with ONLY a JSON object, no markdown fences, no commentary: \
-  {"items": [{"label": "...", "kcal": 000}]}`;
+  {"items": [{"label": "...", "kcal": 000, "protein": 00, "carbs": 00, "fat": 00}]}`;
 
 export interface EstimateInput {
   text?: string;
@@ -35,6 +50,9 @@ export interface EstimateInput {
 export interface EstimateItem {
   label: string;
   kcal: number | null;
+  proteinG: number | null;
+  carbsG: number | null;
+  fatG: number | null;
 }
 
 export type EstimateResult = EstimateItem[];
@@ -65,6 +83,12 @@ function buildUserContent(input: EstimateInput): Anthropic.MessageParam["content
 // Self-reported, casual food descriptions tend to skew low (portions rounded
 // down, sauces/oils/extras left unmentioned), so a fixed buffer is applied on
 // top of the model's raw guess rather than trusting it as a tight estimate.
+//
+// The same multiplier goes on the macros, not just the calories: the
+// under-reporting it corrects for is under-reported *food*, so the protein
+// and fat in that unmentioned splash of oil are missing too. Applying it to
+// one and not the other would also leave every entry's macros disagreeing
+// with its own calorie figure by 12%.
 const KCAL_BUFFER_MULTIPLIER = 1.12;
 
 function parseEstimateResponse(raw: string): EstimateResult {
@@ -73,11 +97,38 @@ function parseEstimateResponse(raw: string): EstimateResult {
 
   const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
   const items = rawItems.map((rawItem): EstimateItem => {
-    const candidate = rawItem as { label?: unknown; kcal?: unknown };
+    const candidate = rawItem as {
+      label?: unknown;
+      kcal?: unknown;
+      protein?: unknown;
+      carbs?: unknown;
+      fat?: unknown;
+    };
     const label = typeof candidate.label === "string" && candidate.label.trim() ? candidate.label.trim() : "Unlabelled meal";
     const kcalNumber = typeof candidate.kcal === "number" ? candidate.kcal : Number(candidate.kcal);
     const kcal = Number.isFinite(kcalNumber) ? Math.round(kcalNumber * KCAL_BUFFER_MULTIPLIER) : null;
-    return { label, kcal };
+
+    // A missing or unparsable macro stays null rather than becoming 0: the
+    // diary distinguishes "no protein in it" from "nobody worked it out",
+    // and a silent zero would quietly drag a day's total down.
+    const macro = (value: unknown): number | null => {
+      const n = typeof value === "number" ? value : Number(value);
+      if (!Number.isFinite(n) || n < 0) return null;
+      return Math.round(n * KCAL_BUFFER_MULTIPLIER * 10) / 10;
+    };
+
+    const clamped = clampMacrosToKcal(
+      { protein: macro(candidate.protein), carbs: macro(candidate.carbs), fat: macro(candidate.fat) },
+      kcal,
+    );
+
+    return {
+      label,
+      kcal,
+      proteinG: round1(clamped.protein),
+      carbsG: round1(clamped.carbs),
+      fatG: round1(clamped.fat),
+    };
   });
 
   if (items.length === 0) {
@@ -135,6 +186,9 @@ export async function estimateMeal(input: EstimateInput): Promise<EstimateResult
     {
       label: input.text?.trim()?.slice(0, 60) || "Unestimated meal (tap to add kcal)",
       kcal: null,
+      proteinG: null,
+      carbsG: null,
+      fatG: null,
     },
   ];
 }

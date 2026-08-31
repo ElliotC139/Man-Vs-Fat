@@ -15,6 +15,7 @@ import {
 import { deleteAccount } from "../deleteAccount";
 import { canSendMail, sendMail } from "../mailer";
 import { consume, reset as resetRateLimit, LOGIN_BURST, RESET_BURST } from "../rateLimit";
+import { MACRO_MODES, resolveMacroTargets } from "../macros";
 
 export const authRouter = Router();
 
@@ -39,6 +40,15 @@ const settingsSchema = z.object({
   weeklyGoalKg: z.number().min(0.1).max(1.5).nullable().optional(),
   goalWeightKg: z.number().min(30).max(700).nullable().optional(),
   dailyCalorieTarget: z.number().int().min(800).max(8000).nullable().optional(),
+  // Null switches macros off entirely and the diary goes back to calories
+  // only — the app has to keep working for someone who doesn't want them.
+  macroMode: z.enum(MACRO_MODES).nullable().optional(),
+  proteinTargetG: z.number().int().min(0).max(600).nullable().optional(),
+  carbsTargetG: z.number().int().min(0).max(1200).nullable().optional(),
+  fatTargetG: z.number().int().min(0).max(500).nullable().optional(),
+  proteinPct: z.number().int().min(0).max(100).nullable().optional(),
+  carbsPct: z.number().int().min(0).max(100).nullable().optional(),
+  fatPct: z.number().int().min(0).max(100).nullable().optional(),
   // Null turns the daily reminder off entirely.
   reminderHour: z.number().int().min(0).max(23).nullable().optional(),
 });
@@ -64,6 +74,13 @@ function toPublicUser(user: {
   weeklyGoalKg?: number | null;
   goalWeightKg?: number | null;
   dailyCalorieTarget?: number | null;
+  macroMode?: string | null;
+  proteinTargetG?: number | null;
+  carbsTargetG?: number | null;
+  fatTargetG?: number | null;
+  proteinPct?: number | null;
+  carbsPct?: number | null;
+  fatPct?: number | null;
   reminderHour?: number | null;
   email?: string | null;
   googleId?: string | null;
@@ -82,6 +99,16 @@ function toPublicUser(user: {
     weeklyGoalKg: user.weeklyGoalKg ?? null,
     goalWeightKg: user.goalWeightKg ?? null,
     dailyCalorieTarget: user.dailyCalorieTarget ?? null,
+    macroMode: user.macroMode ?? null,
+    proteinTargetG: user.proteinTargetG ?? null,
+    carbsTargetG: user.carbsTargetG ?? null,
+    fatTargetG: user.fatTargetG ?? null,
+    proteinPct: user.proteinPct ?? null,
+    carbsPct: user.carbsPct ?? null,
+    fatPct: user.fatPct ?? null,
+    // Resolved server-side so the diary and the settings screen can't drift
+    // apart on how a percentage becomes grams.
+    macroTargets: resolveMacroTargets(user),
     reminderHour: user.reminderHour ?? null,
     email: user.email ?? null,
     // The settings screen needs to know which recovery routes exist for this
@@ -257,9 +284,55 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
     return;
   }
 
+  const current = await prisma.user.findUnique({ where: { id: req.userId! } });
+  if (!current) {
+    res.status(401).json({ error: "Not signed in" });
+    return;
+  }
+
+  // Validated against the merged result rather than the patch alone: the
+  // percentages and the calorie target they divide up can arrive in separate
+  // requests, and checking only what's in this one would let the pair end up
+  // in a state neither request looked wrong on its own.
+  const merged = { ...current, ...parsed.data };
+  const macroError = validateMacroSettings(merged);
+  if (macroError) {
+    res.status(400).json({ error: macroError });
+    return;
+  }
+
   const user = await prisma.user.update({ where: { id: req.userId! }, data: parsed.data });
   res.json(toPublicUser(user));
 });
+
+/** Human-readable reason the macro targets don't hang together, or null. */
+function validateMacroSettings(user: {
+  macroMode?: string | null;
+  dailyCalorieTarget?: number | null;
+  proteinPct?: number | null;
+  carbsPct?: number | null;
+  fatPct?: number | null;
+  proteinTargetG?: number | null;
+  carbsTargetG?: number | null;
+  fatTargetG?: number | null;
+}): string | null {
+  if (!user.macroMode) return null;
+
+  if (user.macroMode === "percent") {
+    if (!user.dailyCalorieTarget) {
+      return "Percentage targets need a daily calorie target to divide up — set one first.";
+    }
+    const total = (user.proteinPct ?? 0) + (user.carbsPct ?? 0) + (user.fatPct ?? 0);
+    if (total !== 100) {
+      return `Your percentages add up to ${total}%. They need to make 100%.`;
+    }
+    return null;
+  }
+
+  const grams = (user.proteinTargetG ?? 0) + (user.carbsTargetG ?? 0) + (user.fatTargetG ?? 0);
+  if (grams === 0) return "Set at least one macro target, or turn macros off.";
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Account recovery

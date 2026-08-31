@@ -11,6 +11,7 @@ import {
 } from "../matchWeek";
 import { generateMatchWeekReport } from "../pdf/generateReport";
 import { getWeekInsights, previousWeekNumbers } from "../weekReview";
+import { sumMacros } from "../macros";
 import { dayNotesForWeek } from "../dayNotes";
 import { uploadReportToDrive } from "../drive/uploadToDrive";
 import { getWhoopWeekBudget } from "../whoop/sync";
@@ -35,13 +36,23 @@ function summarize(
 
 // Every calendar day the week touches, not just the ones with entries, so the
 // UI can show a full Mon-Mon shape rather than only days something was logged.
-function dailyTotals(start: Date, entries: { kcal: number | null; timestamp: Date }[]) {
-  const totals = new Map<string, { kcal: number; pending: boolean }>();
+function dailyTotals(
+  start: Date,
+  entries: {
+    kcal: number | null;
+    timestamp: Date;
+    proteinG?: number | null;
+    carbsG?: number | null;
+    fatG?: number | null;
+  }[],
+) {
+  const totals = new Map<string, { kcal: number; pending: boolean; entries: typeof entries }>();
   for (const entry of entries) {
     const key = localDayKey(entry.timestamp, config.TIMEZONE);
-    const bucket = totals.get(key) ?? { kcal: 0, pending: false };
+    const bucket = totals.get(key) ?? { kcal: 0, pending: false, entries: [] };
     if (entry.kcal === null) bucket.pending = true;
     else bucket.kcal += entry.kcal;
+    bucket.entries.push(entry);
     totals.set(key, bucket);
   }
 
@@ -55,14 +66,26 @@ function dailyTotals(start: Date, entries: { kcal: number | null; timestamp: Dat
   const todayKey = localDayKey(new Date(), config.TIMEZONE);
 
   return matchWeekCalendarDays(start, config.TIMEZONE).map((date) => {
-    const bucket = totals.get(date) ?? { kcal: 0, pending: false };
+    const bucket = totals.get(date) ?? { kcal: 0, pending: false, entries: [] };
     const [year, month, day] = date.split("-").map(Number) as [number, number, number];
+    // Sent per day rather than only for today, so the diary can show a
+    // macro line against any day in the week without another request.
+    const macros = sumMacros(bucket.entries);
     return {
       date,
       label: labelFmt.format(new Date(Date.UTC(year, month - 1, day, 12))),
       kcal: bucket.kcal,
       pending: bucket.pending,
       isToday: date === todayKey,
+      macros: {
+        protein: macros.protein,
+        carbs: macros.carbs,
+        fat: macros.fat,
+        // How many of the day's entries had no macro figures — every row
+        // logged before macros existed has none, so a day mixing the two
+        // has to say its total is partial rather than look complete.
+        unknownEntries: macros.unknownEntries,
+      },
     };
   });
 }
