@@ -3330,6 +3330,13 @@ tr.has-tooltip:active {
   flex-direction: column;
   gap: 8px;
 }
+/* With no calorie bar above it there's nothing to divide from, so the rule
+   and the spacing that separated the two both go. */
+.macro-today--standalone {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
 .macro-row {
   display: grid;
   /* Fixed label and figure columns so the three bars line up with each other
@@ -3358,8 +3365,10 @@ tr.has-tooltip:active {
 .macro-row[data-macro="protein"] .macro-fill { background: var(--pitch); }
 .macro-row[data-macro="carbs"] .macro-fill { background: var(--amber); }
 .macro-row[data-macro="fat"] .macro-fill { background: var(--muted); }
-/* Over target is the same floodlight signal the calorie bar uses, so "over"
-   reads consistently wherever it appears. */
+/* Colour tracks whether the day is on the right side of the target, which is
+   not the same as whether the bar is full: clearing a protein floor fills the
+   bar and is good, passing a carb ceiling fills it and is not. */
+.macro-fill--good { background: var(--pitch) !important; }
 .macro-fill--over { background: var(--floodlight) !important; }
 .macro-figures {
   font-size: 0.78rem;
@@ -3416,6 +3425,44 @@ tr.has-tooltip:active {
 /* Settings: the two target forms. */
 .macro-targets {
   margin-top: 10px;
+}
+
+/* One row per macro: name, how to read it, the figure. Three columns rather
+   than the old side-by-side fields, because each target now carries an
+   operator and three of those across a phone screen doesn't fit. */
+.macro-target-row {
+  display: grid;
+  grid-template-columns: 62px 1fr 92px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.macro-target-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+/* The shared select and input rules set width:100% and their own margins;
+   these need to sit flush in a grid cell, and both selectors have to be at
+   least as specific as the element-based ones they're overriding. */
+.macro-target-row select {
+  width: 100%;
+  margin: 0;
+  min-height: 42px;
+}
+.macro-target-value {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.macro-target-value input[type="number"] {
+  width: 100%;
+  margin: 0;
+  min-height: 42px;
+  text-align: right;
+}
+.macro-target-value span {
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 .product-macros {
   margin: 6px 0 0;

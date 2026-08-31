@@ -44,7 +44,10 @@ model User {
   // cleanly into one stored form:
   //   "grams"   — the target IS the gram figure, fixed whatever the calorie
   //               target does. Someone on "180g of protein, full stop" means
-  //               180g even on a big training day.
+  //               180g even on a big training day. Each macro also carries
+  //               its own comparison (see proteinOp below), because the three
+  //               are rarely wanted the same way round: protein is usually a
+  //               floor, carbs or fat a ceiling.
   //   "percent" — the target is a share of the calorie target, so raising
   //               that raises every macro with it. Storing the derived grams
   //               instead would silently go stale the moment the calorie
@@ -53,9 +56,18 @@ model User {
   // See resolveMacroTargets() in src/macros.ts, which is the only thing that
   // should read these.
   macroMode          String?
+  // Null (or 0) means that macro simply isn't tracked, and it's left off the
+  // diary entirely rather than shown against a target of nothing.
   proteinTargetG     Int?
   carbsTargetG       Int?
   fatTargetG         Int?
+  // How to read the gram figure above: "min" (at least), "max" (at most) or
+  // "eq" (about). Null reads as "eq", which is what every target set before
+  // this column existed meant. Only used in grams mode — percentages have to
+  // sum to 100, so they're always "eq".
+  proteinOp          String?
+  carbsOp            String?
+  fatOp              String?
   proteinPct         Int?
   carbsPct           Int?
   fatPct             Int?

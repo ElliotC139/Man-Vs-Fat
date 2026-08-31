@@ -225,6 +225,22 @@ raising the calorie target raises every macro with it. Storing the derived
 grams for a percentage target instead would go stale the moment that target
 changed, which is why `User` carries both sets of columns.
 
+In gram mode each macro also carries its own comparison — `min` (at least),
+`max` (at most) or `eq` (about) — because the three are rarely wanted the
+same way round: protein is usually a floor you're clearing, carbs or fat a
+ceiling you're staying under. `macroProgress()` is the one place a macro is
+judged against its target, and it separates the verdict from whether the
+verdict is *good*: 210g against a 180g figure is a full bar either way, but
+it's a success for a floor and a failure for a ceiling. The diary mirrors
+that function in JavaScript to render without a round trip; the TypeScript
+one is the source of truth.
+
+A blank target means that macro isn't tracked and its row is left off the
+diary entirely — a protein floor on its own is a valid setup. A stored `0`
+reads the same way, since a 0g target can only ever say "0g over".
+Percentages are always `eq`: they have to sum to 100, so "at least 40%
+protein" can't be satisfied without saying what gives way.
+
 `Entry.proteinG/carbsG/fatG` are nullable on purpose. Null means "nobody
 worked it out" — every row logged before this shipped — which is a different
 thing from a food genuinely containing none, and the diary distinguishes

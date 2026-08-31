@@ -4882,6 +4882,7 @@ function enterExerciseEditMode(row, exercise) {
 // target is the user's own number rather than a derived one: the adaptive
 // TDEE can propose it, but it doesn't move on its own when a wearable syncs.
 const targetToday = document.getElementById("target-today");
+const targetCalories = document.getElementById("target-calories");
 const targetTodayFigures = document.getElementById("target-today-figures");
 const targetTodayNote = document.getElementById("target-today-note");
 const targetFill = document.getElementById("target-fill");
@@ -4890,35 +4891,39 @@ const suggestTargetBtn = document.getElementById("suggest-target-btn");
 const suggestTargetNote = document.getElementById("suggest-target-note");
 
 function renderTargetToday(days) {
-  const target = currentUser?.dailyCalorieTarget ?? null;
-  if (!target) {
-    targetToday.hidden = true;
-    return;
-  }
+  const calorieTarget = currentUser?.dailyCalorieTarget ?? null;
+  const macroTargets = currentUser?.macroTargets ?? null;
 
   // Only meaningful for the week actually in progress — a target line against
   // a week you finished a fortnight ago says nothing useful. isToday comes
   // from the server, which resolves it in the app's timezone rather than the
   // browser's.
   const today = (days ?? []).find((day) => day.isToday);
-  if (weeksAgo !== 0 || !today) {
+  // The two halves are independent. Someone tracking "at least 180g of
+  // protein" and nothing else has no reason to have set a calorie target,
+  // and gating the whole card on one hid their macros completely.
+  if (weeksAgo !== 0 || !today || (!calorieTarget && !macroTargets)) {
     targetToday.hidden = true;
     return;
   }
 
   targetToday.hidden = false;
-  const logged = today.kcal ?? 0;
-  const left = target - logged;
-  targetTodayFigures.textContent = `${logged.toLocaleString()} / ${target.toLocaleString()} kcal`;
+  targetCalories.hidden = !calorieTarget;
 
-  const pct = Math.max(0, Math.min(100, (logged / target) * 100));
-  targetFill.style.width = `${pct}%`;
-  targetFill.classList.toggle("target-fill--over", logged > target);
+  if (calorieTarget) {
+    const logged = today.kcal ?? 0;
+    const left = calorieTarget - logged;
+    targetTodayFigures.textContent = `${logged.toLocaleString()} / ${calorieTarget.toLocaleString()} kcal`;
 
-  targetTodayNote.textContent =
-    left >= 0 ? `${left.toLocaleString()} kcal left today` : `${Math.abs(left).toLocaleString()} kcal over`;
+    const pct = Math.max(0, Math.min(100, (logged / calorieTarget) * 100));
+    targetFill.style.width = `${pct}%`;
+    targetFill.classList.toggle("target-fill--over", logged > calorieTarget);
 
-  renderMacroToday(today);
+    targetTodayNote.textContent =
+      left >= 0 ? `${left.toLocaleString()} kcal left today` : `${Math.abs(left).toLocaleString()} kcal over`;
+  }
+
+  renderMacroToday(today, { standalone: !calorieTarget });
 }
 
 // ── Macros: today's remaining ──────────────────────────────────────────────
@@ -4927,16 +4932,66 @@ function renderTargetToday(days) {
 // and a separate tab would only ever be seen afterwards.
 const macroToday = document.getElementById("macro-today");
 const macroTodayNote = document.getElementById("macro-today-note");
+const macroTodayHeading = document.getElementById("macro-today-heading");
 
 const MACRO_LABELS = { protein: "Protein", carbs: "Carbs", fat: "Fat" };
+const MACRO_OP_WORDS = { min: "at least", max: "at most", eq: "about" };
 
-function renderMacroToday(today) {
+// Mirrors macroProgress() in src/macros.ts so the Today card can render
+// without a round trip. If the rules there change, change them here too —
+// that file is the source of truth and carries the reasoning.
+const EQ_TOLERANCE = 0.05;
+
+function macroProgress(target, eaten) {
+  const remaining = Math.round((target.grams - eaten) * 10) / 10;
+  const percentOfTarget = target.grams === 0 ? 0 : Math.max(0, Math.min(100, (eaten / target.grams) * 100));
+
+  let verdict;
+  let isGood;
+  if (target.op === "min") {
+    verdict = eaten >= target.grams ? "met" : "under";
+    isGood = verdict === "met";
+  } else if (target.op === "max") {
+    verdict = eaten > target.grams ? "over" : "under";
+    isGood = verdict === "under";
+  } else {
+    const margin = target.grams * EQ_TOLERANCE;
+    if (eaten > target.grams + margin) verdict = "over";
+    else if (eaten < target.grams - margin) verdict = "under";
+    else verdict = "met";
+    isGood = verdict === "met";
+  }
+
+  return { verdict, isGood, remaining, percentOfTarget };
+}
+
+/** The short line at the end of a macro row. */
+function macroFigureText(progress) {
+  const short = Math.abs(Math.round(progress.remaining));
+  if (progress.verdict === "met") {
+    // A cleared floor says so rather than counting up past it — the number
+    // stops being the point once you're over the line.
+    return progress.remaining <= 0 ? "hit" : `${short}g to go`;
+  }
+  if (progress.verdict === "over") return `${short}g over`;
+  return `${short}g to go`;
+}
+
+function describeTarget(key, target) {
+  return `${MACRO_OP_WORDS[target.op] ?? "about"} ${target.grams}g`;
+}
+
+function renderMacroToday(today, { standalone = false } = {}) {
   const targets = currentUser?.macroTargets ?? null;
   if (!targets || !today) {
     macroToday.hidden = true;
     return;
   }
   macroToday.hidden = false;
+  // With no calorie bar above it the macro block is the whole card, so it
+  // needs the "Today" heading and loses the divider that separated the two.
+  macroToday.classList.toggle("macro-today--standalone", standalone);
+  macroTodayHeading.hidden = !standalone;
 
   const eaten = today.macros ?? { protein: 0, carbs: 0, fat: 0, unknownEntries: 0 };
 
@@ -4944,21 +4999,26 @@ function renderMacroToday(today) {
     const row = macroToday.querySelector(`[data-macro="${key}"]`);
     if (!row) continue;
 
-    const target = targets.grams[key] ?? 0;
-    const value = eaten[key] ?? 0;
+    const target = targets.targets?.[key] ?? null;
     const fill = row.querySelector(".macro-fill");
     const figures = row.querySelector(".macro-figures");
 
-    row.hidden = target === 0;
-    if (target === 0) continue;
+    // A blank target isn't tracked, so its row doesn't appear at all.
+    row.hidden = target === null;
+    if (target === null) continue;
 
-    const pct = Math.max(0, Math.min(100, (value / target) * 100));
-    fill.style.width = `${pct}%`;
-    fill.classList.toggle("macro-fill--over", value > target);
+    const value = eaten[key] ?? 0;
+    const progress = macroProgress(target, value);
 
-    const left = Math.round(target - value);
-    figures.textContent = left >= 0 ? `${left}g left` : `${Math.abs(left)}g over`;
-    figures.title = `${Math.round(value)}g of ${target}g`;
+    fill.style.width = `${progress.percentOfTarget}%`;
+    // The colour says whether the day is on the right side of the target,
+    // which is not the same as whether the bar is full: clearing a floor is
+    // good, passing a ceiling is not.
+    fill.classList.toggle("macro-fill--good", progress.isGood);
+    fill.classList.toggle("macro-fill--over", progress.verdict === "over");
+
+    figures.textContent = macroFigureText(progress);
+    figures.title = `${Math.round(value)}g eaten · ${describeTarget(key, target)}`;
   }
 
   // The honest caveat: entries logged before macros existed have none, so a
@@ -5791,6 +5851,11 @@ const macroGramInputs = {
   carbs: document.getElementById("macro-carbs-g"),
   fat: document.getElementById("macro-fat-g"),
 };
+const macroOpInputs = {
+  protein: document.getElementById("macro-protein-op"),
+  carbs: document.getElementById("macro-carbs-op"),
+  fat: document.getElementById("macro-fat-op"),
+};
 const macroPctInputs = {
   protein: document.getElementById("macro-protein-pct"),
   carbs: document.getElementById("macro-carbs-pct"),
@@ -5861,32 +5926,53 @@ function refreshMacroSummary() {
   }
 
   const grams = readMacroInputs(macroGramInputs);
-  const kcal =
-    (grams.protein ?? 0) * KCAL_PER_GRAM.protein +
-    (grams.carbs ?? 0) * KCAL_PER_GRAM.carbs +
-    (grams.fat ?? 0) * KCAL_PER_GRAM.fat;
+  const tracked = ["protein", "carbs", "fat"].filter((key) => (grams[key] ?? 0) > 0);
 
-  if (kcal === 0) {
+  if (tracked.length === 0) {
     macroWarning.textContent = "Set at least one macro target, or switch macros off.";
     macroWarning.hidden = false;
     macroSummary.hidden = true;
     return;
   }
 
-  const calorieTarget = settingsCalorieTarget.value === "" ? null : Number(settingsCalorieTarget.value);
-  let text = `Those grams come to ${kcal.toLocaleString()} kcal.`;
-  if (calorieTarget) {
-    const diff = kcal - calorieTarget;
-    // Not an error: plenty of people set gram floors that don't add up to
-    // their calorie target on purpose. Worth pointing out, not blocking.
-    if (Math.abs(diff) >= 100) {
+  // Read back as a sentence rather than as a kcal total: once the three can
+  // be floors and ceilings, "these come to 2,060 kcal" describes a day that
+  // may not exist. "Protein at least 180g, carbs at most 200g" is both true
+  // and the thing worth checking before saving.
+  const phrases = tracked.map(
+    (key) => `${MACRO_LABELS[key].toLowerCase()} ${MACRO_OP_WORDS[macroOpInputs[key].value]} ${grams[key]}g`,
+  );
+  let text = `Tracking ${listToSentence(phrases)}.`;
+
+  const untracked = ["protein", "carbs", "fat"].filter((key) => !tracked.includes(key));
+  if (untracked.length > 0) {
+    text += ` ${listToSentence(untracked.map((key) => MACRO_LABELS[key]))} won't be tracked.`;
+  }
+
+  // The kcal figure is only a real total when every target is an "about"
+  // figure — a floor plus a ceiling doesn't describe one.
+  const allAbout = tracked.every((key) => macroOpInputs[key].value === "eq");
+  if (allAbout && untracked.length === 0) {
+    const kcal = tracked.reduce((sum, key) => sum + (grams[key] ?? 0) * KCAL_PER_GRAM[key], 0);
+    text += ` That's ${kcal.toLocaleString()} kcal.`;
+    const calorieTarget = settingsCalorieTarget.value === "" ? null : Number(settingsCalorieTarget.value);
+    if (calorieTarget && Math.abs(kcal - calorieTarget) >= 100) {
+      const diff = kcal - calorieTarget;
+      // Not an error — plenty of people set targets that don't reconcile with
+      // their calorie goal on purpose. Worth pointing out, not blocking.
       text += diff > 0
-        ? ` That's ${diff.toLocaleString()} more than your ${calorieTarget.toLocaleString()} kcal target.`
-        : ` That leaves ${Math.abs(diff).toLocaleString()} kcal of your target unallocated.`;
+        ? ` ${diff.toLocaleString()} more than your calorie target.`
+        : ` ${Math.abs(diff).toLocaleString()} kcal of your target left unallocated.`;
     }
   }
+
   macroSummary.textContent = text;
   macroSummary.hidden = false;
+}
+
+function listToSentence(items) {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
 macroModeOff.addEventListener("click", () => setMacroMode(null));
@@ -5895,6 +5981,9 @@ macroModePercent.addEventListener("click", () => setMacroMode("percent"));
 
 for (const input of [...Object.values(macroGramInputs), ...Object.values(macroPctInputs)]) {
   input.addEventListener("input", refreshMacroSummary);
+}
+for (const select of Object.values(macroOpInputs)) {
+  select.addEventListener("change", refreshMacroSummary);
 }
 settingsCalorieTarget.addEventListener("input", refreshMacroSummary);
 
@@ -5912,9 +6001,16 @@ document.getElementById("macro-preset-high-protein").addEventListener("click", (
 });
 
 function populateMacroSettings(user) {
-  macroGramInputs.protein.value = user.proteinTargetG ?? "";
-  macroGramInputs.carbs.value = user.carbsTargetG ?? "";
-  macroGramInputs.fat.value = user.fatTargetG ?? "";
+  // A stored 0 means the same as blank — untracked — so it shows as blank
+  // rather than as a target of nothing.
+  macroGramInputs.protein.value = user.proteinTargetG || "";
+  macroGramInputs.carbs.value = user.carbsTargetG || "";
+  macroGramInputs.fat.value = user.fatTargetG || "";
+  // Sensible defaults for anyone who had targets before operators existed,
+  // and for a first visit: protein is nearly always a floor, fat a ceiling.
+  macroOpInputs.protein.value = user.proteinOp ?? "min";
+  macroOpInputs.carbs.value = user.carbsOp ?? "max";
+  macroOpInputs.fat.value = user.fatOp ?? "max";
   macroPctInputs.protein.value = user.proteinPct ?? "";
   macroPctInputs.carbs.value = user.carbsPct ?? "";
   macroPctInputs.fat.value = user.fatPct ?? "";
@@ -5936,9 +6032,14 @@ function macroSettingsPayload() {
   const grams = readMacroInputs(macroGramInputs);
   return {
     macroMode: "grams",
-    proteinTargetG: grams.protein ?? 0,
-    carbsTargetG: grams.carbs ?? 0,
-    fatTargetG: grams.fat ?? 0,
+    // Null, not 0: a blank field means "don't track this one", and the diary
+    // leaves it off entirely rather than showing a target of nothing.
+    proteinTargetG: grams.protein || null,
+    carbsTargetG: grams.carbs || null,
+    fatTargetG: grams.fat || null,
+    proteinOp: macroOpInputs.protein.value,
+    carbsOp: macroOpInputs.carbs.value,
+    fatOp: macroOpInputs.fat.value,
   };
 }
 
@@ -5973,8 +6074,10 @@ function renderMacroStats(data) {
   macroAvgCarbs.textContent = data.averages.carbs === null ? "—" : `${Math.round(data.averages.carbs)}g`;
   macroAvgFat.textContent = data.averages.fat === null ? "—" : `${Math.round(data.averages.fat)}g`;
 
-  const t = data.targets.grams;
-  const parts = [`Against ${t.protein}g / ${t.carbs}g / ${t.fat}g.`];
+  const described = ["protein", "carbs", "fat"]
+    .map((key) => (data.targets.targets?.[key] ? `${MACRO_LABELS[key].toLowerCase()} ${MACRO_OP_WORDS[data.targets.targets[key].op]} ${data.targets.targets[key].grams}g` : null))
+    .filter(Boolean);
+  const parts = described.length > 0 ? [`Against ${listToSentence(described)}.`] : [];
   // Says which days the average is actually over, since days with a
   // pre-macro entry on them are excluded rather than counted as low.
   parts.push(
