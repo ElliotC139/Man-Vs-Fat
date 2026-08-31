@@ -16,6 +16,7 @@ import { deleteAccount } from "../deleteAccount";
 import { canSendMail, sendMail } from "../mailer";
 import { consume, reset as resetRateLimit, LOGIN_BURST, RESET_BURST } from "../rateLimit";
 import { MACRO_MODES, MACRO_OPS, resolveMacroTargets } from "../macros";
+import { refileMatchWeeks } from "../refileMatchWeeks";
 
 export const authRouter = Router();
 
@@ -311,6 +312,24 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
   }
 
   const user = await prisma.user.update({ where: { id: req.userId! }, data: parsed.data });
+
+  // Changing the rollover re-slices every week the user has ever logged, and
+  // entries are filed against a week's exact boundaries — so without this the
+  // diary would show an empty week and it would look like the history had
+  // been thrown away.
+  const rolloverChanged =
+    (parsed.data.weekStartWeekday !== undefined && parsed.data.weekStartWeekday !== current.weekStartWeekday)
+    || (parsed.data.weekStartHour !== undefined && parsed.data.weekStartHour !== current.weekStartHour)
+    || (parsed.data.weekStartMinute !== undefined && parsed.data.weekStartMinute !== current.weekStartMinute);
+
+  if (rolloverChanged) {
+    await refileMatchWeeks(user.id, {
+      weekday: user.weekStartWeekday,
+      hour: user.weekStartHour,
+      minute: user.weekStartMinute,
+    });
+  }
+
   res.json(toPublicUser(user));
 });
 

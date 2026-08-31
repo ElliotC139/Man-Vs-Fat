@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getMatchWeekBoundaries,
   getMatchWeekBoundariesForWeeksAgo,
+  isWholeDayWeek,
   localDayKey,
   matchWeekCalendarDays,
   weightedDaysLogged,
@@ -195,5 +196,67 @@ describe("weightedDaysLogged", () => {
   it("sums to 7 (not 8) when every day of the week is logged", () => {
     const allDays = matchWeekCalendarDays(start, TZ);
     expect(weightedDaysLogged(allDays, start, TZ)).toBe(7);
+  });
+});
+
+describe("whole-day weeks", () => {
+  // A week starting at local midnight runs Mon 00:00 -> Mon 00:00, which is
+  // Monday to Sunday inclusive: seven whole days, no split ones.
+  const WHOLE_DAY_START = { weekday: 0, hour: 0, minute: 0 };
+
+  it("spans exactly seven calendar days", () => {
+    const { start, end } = getMatchWeekBoundaries(
+      new Date("2026-08-26T12:00:00Z"),
+      TZ,
+      WHOLE_DAY_START,
+    );
+    const days = matchWeekCalendarDays(start, TZ);
+
+    expect(days).toHaveLength(7);
+    expect(days[0]).toBe("2026-08-24");
+    expect(days[6]).toBe("2026-08-30");
+    // The following Monday belongs entirely to the next week.
+    expect(days).not.toContain("2026-08-31");
+    expect(localDayKey(new Date(end.getTime() - 1000), TZ)).toBe("2026-08-30");
+  });
+
+  it("counts every logged day as a whole one", () => {
+    const { start } = getMatchWeekBoundaries(new Date("2026-08-26T12:00:00Z"), TZ, WHOLE_DAY_START);
+    const days = matchWeekCalendarDays(start, TZ);
+
+    // Halving the edges here would report a fully logged week as 6.
+    expect(weightedDaysLogged(days, start, TZ)).toBe(7);
+    expect(weightedDaysLogged([days[0]!], start, TZ)).toBe(1);
+    expect(weightedDaysLogged([days[6]!], start, TZ)).toBe(1);
+  });
+
+  it("puts midnight itself in the opening day, not the closing one", () => {
+    const { start, end } = getMatchWeekBoundaries(
+      new Date("2026-08-24T00:00:00+01:00"),
+      TZ,
+      WHOLE_DAY_START,
+    );
+    // 00:00 on the Monday opens the week rather than closing the one before.
+    expect(start.toISOString()).toBe("2026-08-23T23:00:00.000Z");
+    expect(localDayKey(start, TZ)).toBe("2026-08-24");
+    expect(end.toISOString()).toBe("2026-08-30T23:00:00.000Z");
+  });
+
+  it("leaves a mid-day week counting eight dates and two half days", () => {
+    // The existing behaviour has to be untouched — this is an added option,
+    // not a replacement.
+    const { start } = getMatchWeekBoundaries(new Date("2026-08-26T12:00:00Z"), TZ, { weekday: 0, hour: 17, minute: 0 });
+    const days = matchWeekCalendarDays(start, TZ);
+
+    expect(days).toHaveLength(8);
+    expect(weightedDaysLogged(days, start, TZ)).toBe(7);
+    expect(weightedDaysLogged([days[0]!], start, TZ)).toBe(0.5);
+  });
+
+  it("identifies which kind of week a start instant belongs to", () => {
+    const whole = getMatchWeekBoundaries(new Date("2026-08-26T12:00:00Z"), TZ, WHOLE_DAY_START);
+    const midDay = getMatchWeekBoundaries(new Date("2026-08-26T12:00:00Z"), TZ, { weekday: 0, hour: 17, minute: 0 });
+    expect(isWholeDayWeek(whole.start, TZ)).toBe(true);
+    expect(isWholeDayWeek(midDay.start, TZ)).toBe(false);
   });
 });

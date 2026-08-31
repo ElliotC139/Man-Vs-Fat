@@ -197,6 +197,54 @@ Every entry gets assigned a `MatchWeek` row (created on first use, scoped to
 that user) via `findOrCreateMatchWeek`, so weeks are first-class rows in the
 DB, not a display-time calculation.
 
+## Week styles
+
+Two shapes, both driven by the one stored rollover time rather than a separate
+flag that could drift out of step with it:
+
+- **From a set time** (the original): Monday 17:00 -> Monday 17:00. Touches
+  eight calendar dates, because it opens and closes part-way through a
+  Monday, so each of those counts as half a day and a full week still totals
+  seven.
+- **Whole days**: Monday 00:00 -> Monday 00:00, i.e. Mon–Sun. Seven dates, no
+  split days, every day counts once.
+
+`isWholeDayWeek()` derives which is which from the week's own start instant,
+so `matchWeekCalendarDays()` and `weightedDaysLogged()` can't disagree with
+the boundary they're describing. Before that existed, a midnight rollover
+would still have halved the opening day and counted a phantom eighth date —
+a fully logged week would have reported six.
+
+Changing the rollover re-files every entry and exercise into the weeks the
+new setting implies (`src/refileMatchWeeks.ts`). Entries are attached to a
+MatchWeek row keyed by its exact boundaries, so without this the data would
+all still be there but the diary would show an empty week, which reads
+exactly like having lost it. Cached weekly reviews are cleared at the same
+time, since they describe a slicing that no longer exists; a week holding a
+report already filed in Drive is never deleted, even once empty.
+
+The week's date range is formatted server-side, in `TIMEZONE`. The browser
+formatting it from the boundary instants agreed with the app only by luck:
+17:00 local is 16:00 UTC, the same date either way, but a whole-day week
+starts at local midnight and lands on the previous date for any viewer behind
+the app's timezone.
+
+## What a day is measured against
+
+In descending order of authority:
+
+1. **Measured burn** from WHOOP, per day.
+2. **The user's own daily calorie target**, if they've set one. A figure
+   someone typed in is a statement of what they're aiming at, and showing
+   them a formula's guess instead ignores what they told us.
+3. **A Mifflin-St Jeor estimate** from body stats.
+
+The kind matters as much as the number, so `dailyReference()` returns both: a
+burn figure supports "deficit" and a projected weight change, a target only
+supports "under" and "over". Against a target the balance widget relabels
+itself and drops the kilogram projection entirely rather than predicting the
+scale from what someone meant to eat.
+
 ## Weekly report job
 
 `src/jobs/scheduler.ts` fires `closeMatchWeeksNeedingReport()` every hour, and
