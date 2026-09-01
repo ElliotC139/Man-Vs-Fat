@@ -27,6 +27,8 @@ const ICONS = {
 
 const authScreen = document.getElementById("auth-screen");
 const appShell = document.getElementById("app-shell");
+const todayScreen = document.getElementById("today-screen");
+const tabBar = document.getElementById("tab-bar");
 const authForm = document.getElementById("auth-form");
 const authUsername = document.getElementById("auth-username");
 const authPassword = document.getElementById("auth-password");
@@ -37,7 +39,6 @@ const authToggleBtn = document.getElementById("auth-toggle-btn");
 const googleSigninBtn = document.getElementById("google-signin-btn");
 const authDivider = document.getElementById("auth-divider");
 
-const settingsToggle = document.getElementById("settings-toggle");
 const settingsScreen = document.getElementById("settings-screen");
 const settingsBack = document.getElementById("settings-back");
 const settingsUsername = document.getElementById("settings-username");
@@ -84,7 +85,6 @@ const balanceKgCell = document.getElementById("balance-kg-cell");
 const balanceKg = document.getElementById("balance-kg");
 const balanceKgCaption = document.getElementById("balance-kg-caption");
 
-const foodLibraryToggle = document.getElementById("food-library-toggle");
 const foodLibraryScreen = document.getElementById("food-library-screen");
 const foodLibraryBack = document.getElementById("food-library-back");
 const foodSearchInput = document.getElementById("food-search");
@@ -93,7 +93,6 @@ const foodFavoritesList = document.getElementById("food-favorites-list");
 const foodAllList = document.getElementById("food-all-list");
 const foodLibraryError = document.getElementById("food-library-error");
 
-const statsToggle = document.getElementById("stats-toggle");
 const statsScreen = document.getElementById("stats-screen");
 const statsBack = document.getElementById("stats-back");
 const weighinSummary = document.getElementById("weighin-summary");
@@ -341,23 +340,31 @@ photoInput.addEventListener("change", () => {
 weekPrevBtn.addEventListener("click", () => {
   weeksAgo += 1;
   resultCard.hidden = true;
-  loadWeek();
+  refreshCurrentView();
 });
 
 weekNextBtn.addEventListener("click", () => {
   if (weeksAgo === 0) return;
   weeksAgo -= 1;
   resultCard.hidden = true;
-  loadWeek();
+  refreshCurrentView();
 });
+
+/**
+ * Reloads whatever screen is in front of you after something changed.
+ *
+ * Only the current tab, deliberately: navTo() reloads each tab as you arrive
+ * at it, so refreshing the others now would be two or three requests whose
+ * results nobody is looking at.
+ */
+function refreshCurrentView() {
+  if (currentTab === "week") return loadWeek();
+  return loadToday();
+}
 
 async function loadWeek() {
   const res = await fetch(`/api/match-weeks/current?weeksAgo=${weeksAgo}`);
   const week = await res.json();
-
-  // Fire-and-forget: the strip is a convenience, and waiting on it would
-  // hold up the week the user actually asked for.
-  loadQuickAdd();
 
   // Server-formatted in the app's timezone — see weekRangeLabel in
   // routes/matchWeeks.ts for why the browser can't be trusted to do this.
@@ -368,7 +375,6 @@ async function loadWeek() {
   daysLoggedEl.textContent = week.daysLogged;
   exportPdfEl.href = `/api/match-weeks/current/report.pdf?weeksAgo=${weeksAgo}`;
 
-  form.hidden = weeksAgo !== 0;
   weekNoteEl.hidden = weeksAgo === 0;
   exerciseToggle.hidden = weeksAgo !== 0;
   if (weeksAgo !== 0) { exerciseForm.hidden = true; exerciseToggle.innerHTML = `${ICONS.plus} Log exercise`; }
@@ -393,7 +399,6 @@ async function loadWeek() {
   renderEntries(week.entries);
   renderExercises(week.exercises ?? []);
   renderBudgetWidget(week);
-  renderTargetToday(week.dailyTotals ?? []);
   // After renderEntries, since the notes attach to day headings it creates.
   loadDayNotes();
 }
@@ -808,7 +813,7 @@ function enterEditMode(row, entry) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    loadWeek();
+    refreshCurrentView();
   });
 
   editRow.append(labelInput, kcalInput, qtyInput, dateInput, weekSelect, saveBtn);
@@ -818,13 +823,13 @@ function enterEditMode(row, entry) {
 
 async function deleteEntry(id) {
   await fetch(`/api/entries/${id}`, { method: "DELETE" });
-  loadWeek();
+  refreshCurrentView();
 }
 
 async function repeatEntry(id) {
   await fetch(`/api/entries/${id}/repeat`, { method: "POST" });
   weeksAgo = 0;
-  loadWeek();
+  refreshCurrentView();
 }
 
 form.addEventListener("submit", async (event) => {
@@ -920,7 +925,7 @@ resultSave.addEventListener("click", async () => {
     }),
   );
   resultCard.hidden = true;
-  loadWeek();
+  refreshCurrentView();
 });
 
 resultDismiss.addEventListener("click", () => {
@@ -1060,21 +1065,14 @@ async function handleGoogleCredential(response) {
   }
 }
 
-function openSettings() {
-  appShell.hidden = true;
-  settingsScreen.hidden = false;
+function loadSettingsScreen() {
   refreshPushUi();
   loadRecoveryOptions();
   loadDiagnostics();
 }
 
-function closeSettings() {
-  settingsScreen.hidden = true;
-  appShell.hidden = false;
-}
 
-settingsToggle.addEventListener("click", openSettings);
-settingsBack.addEventListener("click", closeSettings);
+settingsBack.addEventListener("click", () => navTo("today"));
 
 logoutBtn.addEventListener("click", async () => {
   await fetch("/api/auth/logout", { method: "POST" });
@@ -1126,9 +1124,8 @@ settingsSave.addEventListener("click", async () => {
       throw new Error(typeof body.error === "string" ? body.error : "Couldn't save settings.");
     }
     populateSettings(body);
-    closeSettings();
     weeksAgo = 0;
-    loadWeek();
+    navTo("today");
   } catch (error) {
     settingsError.textContent = error.message;
     settingsError.hidden = false;
@@ -1199,10 +1196,8 @@ async function showApp(user, { firstRun = false } = {}) {
     openOnboarding();
   } else {
     localStorage.setItem(ONBOARDED_KEY, "1");
-    appShell.hidden = false;
+    navTo("today");
   }
-
-  loadWeek();
   // Awaited so a redirect error set below isn't silently overwritten by the
   // status fetch's own (less specific) message resolving afterward.
   await loadWhoopStatus();
@@ -1221,9 +1216,9 @@ function handleWhoopRedirect() {
   if (!whoopResult) return;
 
   if (whoopResult === "connected") {
-    openSettings();
+    navTo("settings");
   } else if (whoopResult === "error") {
-    openSettings();
+    navTo("settings");
     const reason = params.get("reason");
     whoopStatusText.textContent = reason ? `Couldn't connect WHOOP: ${reason}` : "Couldn't connect WHOOP — please try again.";
   }
@@ -1298,6 +1293,8 @@ whoopDisconnectBtn.addEventListener("click", async () => {
 
 function showAuthScreen() {
   appShell.hidden = true;
+  todayScreen.hidden = true;
+  tabBar.hidden = true;
   authScreen.hidden = false;
   setAuthMode("login");
   authForm.reset();
@@ -1310,6 +1307,8 @@ async function checkAuth() {
   const resetToken = new URLSearchParams(window.location.search).get("reset");
   if (resetToken) {
     appShell.hidden = true;
+    todayScreen.hidden = true;
+    tabBar.hidden = true;
     authScreen.hidden = false;
     authForm.hidden = true;
     authToggleBtn.parentElement.hidden = true;
@@ -1884,7 +1883,7 @@ productLogBtn.addEventListener("click", async () => {
     productCard.hidden = true;
     currentProduct = null;
     textInput.value = "";
-    await loadWeek();
+    await refreshCurrentView();
   } catch {
     productErrEl.textContent = "Network error — please try again.";
     productErrEl.hidden = false;
@@ -1896,9 +1895,7 @@ productLogBtn.addEventListener("click", async () => {
 // ── Food library ────────────────────────────────────────────────────────────
 let foodSearchTimer = null;
 
-function openFoodLibrary() {
-  appShell.hidden = true;
-  foodLibraryScreen.hidden = false;
+function loadFoodLibraryScreen() {
   foodSearchInput.value = "";
   foodLibraryError.hidden = true;
   closeMealEditor();
@@ -1906,13 +1903,12 @@ function openFoodLibrary() {
   loadMeals();
 }
 
-function closeFoodLibrary() {
-  foodLibraryScreen.hidden = true;
-  appShell.hidden = false;
-  // Meals and favourites can have changed while the library was open, and
-  // the quick-add strip is built from both — without this a meal saved a
-  // moment ago wouldn't appear until the next full page load.
+// The library's back arrow returns to Today, where the quick-add strip is —
+// and meals or favourites may have changed while it was open, so that strip
+// is rebuilt rather than showing a meal saved a moment ago as missing.
+function leaveFoodLibrary() {
   loadQuickAdd();
+  navTo("today");
 }
 
 async function loadFoods(query) {
@@ -2081,7 +2077,7 @@ async function logFood(food, btn) {
     });
     if (res.ok) {
       btn.innerHTML = `Added ${ICONS.check}`;
-      await loadWeek();
+      await refreshCurrentView();
       setTimeout(() => {
         btn.textContent = "+Today";
         btn.disabled = false;
@@ -2096,8 +2092,8 @@ async function logFood(food, btn) {
   }
 }
 
-foodLibraryToggle.addEventListener("click", openFoodLibrary);
-foodLibraryBack.addEventListener("click", closeFoodLibrary);
+
+foodLibraryBack.addEventListener("click", leaveFoodLibrary);
 foodSearchInput.addEventListener("input", () => {
   clearTimeout(foodSearchTimer);
   foodSearchTimer = setTimeout(() => loadFoods(foodSearchInput.value), 250);
@@ -2161,9 +2157,7 @@ function switchStatsTab(name) {
 
 statsTabBtns.forEach((btn) => btn.addEventListener("click", () => switchStatsTab(btn.dataset.statsTab)));
 
-function openStats() {
-  appShell.hidden = true;
-  statsScreen.hidden = false;
+function loadStatsScreen() {
   weighinError.hidden = true;
   weighinDate.max = todayDateValue();
   weighinDate.value = todayDateValue();
@@ -2184,10 +2178,6 @@ function openStats() {
   loadMacroStats();
 }
 
-function closeStats() {
-  statsScreen.hidden = true;
-  appShell.hidden = false;
-}
 
 async function loadWeighIns() {
   try {
@@ -3325,27 +3315,62 @@ weighinForm.addEventListener("submit", async (e) => {
   }
 });
 
-statsToggle.addEventListener("click", openStats);
-statsBack.addEventListener("click", closeStats);
+statsBack.addEventListener("click", () => navTo("today"));
 
-// ── Desktop nav ─────────────────────────────────────────────────────────────
-// Wide-viewport tab bar (see .desktop-nav in style.css) that replaces the
-// mobile corner icons — every screen carries an identical copy of it, wired
-// to the same open/close functions the icons already use.
+// ── Bottom tab bar ──────────────────────────────────────────────────────────
+// One function owns which screen is showing, rather than each screen's own
+// open/close pair deciding independently. With five destinations that's the
+// difference between "hide the other four" written once and written five
+// times — and it's what stopped the screens ever being visible at once.
+const TAB_SCREENS = {
+  today: () => todayScreen,
+  week: () => appShell,
+  "food-library": () => foodLibraryScreen,
+  stats: () => statsScreen,
+  settings: () => settingsScreen,
+};
+
+let currentTab = "today";
+
 function navTo(target) {
-  if (!reviewScreen.hidden) closeReview();
-  if (!settingsScreen.hidden && target !== "settings") closeSettings();
-  if (!foodLibraryScreen.hidden && target !== "food-library") closeFoodLibrary();
-  if (!statsScreen.hidden && target !== "stats") closeStats();
+  if (!TAB_SCREENS[target]) return;
 
-  if (target === "food-library" && foodLibraryScreen.hidden) openFoodLibrary();
-  else if (target === "stats" && statsScreen.hidden) openStats();
-  else if (target === "settings" && settingsScreen.hidden) openSettings();
+  // The weekly review is a detail view of the week rather than a tab of its
+  // own, so navigating anywhere closes it.
+  reviewScreen.hidden = true;
+
+  for (const [name, screenFor] of Object.entries(TAB_SCREENS)) {
+    screenFor().hidden = name !== target;
+  }
+  for (const btn of document.querySelectorAll(".tab-btn")) {
+    const active = btn.dataset.nav === target;
+    btn.classList.toggle("tab-btn--active", active);
+    btn.setAttribute("aria-current", active ? "page" : "false");
+  }
+
+  const previous = currentTab;
+  currentTab = target;
+  tabBar.hidden = false;
+
+  // Each tab refreshes as you arrive. Cheap at this size, and it means food
+  // logged on Today shows in the week the moment you switch rather than
+  // leaving a stale total behind.
+  if (target === "today") loadToday();
+  else if (target === "week") loadWeek();
+  else if (target === "food-library") loadFoodLibraryScreen();
+  else if (target === "stats") loadStatsScreen();
+  else if (target === "settings") loadSettingsScreen();
+
+  // A tab arrived at halfway down reads as a broken page.
+  window.scrollTo({ top: 0, behavior: "auto" });
 }
 
-document.querySelectorAll(".desktop-nav-btn").forEach((btn) => {
-  btn.addEventListener("click", () => navTo(btn.dataset.nav));
-});
+for (const btn of document.querySelectorAll(".tab-btn")) {
+  btn.addEventListener("click", () => {
+    haptic();
+    navTo(btn.dataset.nav);
+  });
+}
 
 // ── Where a calorie figure came from ────────────────────────────────────────
 // Entry.source (see prisma/schema.prisma) records whether a number was
@@ -3501,7 +3526,7 @@ async function quickLogFood(food) {
     if (!res.ok) throw new Error();
     quickAddError.hidden = true;
     haptic();
-    await loadWeek();
+    await refreshCurrentView();
   } catch {
     showQuickAddError(`Couldn't log ${food.label} — please try again.`);
   }
@@ -3529,7 +3554,7 @@ async function logSavedMeal(meal) {
     if (!res.ok) throw new Error();
     quickAddError.hidden = true;
     haptic();
-    await loadWeek();
+    await refreshCurrentView();
   } catch {
     showQuickAddError(`Couldn't log ${meal.name} — please try again.`);
   }
@@ -3984,7 +4009,7 @@ function handleLaunchParams() {
 
   if (action === "scan") openScanner();
   else if (action === "weigh") {
-    openStats();
+    navTo("stats");
     document.getElementById("weighin-weight")?.focus();
   } else if (action === "log" || shared) {
     textInput.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -4066,27 +4091,34 @@ function isNetworkFailure(error) {
   return error instanceof TypeError || !navigator.onLine;
 }
 
-const offlineBanner = document.getElementById("offline-banner");
-const offlineBannerText = document.getElementById("offline-banner-text");
+const offlineBanners = [
+  { banner: document.getElementById("offline-banner"), text: document.getElementById("offline-banner-text") },
+  { banner: document.getElementById("today-offline-banner"), text: document.getElementById("today-offline-text") },
+];
 
 async function refreshOfflineBanner() {
   const items = await queuedItems();
   const offline = !navigator.onLine;
+  const waiting = items.length > 0;
 
-  if (!offline && items.length === 0) {
-    offlineBanner.hidden = true;
-    return;
-  }
-
-  offlineBanner.hidden = false;
-  offlineBanner.classList.toggle("offline-banner--waiting", items.length > 0);
-  if (items.length > 0) {
+  let message = "";
+  if (waiting) {
     const noun = items.length === 1 ? "entry" : "entries";
-    offlineBannerText.textContent = offline
+    message = offline
       ? `Offline — ${items.length} ${noun} saved on this device, and will sync when you're back.`
       : `Syncing ${items.length} ${noun} saved while you were offline…`;
-  } else {
-    offlineBannerText.textContent = "Offline — anything you log now is saved here and synced later.";
+  } else if (offline) {
+    message = "Offline — anything you log now is saved here and synced later.";
+  }
+
+  // Both Today and the week carry one, and you can be on either when the
+  // connection drops — so the state goes to both rather than to whichever
+  // happens to be in front.
+  for (const { banner, text } of offlineBanners) {
+    if (!banner || !text) continue;
+    banner.hidden = !offline && !waiting;
+    banner.classList.toggle("offline-banner--waiting", waiting);
+    text.textContent = message;
   }
 }
 
@@ -4119,7 +4151,7 @@ async function flushQueue() {
 
     await refreshOfflineBanner();
     if (sent > 0) {
-      await loadWeek();
+      await refreshCurrentView();
       if (!statsScreen.hidden) await loadWeighIns();
     }
   } finally {
@@ -4353,6 +4385,7 @@ function showOnboardingStep(step) {
 }
 
 function openOnboarding() {
+  tabBar.hidden = true;
   authScreen.hidden = true;
   appShell.hidden = true;
   onboardingScreen.hidden = false;
@@ -4364,7 +4397,7 @@ function openOnboarding() {
 function finishOnboarding() {
   localStorage.setItem(ONBOARDED_KEY, "1");
   onboardingScreen.hidden = true;
-  appShell.hidden = false;
+  navTo("today");
 }
 
 /** Sends only the fields the user actually filled in, so a skipped question
@@ -4942,19 +4975,14 @@ const settingsCalorieTarget = document.getElementById("settings-calorie-target")
 const suggestTargetBtn = document.getElementById("suggest-target-btn");
 const suggestTargetNote = document.getElementById("suggest-target-note");
 
-function renderTargetToday(days) {
+function renderTargetToday(today) {
   const calorieTarget = currentUser?.dailyCalorieTarget ?? null;
   const macroTargets = currentUser?.macroTargets ?? null;
 
-  // Only meaningful for the week actually in progress — a target line against
-  // a week you finished a fortnight ago says nothing useful. isToday comes
-  // from the server, which resolves it in the app's timezone rather than the
-  // browser's.
-  const today = (days ?? []).find((day) => day.isToday);
   // The two halves are independent. Someone tracking "at least 180g of
   // protein" and nothing else has no reason to have set a calorie target,
   // and gating the whole card on one hid their macros completely.
-  if (weeksAgo !== 0 || !today || (!calorieTarget && !macroTargets)) {
+  if (!today || (!calorieTarget && !macroTargets)) {
     targetToday.hidden = true;
     return;
   }
@@ -5018,7 +5046,7 @@ function macroProgress(target, eaten) {
 }
 
 /** The short line at the end of a macro row. */
-function macroFigureText(progress) {
+function macroFigureText(progress, op) {
   const short = Math.abs(Math.round(progress.remaining));
   if (progress.verdict === "met") {
     // A cleared floor says so rather than counting up past it — the number
@@ -5026,7 +5054,9 @@ function macroFigureText(progress) {
     return progress.remaining <= 0 ? "hit" : `${short}g to go`;
   }
   if (progress.verdict === "over") return `${short}g over`;
-  return `${short}g to go`;
+  // Headroom under a ceiling is not a thing you still have to eat: "to go"
+  // on a carb limit reads as an instruction to go and eat 116g of carbs.
+  return op === "max" ? `${short}g left` : `${short}g to go`;
 }
 
 function describeTarget(key, target) {
@@ -5069,7 +5099,7 @@ function renderMacroToday(today, { standalone = false } = {}) {
     fill.classList.toggle("macro-fill--good", progress.isGood);
     fill.classList.toggle("macro-fill--over", progress.verdict === "over");
 
-    figures.textContent = macroFigureText(progress);
+    figures.textContent = macroFigureText(progress, target.op);
     figures.title = `${Math.round(value)}g eaten · ${describeTarget(key, target)}`;
   }
 
@@ -6186,4 +6216,165 @@ function renderMacroStats(data) {
       : `Averaged over the ${pluralDays(data.daysComplete)} where every entry had a breakdown, of ${data.daysLogged} logged.`,
   );
   macroStatsNote.textContent = parts.join(" ");
+}
+
+
+// ── Today ──────────────────────────────────────────────────────────────────
+// The screen the app opens on: what today looks like so far, and the fastest
+// route to adding to it. Everything here comes from one call — this is the
+// first thing anyone sees, and five round trips means five chances to render
+// half a page.
+const todayDateEl = document.getElementById("today-date");
+const todayKcalEl = document.getElementById("today-kcal");
+const todayRingFill = document.getElementById("today-ring-fill");
+const todayRemaining = document.getElementById("today-remaining");
+const todayRemainingCaption = document.getElementById("today-remaining-caption");
+const todayBurn = document.getElementById("today-burn");
+const todayBurnCaption = document.getElementById("today-burn-caption");
+const todayNet = document.getElementById("today-net");
+const todayNetCaption = document.getElementById("today-net-caption");
+const todayPending = document.getElementById("today-pending");
+const todayInsightsCard = document.getElementById("today-insights-card");
+const todayInsightsList = document.getElementById("today-insights");
+const todayBodyCard = document.getElementById("today-body-card");
+const todayRecoveryCell = document.getElementById("today-recovery-cell");
+const todayRecovery = document.getElementById("today-recovery");
+const todaySleepCell = document.getElementById("today-sleep-cell");
+const todaySleep = document.getElementById("today-sleep");
+const todayEntryList = document.getElementById("today-entry-list");
+const todayEntryCount = document.getElementById("today-entry-count");
+
+// Circumference of the r=52 ring in the markup. Kept as a constant rather
+// than measured, because getTotalLength() on a hidden SVG returns 0 and the
+// ring is hidden until its tab is opened.
+const TODAY_RING_CIRCUMFERENCE = 2 * Math.PI * 52;
+
+async function loadToday() {
+  try {
+    const res = await fetch("/api/stats/today");
+    if (!res.ok) throw new Error();
+    renderToday(await res.json());
+  } catch {
+    // Offline or a failed call: the banner already says so, and blanking the
+    // screen would throw away the last good numbers for no gain.
+  }
+  loadQuickAdd();
+}
+
+function renderToday(data) {
+  todayDateEl.textContent = data.label;
+  currentTodayDate = data.date;
+
+  const eaten = data.kcal.eaten ?? 0;
+  todayKcalEl.textContent = eaten.toLocaleString();
+
+  // The ring fills against whatever today is being measured by — the target
+  // if there is one, otherwise measured burn. With neither there's nothing
+  // for a proportion to be *of*, so it sits empty rather than inventing a
+  // denominator.
+  const ringBasis = data.kcal.target ?? data.kcal.measuredBurn ?? data.kcal.reference ?? null;
+  const pct = ringBasis ? Math.max(0, Math.min(1, eaten / ringBasis)) : 0;
+  todayRingFill.style.strokeDasharray = `${TODAY_RING_CIRCUMFERENCE}`;
+  todayRingFill.style.strokeDashoffset = `${TODAY_RING_CIRCUMFERENCE * (1 - pct)}`;
+  todayRingFill.classList.toggle("today-ring-fill--over", Boolean(ringBasis) && eaten > ringBasis);
+
+  if (data.kcal.target !== null) {
+    const left = data.kcal.remaining ?? 0;
+    todayRemaining.textContent = Math.abs(left).toLocaleString();
+    todayRemainingCaption.textContent = left >= 0 ? "kcal left" : "kcal over";
+  } else {
+    todayRemaining.textContent = eaten.toLocaleString();
+    todayRemainingCaption.textContent = "logged today";
+  }
+
+  // Only a measured burn goes in the burn tile. An estimate or a target
+  // isn't a burn, and labelling it as one would be a lie about where the
+  // number came from.
+  const burn = data.kcal.measuredBurn;
+  todayBurn.textContent = burn === null ? "—" : burn.toLocaleString();
+  todayBurnCaption.textContent = burn === null ? "burn (no tracker)" : "burned so far";
+
+  const netBasis = burn ?? data.kcal.reference ?? null;
+  if (netBasis === null) {
+    todayNet.textContent = "—";
+    todayNetCaption.textContent = "net";
+  } else {
+    const net = eaten - netBasis;
+    todayNet.textContent = `${net > 0 ? "+" : net < 0 ? "−" : ""}${Math.abs(Math.round(net)).toLocaleString()}`;
+    todayNetCaption.textContent = burn !== null
+      ? "net so far"
+      : data.kcal.referenceSource === "target" ? "vs target" : "vs estimate";
+  }
+  todayNet.className = netBasis !== null && eaten > netBasis ? "today-stat-value today-stat-value--over" : "today-stat-value today-stat-value--under";
+
+  if (data.kcal.pendingEntries > 0) {
+    const n = data.kcal.pendingEntries;
+    todayPending.textContent = `${n} ${n === 1 ? "entry" : "entries"} couldn't be estimated and isn't counted — tap Edit to add kcal.`;
+    todayPending.hidden = false;
+  } else {
+    todayPending.hidden = true;
+  }
+
+  // The target bar and macro rows are the same component the week summary
+  // used to carry; they live here now, where today's numbers belong.
+  renderTargetToday({ kcal: eaten, macros: data.macros.eaten });
+
+  renderTodayBody(data.whoop);
+  renderTodayInsights(data.insights);
+  renderTodayEntries(data.entries);
+  renderWater(data.waterMl ?? 0);
+}
+
+let currentTodayDate = null;
+
+function renderTodayBody(whoop) {
+  const hasRecovery = whoop?.recoveryScore != null;
+  const hasSleep = whoop?.sleepMinutes != null;
+  todayBodyCard.hidden = !hasRecovery && !hasSleep;
+
+  todayRecoveryCell.hidden = !hasRecovery;
+  if (hasRecovery) {
+    todayRecovery.textContent = `${whoop.recoveryScore}%`;
+    // WHOOP's own bands, so the colour means the same here as it does in
+    // their app rather than being a second opinion.
+    todayRecovery.className =
+      whoop.recoveryScore >= 67 ? "balance-number recovery--high"
+      : whoop.recoveryScore >= 34 ? "balance-number recovery--mid"
+      : "balance-number recovery--low";
+  }
+
+  todaySleepCell.hidden = !hasSleep;
+  if (hasSleep) todaySleep.textContent = formatSleepDuration(whoop.sleepMinutes);
+}
+
+function renderTodayInsights(insights) {
+  todayInsightsList.innerHTML = "";
+  if (!insights || insights.length === 0) {
+    todayInsightsCard.hidden = true;
+    return;
+  }
+  todayInsightsCard.hidden = false;
+  for (const insight of insights) {
+    const li = document.createElement("li");
+    li.textContent = insight.text;
+    todayInsightsList.appendChild(li);
+  }
+}
+
+function renderTodayEntries(entries) {
+  todayEntryList.innerHTML = "";
+  todayEntryCount.textContent = entries.length === 0
+    ? ""
+    : `${entries.length} ${entries.length === 1 ? "item" : "items"}`;
+
+  if (entries.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "muted today-empty";
+    empty.textContent = "Nothing logged yet today.";
+    todayEntryList.appendChild(empty);
+    return;
+  }
+  // Reuses the diary's own row, so editing, repeating, deleting and the
+  // photo thumbnail all behave identically in both places.
+  for (const entry of entries) todayEntryList.appendChild(renderEntryRow(entry));
 }

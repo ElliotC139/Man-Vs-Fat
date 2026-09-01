@@ -65,29 +65,226 @@
       </div>
     </div>
 
+    <div id="today-screen" hidden>
+      <header class="banner banner--fixture banner--today">
+        <h1 class="brand"><img src="/icons/mark.png" alt="" class="brand-mark" width="28" height="28" /><span class="brand-word">Match Week Food Diary</span></h1>
+        <p id="today-date" class="today-date"></p>
+      </header>
+
+      <main>
+        <div id="today-offline-banner" class="offline-banner" role="status" hidden>
+          <svg class="icon" viewBox="0 0 24 24"><path d="M1 1l22 22"/><path d="M16.7 13.3A5 5 0 0 0 18 10a6 6 0 0 0-9.3-5"/><path d="M5 8a6 6 0 0 0-.7 8.7"/><path d="M8 20h9a4 4 0 0 0 2.4-.8"/></svg>
+          <span id="today-offline-text"></span>
+        </div>
+
+        <section class="card today-hero">
+          <div class="today-hero-row">
+            <div class="today-ring-wrap">
+              <svg class="today-ring" viewBox="0 0 120 120" aria-hidden="true">
+                <circle class="today-ring-track" cx="60" cy="60" r="52" />
+                <circle id="today-ring-fill" class="today-ring-fill" cx="60" cy="60" r="52" />
+              </svg>
+              <div class="today-ring-centre">
+                <span id="today-kcal" class="today-hero-number">0</span>
+                <span class="today-hero-unit">kcal</span>
+              </div>
+            </div>
+            <div class="today-hero-side">
+              <div class="today-stat">
+                <span id="today-remaining" class="today-stat-value">—</span>
+                <span id="today-remaining-caption" class="today-stat-caption">logged today</span>
+              </div>
+              <div class="today-stat">
+                <span id="today-burn" class="today-stat-value">—</span>
+                <span id="today-burn-caption" class="today-stat-caption">burned</span>
+              </div>
+              <div class="today-stat">
+                <span id="today-net" class="today-stat-value">—</span>
+                <span id="today-net-caption" class="today-stat-caption">net</span>
+              </div>
+            </div>
+          </div>
+          <p id="today-pending" class="error" hidden></p>
+        </section>
+
+        <section id="target-card" class="card">
+          <div id="target-today" class="target-today" hidden>
+          <div id="target-calories" class="target-calories">
+          <div class="target-today-head">
+          <span class="target-today-label">Against target</span>
+          <span id="target-today-figures" class="target-today-figures"></span>
+          </div>
+          <div class="target-track"><div id="target-fill" class="target-fill"></div></div>
+          <span id="target-today-note" class="target-today-note"></span>
+          </div>
+
+          <div id="macro-today" class="macro-today" hidden>
+          <div id="macro-today-heading" class="target-today-head" hidden>
+          <span class="target-today-label">Against target</span>
+          </div>
+          <div class="macro-row" data-macro="protein">
+          <span class="macro-name">Protein</span>
+          <div class="macro-track"><div class="macro-fill"></div></div>
+          <span class="macro-figures"></span>
+          </div>
+          <div class="macro-row" data-macro="carbs">
+          <span class="macro-name">Carbs</span>
+          <div class="macro-track"><div class="macro-fill"></div></div>
+          <span class="macro-figures"></span>
+          </div>
+          <div class="macro-row" data-macro="fat">
+          <span class="macro-name">Fat</span>
+          <div class="macro-track"><div class="macro-fill"></div></div>
+          <span class="macro-figures"></span>
+          </div>
+          <p id="macro-today-note" class="macro-today-note" hidden></p>
+          </div>
+          </div>
+        </section>
+
+        <section id="today-insights-card" class="card" hidden>
+          <div class="section-header"><h2>Today so far</h2></div>
+          <ul id="today-insights" class="insights-list"></ul>
+        </section>
+
+        <section id="today-body-card" class="card" hidden>
+          <div class="section-header"><h2>Body</h2></div>
+          <div class="balance-grid">
+            <div class="balance-cell" id="today-recovery-cell" hidden>
+              <span id="today-recovery" class="balance-number">—</span>
+              <span class="balance-caption">recovery</span>
+            </div>
+            <div class="balance-cell" id="today-sleep-cell" hidden>
+              <span id="today-sleep" class="balance-number">—</span>
+              <span class="balance-caption">slept</span>
+            </div>
+          </div>
+        </section>
+
+        <form id="entry-form" class="card">
+        <div class="entry-form-header">
+        <label for="text">What did you eat?</label>
+        <button type="button" id="quick-add-toggle" class="ghost-sm" aria-expanded="false" aria-controls="quick-add" hidden>
+        Quick add
+        </button>
+        </div>
+
+        <section id="quick-add" class="quick-add" hidden>
+        <div class="quick-add-header">
+        <span class="quick-add-title">Log again in one tap</span>
+        <button type="button" id="quick-add-manage" class="ghost-sm">Manage meals</button>
+        </div>
+        <div id="quick-add-chips" class="quick-add-chips"></div>
+        <p id="quick-add-error" class="error" hidden></p>
+        </section>
+
+        <textarea
+        id="text"
+        name="text"
+        rows="2"
+        placeholder="e.g. chicken stir fry with rice, small handful of crisps"
+        ></textarea>
+
+        <label for="photo" class="photo-label">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg>
+        <span id="photo-status">Add a photo (optional)</span>
+        <input type="file" id="photo" name="photo" accept="image/*" />
+        </label>
+
+        <div class="capture-row">
+        <button type="button" id="scan-barcode-btn" class="capture-btn">
+        <svg class="icon" viewBox="0 0 24 24"><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/><path d="M21 7.35V16.65a1.35 1.35 0 0 1-.68 1.17l-7.64 4.37a1.35 1.35 0 0 1-1.36 0l-7.64-4.37A1.35 1.35 0 0 1 3 16.65V7.35a1.35 1.35 0 0 1 .68-1.17l7.64-4.37a1.35 1.35 0 0 1 1.36 0l7.64 4.37A1.35 1.35 0 0 1 21 7.35Z"/></svg>
+        Scan
+        </button>
+        <button type="button" id="food-search-btn" class="capture-btn">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        Search
+        </button>
+        <button type="button" id="voice-btn" class="capture-btn" hidden>
+        <svg class="icon" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></svg>
+        <span id="voice-btn-label">Speak</span>
+        </button>
+        </div>
+
+        <div id="log-week-row" class="log-week-row" hidden>
+        <span class="muted">Count toward</span>
+        <div class="log-week-btns">
+        <button type="button" id="log-week-current" class="log-week-btn log-week-btn--active">This week</button>
+        <button type="button" id="log-week-last" class="log-week-btn">Last week</button>
+        </div>
+        </div>
+        <button type="submit" id="submit-btn">Log it</button>
+        <p id="form-error" class="error" hidden></p>
+        </form>
+
+        <section id="food-search-card" class="card food-search-card" hidden>
+        <div class="quick-add-header">
+        <span class="quick-add-title">Search food database</span>
+        <button type="button" id="food-search-close" class="ghost-sm">Close</button>
+        </div>
+        <input type="search" id="food-search-query" placeholder="e.g. hobnobs, greek yoghurt…" autocomplete="off" />
+        <p id="food-search-status" class="muted" hidden></p>
+        <div id="food-search-results" class="food-search-results"></div>
+        </section>
+
+        <section id="product-card" class="card product-card" hidden>
+        <p class="muted product-card-eyebrow">Found product</p>
+        <p id="product-name-el" class="product-name"></p>
+        <p id="product-brand-el" class="muted product-brand"></p>
+        <div class="product-serving-row">
+        <label for="product-serving-input">Serving (g)</label>
+        <input type="number" id="product-serving-input" min="1" step="1" />
+        <span id="product-kcal-el" class="product-kcal-badge"></span>
+        </div>
+        <p id="product-macros-el" class="muted product-macros" hidden></p>
+        <p id="product-nodata-el" class="muted" hidden>No calorie data found — AI will estimate from the name.</p>
+        <div class="result-actions">
+        <button type="button" id="product-log-btn">Log it</button>
+        <button type="button" id="product-rescan-btn" class="ghost">Scan again</button>
+        </div>
+        <p id="product-err-el" class="error" hidden></p>
+        </section>
+
+        <section id="result-card" class="card result" hidden>
+        <p class="muted">Got it — looks right?</p>
+        <p id="result-warning" class="error" hidden></p>
+        <div id="result-rows"></div>
+        <div class="result-actions">
+        <button id="result-save" type="button">Save corrections</button>
+        <button id="result-dismiss" type="button" class="ghost">Looks good</button>
+        </div>
+        </section>
+
+        <section id="water-card" class="card water-card">
+        <div class="water-head">
+        <span class="water-title">Water today</span>
+        <span id="water-total" class="water-total">0 ml</span>
+        </div>
+        <div class="water-buttons">
+        <button type="button" class="ghost-sm water-btn" data-water="250">+ Glass</button>
+        <button type="button" class="ghost-sm water-btn" data-water="500">+ Bottle</button>
+        <button type="button" class="ghost-sm water-btn" data-water="-250">Undo</button>
+        </div>
+        </section>
+
+        <section id="today-entries-section">
+          <div class="section-header">
+            <h2>Logged today</h2>
+            <span id="today-entry-count" class="muted"></span>
+          </div>
+          <div id="today-entry-list"></div>
+        </section>
+      </main>
+    </div>
+
     <div id="app-shell" hidden>
       <header class="banner banner--fixture">
         <h1 class="brand"><img src="/icons/mark.png" alt="" class="brand-mark" width="28" height="28" /><span class="brand-word">Match Week Food Diary</span></h1>
-        <nav class="desktop-nav" aria-label="Main">
-          <button type="button" class="desktop-nav-btn desktop-nav-btn--active" data-nav="diary">Diary</button>
-          <button type="button" class="desktop-nav-btn" data-nav="food-library">Food Library</button>
-          <button type="button" class="desktop-nav-btn" data-nav="stats">Stats</button>
-          <button type="button" class="desktop-nav-btn" data-nav="settings">Settings</button>
-        </nav>
         <div class="week-nav">
           <button id="week-prev" type="button" aria-label="Previous week"><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
           <p id="week-range" class="muted">Loading…</p>
           <button id="week-next" type="button" aria-label="Next week" disabled><svg class="icon" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
         </div>
-        <button id="food-library-toggle" type="button" class="library-toggle" aria-label="Food library">
-          <svg class="icon" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h6M9 8h1"/></svg>
-        </button>
-        <button id="stats-toggle" type="button" class="stats-toggle" aria-label="Stats">
-          <svg class="icon" viewBox="0 0 24 24"><path d="M23 6 13.5 15.5 8.5 10.5 1 18"/><path d="M17 6h6v6"/></svg>
-        </button>
-        <button id="settings-toggle" type="button" class="settings-toggle" aria-label="Settings">
-          <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
-        </button>
       </header>
 
       <main>
@@ -98,100 +295,6 @@
 
         <p id="week-note" class="muted" hidden>Viewing a past week — go to the current week to log new entries.</p>
 
-        <form id="entry-form" class="card">
-          <div class="entry-form-header">
-            <label for="text">What did you eat?</label>
-            <button type="button" id="quick-add-toggle" class="ghost-sm" aria-expanded="false" aria-controls="quick-add" hidden>
-              Quick add
-            </button>
-          </div>
-
-          <section id="quick-add" class="quick-add" hidden>
-            <div class="quick-add-header">
-              <span class="quick-add-title">Log again in one tap</span>
-              <button type="button" id="quick-add-manage" class="ghost-sm">Manage meals</button>
-            </div>
-            <div id="quick-add-chips" class="quick-add-chips"></div>
-            <p id="quick-add-error" class="error" hidden></p>
-          </section>
-
-          <textarea
-            id="text"
-            name="text"
-            rows="2"
-            placeholder="e.g. chicken stir fry with rice, small handful of crisps"
-          ></textarea>
-
-          <label for="photo" class="photo-label">
-            <svg class="icon" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg>
-            <span id="photo-status">Add a photo (optional)</span>
-            <input type="file" id="photo" name="photo" accept="image/*" />
-          </label>
-
-          <div class="capture-row">
-            <button type="button" id="scan-barcode-btn" class="capture-btn">
-              <svg class="icon" viewBox="0 0 24 24"><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/><path d="M21 7.35V16.65a1.35 1.35 0 0 1-.68 1.17l-7.64 4.37a1.35 1.35 0 0 1-1.36 0l-7.64-4.37A1.35 1.35 0 0 1 3 16.65V7.35a1.35 1.35 0 0 1 .68-1.17l7.64-4.37a1.35 1.35 0 0 1 1.36 0l7.64 4.37A1.35 1.35 0 0 1 21 7.35Z"/></svg>
-              Scan
-            </button>
-            <button type="button" id="food-search-btn" class="capture-btn">
-              <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-              Search
-            </button>
-            <button type="button" id="voice-btn" class="capture-btn" hidden>
-              <svg class="icon" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></svg>
-              <span id="voice-btn-label">Speak</span>
-            </button>
-          </div>
-
-          <div id="log-week-row" class="log-week-row" hidden>
-            <span class="muted">Count toward</span>
-            <div class="log-week-btns">
-              <button type="button" id="log-week-current" class="log-week-btn log-week-btn--active">This week</button>
-              <button type="button" id="log-week-last" class="log-week-btn">Last week</button>
-            </div>
-          </div>
-          <button type="submit" id="submit-btn">Log it</button>
-          <p id="form-error" class="error" hidden></p>
-        </form>
-
-        <section id="food-search-card" class="card food-search-card" hidden>
-          <div class="quick-add-header">
-            <span class="quick-add-title">Search food database</span>
-            <button type="button" id="food-search-close" class="ghost-sm">Close</button>
-          </div>
-          <input type="search" id="food-search-query" placeholder="e.g. hobnobs, greek yoghurt…" autocomplete="off" />
-          <p id="food-search-status" class="muted" hidden></p>
-          <div id="food-search-results" class="food-search-results"></div>
-        </section>
-
-        <section id="product-card" class="card product-card" hidden>
-          <p class="muted product-card-eyebrow">Found product</p>
-          <p id="product-name-el" class="product-name"></p>
-          <p id="product-brand-el" class="muted product-brand"></p>
-          <div class="product-serving-row">
-            <label for="product-serving-input">Serving (g)</label>
-            <input type="number" id="product-serving-input" min="1" step="1" />
-            <span id="product-kcal-el" class="product-kcal-badge"></span>
-          </div>
-          <p id="product-macros-el" class="muted product-macros" hidden></p>
-          <p id="product-nodata-el" class="muted" hidden>No calorie data found — AI will estimate from the name.</p>
-          <div class="result-actions">
-            <button type="button" id="product-log-btn">Log it</button>
-            <button type="button" id="product-rescan-btn" class="ghost">Scan again</button>
-          </div>
-          <p id="product-err-el" class="error" hidden></p>
-        </section>
-
-        <section id="result-card" class="card result" hidden>
-          <p class="muted">Got it — looks right?</p>
-          <p id="result-warning" class="error" hidden></p>
-          <div id="result-rows"></div>
-          <div class="result-actions">
-            <button id="result-save" type="button">Save corrections</button>
-            <button id="result-dismiss" type="button" class="ghost">Looks good</button>
-          </div>
-        </section>
-
         <section class="summary card">
           <div id="form-guide" class="form-guide" hidden>
             <div class="form-guide-head">
@@ -201,38 +304,6 @@
             <div id="form-guide-days" class="form-guide-days"></div>
           </div>
 
-          <div id="target-today" class="target-today" hidden>
-            <div id="target-calories" class="target-calories">
-              <div class="target-today-head">
-                <span class="target-today-label">Today</span>
-                <span id="target-today-figures" class="target-today-figures"></span>
-              </div>
-              <div class="target-track"><div id="target-fill" class="target-fill"></div></div>
-              <span id="target-today-note" class="target-today-note"></span>
-            </div>
-
-            <div id="macro-today" class="macro-today" hidden>
-              <div id="macro-today-heading" class="target-today-head" hidden>
-                <span class="target-today-label">Today</span>
-              </div>
-              <div class="macro-row" data-macro="protein">
-                <span class="macro-name">Protein</span>
-                <div class="macro-track"><div class="macro-fill"></div></div>
-                <span class="macro-figures"></span>
-              </div>
-              <div class="macro-row" data-macro="carbs">
-                <span class="macro-name">Carbs</span>
-                <div class="macro-track"><div class="macro-fill"></div></div>
-                <span class="macro-figures"></span>
-              </div>
-              <div class="macro-row" data-macro="fat">
-                <span class="macro-name">Fat</span>
-                <div class="macro-track"><div class="macro-fill"></div></div>
-                <span class="macro-figures"></span>
-              </div>
-              <p id="macro-today-note" class="macro-today-note" hidden></p>
-            </div>
-          </div>
 
           <div class="summary-total"><span id="week-total">0</span> kcal this week</div>
           <div class="muted"><span id="week-avg">0</span> kcal/day avg over <span id="days-logged">0</span> day(s) logged</div>
@@ -242,18 +313,6 @@
           <div class="summary-actions">
             <button type="button" id="open-review-btn" class="ghost-sm">Weekly review</button>
             <a id="export-pdf" class="button-link" href="/api/match-weeks/current/report.pdf">Export PDF</a>
-          </div>
-        </section>
-
-        <section id="water-card" class="card water-card">
-          <div class="water-head">
-            <span class="water-title">Water today</span>
-            <span id="water-total" class="water-total">0 ml</span>
-          </div>
-          <div class="water-buttons">
-            <button type="button" class="ghost-sm water-btn" data-water="250">+ Glass</button>
-            <button type="button" class="ghost-sm water-btn" data-water="500">+ Bottle</button>
-            <button type="button" class="ghost-sm water-btn" data-water="-250">Undo</button>
           </div>
         </section>
 
@@ -419,12 +478,6 @@
           <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
         <h1 class="brand"><img src="/icons/mark.png" alt="" class="brand-mark" width="24" height="24" /><span class="brand-word">Weekly Review</span></h1>
-        <nav class="desktop-nav" aria-label="Main">
-          <button type="button" class="desktop-nav-btn" data-nav="diary">Diary</button>
-          <button type="button" class="desktop-nav-btn" data-nav="food-library">Food Library</button>
-          <button type="button" class="desktop-nav-btn" data-nav="stats">Stats</button>
-          <button type="button" class="desktop-nav-btn" data-nav="settings">Settings</button>
-        </nav>
       </header>
 
       <main>
@@ -484,12 +537,6 @@
           <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
         <h1 class="brand"><img src="/icons/mark.png" alt="" class="brand-mark" width="24" height="24" /><span class="brand-word">Settings</span></h1>
-        <nav class="desktop-nav" aria-label="Main">
-          <button type="button" class="desktop-nav-btn" data-nav="diary">Diary</button>
-          <button type="button" class="desktop-nav-btn" data-nav="food-library">Food Library</button>
-          <button type="button" class="desktop-nav-btn" data-nav="stats">Stats</button>
-          <button type="button" class="desktop-nav-btn desktop-nav-btn--active" data-nav="settings">Settings</button>
-        </nav>
       </header>
 
       <main>
@@ -848,12 +895,6 @@
           <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
         <h1 class="brand"><img src="/icons/mark.png" alt="" class="brand-mark" width="24" height="24" /><span class="brand-word">Food Library</span></h1>
-        <nav class="desktop-nav" aria-label="Main">
-          <button type="button" class="desktop-nav-btn" data-nav="diary">Diary</button>
-          <button type="button" class="desktop-nav-btn desktop-nav-btn--active" data-nav="food-library">Food Library</button>
-          <button type="button" class="desktop-nav-btn" data-nav="stats">Stats</button>
-          <button type="button" class="desktop-nav-btn" data-nav="settings">Settings</button>
-        </nav>
       </header>
 
       <main>
@@ -916,12 +957,6 @@
           <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
         <h1 class="brand"><img src="/icons/mark.png" alt="" class="brand-mark" width="24" height="24" /><span class="brand-word">Stats</span></h1>
-        <nav class="desktop-nav" aria-label="Main">
-          <button type="button" class="desktop-nav-btn" data-nav="diary">Diary</button>
-          <button type="button" class="desktop-nav-btn" data-nav="food-library">Food Library</button>
-          <button type="button" class="desktop-nav-btn desktop-nav-btn--active" data-nav="stats">Stats</button>
-          <button type="button" class="desktop-nav-btn" data-nav="settings">Settings</button>
-        </nav>
       </header>
 
       <main>
@@ -1291,6 +1326,30 @@
         </div>
       </main>
     </div>
+
+
+    <nav id="tab-bar" class="tab-bar" aria-label="Main" hidden>
+      <button type="button" class="tab-btn tab-btn--active" data-nav="today">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/><circle cx="12" cy="12" r="4"/></svg>
+        <span>Today</span>
+      </button>
+      <button type="button" class="tab-btn" data-nav="week">
+        <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        <span>My week</span>
+      </button>
+      <button type="button" class="tab-btn" data-nav="food-library">
+        <svg class="icon" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h6"/></svg>
+        <span>Food</span>
+      </button>
+      <button type="button" class="tab-btn" data-nav="stats">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M23 6 13.5 15.5 8.5 10.5 1 18"/><path d="M17 6h6v6"/></svg>
+        <span>Stats</span>
+      </button>
+      <button type="button" class="tab-btn" data-nav="settings">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+        <span>Settings</span>
+      </button>
+    </nav>
 
     <div id="photo-modal" class="photo-modal" hidden>
       <button type="button" id="photo-modal-close" class="photo-modal-close" aria-label="Close">

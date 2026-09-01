@@ -487,10 +487,15 @@ describe("GET /api/stats/weekly-breakdown", () => {
 
   it("computes week-over-week weight change using the most recent weigh-in per week", async () => {
     const { cookie, userId } = await signUp("alice");
-    // 9 days apart guarantees two different match weeks (each spans 7 days).
+    // Anchored to the weeks themselves rather than to "10 days ago" and
+    // "yesterday" — see middayInCurrentWeek. Relative offsets put the later
+    // weigh-in in the previous week whenever the suite runs past the
+    // rollover, and then the most recent change isn't the one being asserted.
+    const thisWeek = await middayInCurrentWeek(cookie, 1);
+    const twoWeeksBack = new Date(thisWeek.getTime() - 14 * 86_400_000);
     state.weighIns.push(
-      { userId, date: localDayKey(daysAgo(10), TIMEZONE), weightKg: 92 },
-      { userId, date: localDayKey(daysAgo(1), TIMEZONE), weightKg: 90 },
+      { userId, date: localDayKey(twoWeeksBack, TIMEZONE), weightKg: 92 },
+      { userId, date: localDayKey(thisWeek, TIMEZONE), weightKg: 90 },
     );
 
     const weeks = await fetchBreakdown(cookie, 4);

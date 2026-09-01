@@ -186,36 +186,6 @@ body {
 
 /* Desktop nav bar: replaces the corner icon buttons/back chevron at wide
    widths (see the ≥1024px block below) — same four destinations, wired to
-   the same open/close functions in app.js, just shown as labelled tabs
-   instead of small floating circles once there's room for them. */
-.desktop-nav {
-  display: none;
-  gap: 4px;
-}
-.desktop-nav-btn {
-  width: auto;
-  min-height: 38px;
-  padding: 8px 16px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.85);
-  border: none;
-  border-radius: 999px;
-  box-shadow: none;
-  transition: background 0.15s var(--ease), color 0.15s var(--ease);
-}
-.desktop-nav-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
-}
-.desktop-nav-btn--active {
-  background: var(--amber);
-  color: #201200;
-}
-.desktop-nav-btn--active:hover {
-  background: var(--amber);
-}
-
 .banner h1 {
   margin: 0;
   padding: 0 92px;
@@ -1801,17 +1771,10 @@ tr.has-tooltip:active {
     max-width: 900px;
   }
 
-  /* The corner icon buttons/back chevron only make sense as a compact
-     mobile affordance — at desktop width they're replaced by .desktop-nav,
-     a real labelled tab bar wired to the same open/close functions. */
-  .settings-toggle,
-  .stats-toggle,
-  .library-toggle,
+  /* The back chevron is a compact mobile affordance; at this width there's
+     room for the tab bar to be the only navigation. */
   .library-back {
     display: none;
-  }
-  .desktop-nav {
-    display: flex;
   }
 
   .banner {
@@ -2509,8 +2472,7 @@ tr.has-tooltip:active {
   outline-offset: 2px;
   border-radius: 4px;
 }
-.banner :focus-visible,
-.desktop-nav-btn:focus-visible {
+.banner :focus-visible {
   outline-color: #fff;
 }
 
@@ -3468,4 +3430,199 @@ tr.has-tooltip:active {
   margin: 6px 0 0;
   font-size: 0.8rem;
   font-variant-numeric: tabular-nums;
+}
+
+/* ── Bottom tab bar ────────────────────────────────────────────────────────
+   Five destinations, always reachable. Replaces the corner icons, which put
+   three of the five behind an unlabelled glyph and the other two nowhere at
+   all. Fixed to the bottom at every width rather than becoming a header nav
+   on desktop: one navigation that behaves the same everywhere beats two that
+   have to be kept in step. */
+.tab-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+  background: var(--pitch-deep);
+  box-shadow: 0 -6px 20px rgba(11, 58, 34, 0.22);
+}
+/* The shared button rule sets width:100%, a 48px floor, a green gradient and
+   a glow — all four wrong here, and all four need overriding explicitly
+   rather than hoping a later rule wins. */
+.tab-bar .tab-btn {
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 2px 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  box-shadow: none;
+  color: rgba(255, 255, 255, 0.62);
+  font-family: var(--font-heading);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.tab-bar .tab-btn .icon {
+  width: 21px;
+  height: 21px;
+  stroke-width: 1.9;
+}
+.tab-bar .tab-btn span {
+  line-height: 1;
+  /* "Settings" is wider than a fifth of a 360px screen; letting the label
+     shrink keeps all five on one row rather than wrapping the bar to two. */
+  font-size: clamp(0.58rem, 2.5vw, 0.72rem);
+}
+.tab-bar .tab-btn--active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+}
+.tab-bar .tab-btn:active {
+  transform: none;
+}
+.tab-bar .tab-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: -2px;
+}
+
+/* Every screen has to clear the bar. Applied to the scrolling containers
+   rather than to body, so a header still sits flush at the top. */
+#today-screen main,
+#app-shell main,
+#stats-screen main,
+#settings-screen main,
+#food-library-screen main,
+#review-screen main {
+  padding-bottom: calc(84px + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 720px) {
+  /* Centred and detached on wider screens, so it reads as a control rather
+     than a strip welded across a very wide window. */
+  .tab-bar {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    bottom: 16px;
+    width: min(560px, calc(100% - 32px));
+    border-radius: var(--radius-lg);
+    padding: 8px;
+  }
+}
+
+/* ── Today ─────────────────────────────────────────────────────────────── */
+.today-date {
+  margin: 4px 0 0;
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.today-hero-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.today-ring-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  width: 132px;
+  height: 132px;
+}
+.today-ring {
+  width: 100%;
+  height: 100%;
+  /* Starts the fill at 12 o'clock rather than 3, which is where every ring
+     gauge anyone has already used starts. */
+  transform: rotate(-90deg);
+}
+/* fill:none matters — an SVG circle defaults to filled black, which is a
+   solid disc rather than a ring. */
+.today-ring-track {
+  fill: none;
+  stroke: var(--hairline);
+  stroke-width: 10;
+}
+.today-ring-fill {
+  fill: none;
+  stroke: var(--pitch);
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 600ms var(--ease), stroke 200ms var(--ease);
+}
+.today-ring-fill--over {
+  stroke: var(--floodlight);
+}
+.today-ring-centre {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+}
+.today-hero-number {
+  font-family: var(--font-heading);
+  font-size: 2.3rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.today-hero-unit {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.today-hero-side {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.today-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.today-stat-value {
+  font-family: var(--font-heading);
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.today-stat-value--under { color: var(--pitch-dark); }
+.today-stat-value--over { color: var(--amber); }
+.today-stat-caption {
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+.today-empty {
+  padding: 18px 0;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .today-ring-fill { transition: none; }
 }
