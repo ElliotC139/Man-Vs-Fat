@@ -171,10 +171,12 @@
 
         <section id="quick-add" class="quick-add" hidden>
         <div class="quick-add-header">
-        <span class="quick-add-title">Log again in one tap</span>
+        <span class="quick-add-title">Pick what you had</span>
         <button type="button" id="quick-add-manage" class="ghost-sm">Manage meals</button>
         </div>
         <div id="quick-add-chips" class="quick-add-chips"></div>
+        <p id="quick-add-hint" class="muted quick-add-hint">Tap to select — nothing is logged until you press the button.</p>
+        <button type="button" id="quick-add-log" class="quick-add-log" hidden>Log 1 item</button>
         <p id="quick-add-error" class="error" hidden></p>
         </section>
 
@@ -225,34 +227,6 @@
         <input type="search" id="food-search-query" placeholder="e.g. hobnobs, greek yoghurt…" autocomplete="off" />
         <p id="food-search-status" class="muted" hidden></p>
         <div id="food-search-results" class="food-search-results"></div>
-        </section>
-
-        <section id="product-card" class="card product-card" hidden>
-        <p class="muted product-card-eyebrow">Found product</p>
-        <p id="product-name-el" class="product-name"></p>
-        <p id="product-brand-el" class="muted product-brand"></p>
-        <div class="product-serving-row">
-        <label for="product-serving-input">Serving (g)</label>
-        <input type="number" id="product-serving-input" min="1" step="1" />
-        <span id="product-kcal-el" class="product-kcal-badge"></span>
-        </div>
-        <p id="product-macros-el" class="muted product-macros" hidden></p>
-        <p id="product-nodata-el" class="muted" hidden>No calorie data found — AI will estimate from the name.</p>
-        <div class="result-actions">
-        <button type="button" id="product-log-btn">Log it</button>
-        <button type="button" id="product-rescan-btn" class="ghost">Scan again</button>
-        </div>
-        <p id="product-err-el" class="error" hidden></p>
-        </section>
-
-        <section id="result-card" class="card result" hidden>
-        <p class="muted">Got it — looks right?</p>
-        <p id="result-warning" class="error" hidden></p>
-        <div id="result-rows"></div>
-        <div class="result-actions">
-        <button id="result-save" type="button">Save corrections</button>
-        <button id="result-dismiss" type="button" class="ghost">Looks good</button>
-        </div>
         </section>
 
         <section id="water-card" class="card water-card">
@@ -852,6 +826,17 @@
           </fieldset>
 
           <fieldset class="settings-fieldset">
+            <legend>Camera &amp; microphone</legend>
+            <p class="muted">
+              Scanning holds the camera open for a couple of minutes so a run of scans only
+              asks once. If your phone asks again every time you open the app, that's the
+              browser, not this app — on iPhone, open Settings → Apps → Safari → Camera (and
+              Microphone) and set them to Allow. Adding this to your home screen also helps:
+              an installed app keeps its permissions between launches.
+            </p>
+          </fieldset>
+
+          <fieldset class="settings-fieldset">
             <legend>Diagnostics</legend>
             <p id="diagnostics-backup" class="muted">Checking backups…</p>
             <div class="export-row">
@@ -1350,6 +1335,33 @@
         <span>Settings</span>
       </button>
     </nav>
+
+    <div id="confirm-sheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <div class="sheet-panel">
+        <div class="sheet-head">
+          <h2 id="confirm-title" class="sheet-title">Check before saving</h2>
+          <span id="confirm-source" class="sheet-source"></span>
+        </div>
+        <p id="confirm-note" class="muted sheet-note"></p>
+        <p id="confirm-warning" class="error" hidden></p>
+
+        <div id="confirm-items" class="confirm-items"></div>
+
+        <p id="confirm-total" class="confirm-total"></p>
+        <p id="confirm-error" class="error" hidden></p>
+
+        <div class="sheet-actions">
+          <button type="button" id="confirm-save">Save to diary</button>
+          <button type="button" id="confirm-discard" class="ghost">Discard</button>
+          <button type="button" id="confirm-alt" class="ghost" hidden>Scan again</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" hidden role="status" aria-live="polite">
+      <span id="toast-text" class="toast-text"></span>
+      <button type="button" id="toast-action" class="toast-action" hidden></button>
+    </div>
 
     <div id="photo-modal" class="photo-modal" hidden>
       <button type="button" id="photo-modal-close" class="photo-modal-close" aria-label="Close">

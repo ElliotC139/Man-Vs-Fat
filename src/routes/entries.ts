@@ -8,7 +8,7 @@ import { estimateMeal, type EstimateItem } from "../estimate";
 import { scaleMacros } from "../macros";
 import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart, localDayKey, zonedTimeToUtc } from "../matchWeek";
 import { MEAL_TYPES, MEAL_TYPE_DEFAULT_HOUR, inferMealType, type MealType } from "../mealType";
-import { saveUploadedImage, deleteUploadedImage } from "../lib/storage";
+import { saveUploadedImage, deleteUploadedImage, uploadFilename } from "../lib/storage";
 import { normalizeUploadedImage } from "../lib/imageProcessing";
 import { consumeAll, AI_BURST, AI_DAILY } from "../rateLimit";
 
@@ -136,6 +136,132 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
   );
 
   res.status(201).json(entries);
+});
+
+/**
+ * Estimates without saving.
+ *
+ * The diary used to write an AI guess straight into the day and then offer a
+ * card to correct it, which is why that card's button said "Save corrections"
+ * about something already saved. Nothing the app *guessed* should reach the
+ * diary before someone has seen it, so estimation and saving are now two
+ * steps: this one costs a model call and produces nothing durable.
+ */
+entriesRouter.post("/preview", upload.single("photo"), async (req, res) => {
+  const text = typeof req.body.text === "string" ? req.body.text.trim() : undefined;
+  const rawPhoto = req.file;
+
+  if (!text && !rawPhoto) {
+    res.status(400).json({ error: "Provide a text description and/or a photo." });
+    return;
+  }
+
+  let photo: { buffer: Buffer; mimeType: "image/jpeg" } | null = null;
+  if (rawPhoto) {
+    try {
+      photo = await normalizeUploadedImage(rawPhoto.buffer, rawPhoto.mimetype);
+    } catch (error) {
+      console.error("Photo processing failed:", error);
+      res.status(400).json({ error: "Couldn't process that photo — please try a different one." });
+      return;
+    }
+  }
+
+  // The model call is here, so this is the step that costs money and the step
+  // the ceiling has to sit in front of.
+  const verdict = consumeAll(`ai:${req.userId!}`, [AI_BURST, AI_DAILY]);
+  if (!verdict.allowed) {
+    res.status(429)
+      .set("Retry-After", String(verdict.retryAfterSec))
+      .json({ error: "That's a lot of entries at once — give it a minute and try again." });
+    return;
+  }
+
+  const items = await estimateMeal({
+    text,
+    imageBase64: photo?.buffer.toString("base64"),
+    imageMediaType: photo?.mimeType,
+  });
+
+  // The photo is stored now rather than on confirm, so the browser doesn't
+  // have to hold and re-upload it. An abandoned preview leaves an orphan,
+  // which the nightly sweep clears (see jobs/cleanupUploads.ts).
+  const imageUrl = photo ? saveUploadedImage(photo.buffer) : null;
+
+  res.json({ items, imageUrl, rawInput: text ?? null });
+});
+
+const confirmSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        label: z.string().trim().min(1).max(200),
+        kcal: z.number().int().min(0).max(20000).nullable(),
+        proteinG: z.number().min(0).max(1000).nullable().optional(),
+        carbsG: z.number().min(0).max(1000).nullable().optional(),
+        fatG: z.number().min(0).max(1000).nullable().optional(),
+        quantity: z.number().min(0.25).max(50).optional(),
+      }),
+    )
+    .min(1)
+    .max(20),
+  imageUrl: z.string().nullable().optional(),
+  rawInput: z.string().nullable().optional(),
+  // Where the figures came from, so the diary can still be honest about how
+  // much to trust them after a round trip through the confirm sheet.
+  source: z.enum(["ai", "database", "manual", "meal"]).default("ai"),
+  lastWeek: z.boolean().optional(),
+});
+
+/**
+ * Writes what the confirm sheet was showing. No estimation here — whatever
+ * arrives is what the user approved, including any edits they made to it.
+ */
+entriesRouter.post("/confirm", async (req, res) => {
+  const parsed = confirmSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const { items, imageUrl, rawInput, source, lastWeek } = parsed.data;
+
+  const weekStart = await getUserWeekStart(req.userId!);
+  let timestamp = new Date();
+  if (lastWeek) {
+    const now = getLocalParts(timestamp, config.TIMEZONE);
+    const rollover = zonedTimeToUtc(now.year, now.month, now.day, weekStart.hour, weekStart.minute, config.TIMEZONE);
+    timestamp = new Date(rollover.getTime() - 60_000);
+  }
+
+  const matchWeek = await findOrCreateMatchWeek(timestamp, config.TIMEZONE, req.userId!, weekStart);
+  const mealType = inferMealType(getLocalParts(timestamp, config.TIMEZONE).hour);
+
+  // Only the safe filename part of an uploaded URL is honoured, so a doctored
+  // value can't point an entry at something outside the uploads directory.
+  const safeImageUrl = uploadFilename(imageUrl) ? imageUrl! : null;
+
+  const created = await prisma.$transaction(
+    items.map((item) =>
+      prisma.entry.create({
+        data: {
+          timestamp,
+          rawInput: rawInput ?? null,
+          label: item.label,
+          kcal: item.kcal,
+          quantity: item.quantity ?? 1,
+          proteinG: item.proteinG ?? null,
+          carbsG: item.carbsG ?? null,
+          fatG: item.fatG ?? null,
+          imageUrl: safeImageUrl,
+          mealType,
+          source,
+          matchWeekId: matchWeek.id,
+        },
+      }),
+    ),
+  );
+
+  res.status(201).json(created);
 });
 
 const updateEntrySchema = z.object({
