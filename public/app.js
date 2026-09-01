@@ -5396,8 +5396,12 @@ function macroProgress(target, eaten) {
   return { verdict, isGood, remaining, percentOfTarget };
 }
 
-/** The short line at the end of a macro row. */
-function macroFigureText(progress, op) {
+/**
+ * The gap between where the day is and where the target is, as a short
+ * phrase. Shown in brackets under the running total, so it answers "how far
+ * off am I" without having to subtract two numbers in your head.
+ */
+function macroDeltaText(progress, op) {
   const short = Math.abs(Math.round(progress.remaining));
   if (progress.verdict === "met") {
     // A cleared floor says so rather than counting up past it — the number
@@ -5408,6 +5412,11 @@ function macroFigureText(progress, op) {
   // Headroom under a ceiling is not a thing you still have to eat: "to go"
   // on a carb limit reads as an instruction to go and eat 116g of carbs.
   return op === "max" ? `${short}g left` : `${short}g to go`;
+}
+
+/** Where the day stands, in the same eaten/target shape as the calorie row. */
+function macroTotalText(eaten, target) {
+  return `${Math.round(eaten)} / ${target.grams}g`;
 }
 
 function describeTarget(key, target) {
@@ -5435,6 +5444,8 @@ function renderMacroToday(today, { standalone = false } = {}) {
     const target = targets.targets?.[key] ?? null;
     const fill = row.querySelector(".macro-fill");
     const figures = row.querySelector(".macro-figures");
+    const totalEl = row.querySelector(".macro-total");
+    const deltaEl = row.querySelector(".macro-delta");
 
     // A blank target isn't tracked, so its row doesn't appear at all.
     row.hidden = target === null;
@@ -5450,8 +5461,14 @@ function renderMacroToday(today, { standalone = false } = {}) {
     fill.classList.toggle("macro-fill--good", progress.isGood);
     fill.classList.toggle("macro-fill--over", progress.verdict === "over");
 
-    figures.textContent = macroFigureText(progress, target.op);
-    figures.title = `${Math.round(value)}g eaten · ${describeTarget(key, target)}`;
+    // The running total leads, because "how much have I had" is the question
+    // being asked most of the time; the gap to the target follows it in
+    // brackets rather than replacing it.
+    totalEl.textContent = macroTotalText(value, target);
+    deltaEl.textContent = `(${macroDeltaText(progress, target.op)})`;
+    deltaEl.classList.toggle("macro-delta--good", progress.isGood);
+    deltaEl.classList.toggle("macro-delta--over", progress.verdict === "over");
+    figures.title = `${Math.round(value)}g eaten · target ${describeTarget(key, target)}`;
   }
 
   // The honest caveat: entries logged before macros existed have none, so a

@@ -3271,7 +3271,7 @@ tr.has-tooltip:active {
   display: grid;
   /* Fixed label and figure columns so the three bars line up with each other
      rather than each starting wherever its own label ends. */
-  grid-template-columns: 52px 1fr 68px;
+  grid-template-columns: 48px 1fr 88px;
   align-items: center;
   gap: 10px;
 }
@@ -3300,12 +3300,30 @@ tr.has-tooltip:active {
    bar and is good, passing a carb ceiling fills it and is not. */
 .macro-fill--good { background: var(--pitch) !important; }
 .macro-fill--over { background: var(--floodlight) !important; }
+/* Two lines: what the day is at, then how far that is from the target. The
+   gap used to be all that was shown, which answered "how much more" without
+   ever answering "how much so far". */
 .macro-figures {
-  font-size: 0.78rem;
-  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.25;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.macro-total {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.macro-delta {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+/* The bracket picks up the bar's verdict, so a glance down the column tells
+   you which macros are where they should be without reading the words. */
+.macro-delta--good { color: var(--pitch-dark); }
+.macro-delta--over { color: var(--amber); }
 .macro-today-note {
   margin: 4px 0 0;
   font-size: 0.75rem;
