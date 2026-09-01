@@ -202,22 +202,7 @@ const scanCloseBtn = document.getElementById("scan-close-btn");
 const scanVideo = document.getElementById("scan-video");
 const scanStatusEl = document.getElementById("scan-status-el");
 
-const productCard = document.getElementById("product-card");
-const productNameEl = document.getElementById("product-name-el");
-const productBrandEl = document.getElementById("product-brand-el");
-const productServingInput = document.getElementById("product-serving-input");
-const productKcalEl = document.getElementById("product-kcal-el");
-const productNodataEl = document.getElementById("product-nodata-el");
-const productLogBtn = document.getElementById("product-log-btn");
-const productRescanBtn = document.getElementById("product-rescan-btn");
-const productErrEl = document.getElementById("product-err-el");
-const productMacrosEl = document.getElementById("product-macros-el");
 
-const resultCard = document.getElementById("result-card");
-const resultWarning = document.getElementById("result-warning");
-const resultRows = document.getElementById("result-rows");
-const resultSave = document.getElementById("result-save");
-const resultDismiss = document.getElementById("result-dismiss");
 
 const weekRangeEl = document.getElementById("week-range");
 const weekPrevBtn = document.getElementById("week-prev");
@@ -270,57 +255,6 @@ function isRolloverDay(dateInputValue) {
   return new Date(year, month - 1, day).getDay() === rolloverJsDay;
 }
 
-function renderResultRows(entries) {
-  resultRows.innerHTML = "";
-  for (const entry of entries) {
-    const row = document.createElement("div");
-    row.className = "result-row";
-    row.dataset.id = entry.id;
-
-    const labelInput = document.createElement("input");
-    labelInput.type = "text";
-    labelInput.value = entry.label;
-    labelInput.setAttribute("aria-label", "Label");
-
-    const kcalInput = document.createElement("input");
-    kcalInput.type = "number";
-    kcalInput.min = "0";
-    kcalInput.inputMode = "numeric";
-    kcalInput.value = entry.kcal ?? "";
-    if (entry.kcal === null) kcalInput.placeholder = "kcal?";
-    kcalInput.setAttribute("aria-label", "Kcal");
-
-    row.append(labelInput, kcalInput);
-
-    // The moment right after logging is when a wrong macro estimate is
-    // easiest to correct, so the three fields sit here as well as in the
-    // entry's edit mode — but only when macros are switched on.
-    if (currentUser?.macroTargets) {
-      const macroRow = document.createElement("div");
-      macroRow.className = "result-macro-row";
-      for (const key of ["protein", "carbs", "fat"]) {
-        const field = document.createElement("label");
-        field.className = "entry-macro-field";
-        const caption = document.createElement("span");
-        caption.textContent = MACRO_LABELS[key];
-        const input = document.createElement("input");
-        input.type = "number";
-        input.min = "0";
-        input.step = "1";
-        input.placeholder = "g";
-        input.dataset.macro = key;
-        input.value = entry[`${key}G`] ?? "";
-        input.setAttribute("aria-label", `${MACRO_LABELS[key]} in grams`);
-        field.append(caption, input);
-        macroRow.appendChild(field);
-      }
-      row.appendChild(macroRow);
-    }
-
-    resultRows.appendChild(row);
-  }
-}
-
 const dateFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
 const dayFmt = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" });
 const timeFmt = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -339,14 +273,12 @@ photoInput.addEventListener("change", () => {
 
 weekPrevBtn.addEventListener("click", () => {
   weeksAgo += 1;
-  resultCard.hidden = true;
   refreshCurrentView();
 });
 
 weekNextBtn.addEventListener("click", () => {
   if (weeksAgo === 0) return;
   weeksAgo -= 1;
-  resultCard.hidden = true;
   refreshCurrentView();
 });
 
@@ -827,8 +759,12 @@ async function deleteEntry(id) {
 }
 
 async function repeatEntry(id) {
-  await fetch(`/api/entries/${id}/repeat`, { method: "POST" });
+  const res = await fetch(`/api/entries/${id}/repeat`, { method: "POST" });
+  const created = await res.json().catch(() => null);
   weeksAgo = 0;
+  if (created?.id) {
+    showToast(`${created.label} added again`, { actionLabel: "Undo", onAction: () => undoEntries([created.id]) });
+  }
   refreshCurrentView();
 }
 
@@ -855,7 +791,7 @@ form.addEventListener("submit", async (event) => {
   try {
     let res;
     try {
-      res = await fetch("/api/entries", { method: "POST", body: data });
+      res = await fetch("/api/entries/preview", { method: "POST", body: data });
     } catch (error) {
       // No connection: keep what was typed rather than losing it to an error
       // message. It goes out as soon as the network is back.
@@ -874,25 +810,29 @@ form.addEventListener("submit", async (event) => {
     }
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.error ? JSON.stringify(body.error) : "Failed to log entry");
+      throw new Error(body.error ? JSON.stringify(body.error) : "Failed to estimate that.");
     }
-    const entries = await res.json();
-    renderResultRows(entries);
-    if (entries.some((e) => e.kcal === null)) {
-      resultWarning.textContent = "Couldn't estimate kcal for this one (the AI service had a hiccup) — enter it below.";
-      resultWarning.hidden = false;
-    } else {
-      resultWarning.hidden = true;
-    }
-    resultCard.hidden = false;
+    const preview = await res.json();
     haptic();
 
     form.reset();
     photoStatus.textContent = "Add a photo (optional)";
+
+    // Nothing is in the diary yet — the sheet is where it gets saved, and it
+    // carries the "log to last week" choice with it so the form can reset.
+    openConfirmSheet({
+      items: preview.items,
+      imageUrl: preview.imageUrl,
+      rawInput: preview.rawInput,
+      source: "ai",
+      lastWeek: logToLastWeek,
+      sourceLabel: "AI estimate",
+      note: "Check the figures — you can change anything before it's saved.",
+    });
+
     logToLastWeek = false;
     logWeekCurrentBtn.classList.add("log-week-btn--active");
     logWeekLastBtn.classList.remove("log-week-btn--active");
-    await loadWeek();
   } catch (error) {
     formError.textContent = error.message;
     formError.hidden = false;
@@ -900,36 +840,6 @@ form.addEventListener("submit", async (event) => {
     submitBtn.disabled = false;
     submitBtn.textContent = "Log it";
   }
-});
-
-resultSave.addEventListener("click", async () => {
-  const rows = resultRows.querySelectorAll(".result-row");
-  await Promise.all(
-    Array.from(rows).map((row) => {
-      // Scoped to the row's own direct inputs so the macro fields below,
-      // which are read separately by name, don't shift these two positions.
-      const labelInput = row.querySelector('input[type="text"]');
-      const kcalInput = row.querySelector('input[type="number"]:not([data-macro])');
-      const body = {
-        label: labelInput.value.trim(),
-        kcal: kcalInput.value === "" ? null : Number(kcalInput.value),
-      };
-      for (const input of row.querySelectorAll("input[data-macro]")) {
-        body[`${input.dataset.macro}G`] = input.value === "" ? null : Number(input.value);
-      }
-      return fetch(`/api/entries/${row.dataset.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-    }),
-  );
-  resultCard.hidden = true;
-  refreshCurrentView();
-});
-
-resultDismiss.addEventListener("click", () => {
-  resultCard.hidden = true;
 });
 
 function setAuthMode(mode) {
@@ -1626,17 +1536,44 @@ applyUnitPreference();
 let scanStream = null;
 let scanRafId = null;
 let quaggaLoopActive = false;
-let currentProduct = null; // { name, brand, kcalPer100g, defaultServing }
+// Whether the scanner UI is up. Kept apart from scanStream because the stream
+// now outlives a close (see below), so the detector loops can't use the
+// stream's existence to decide whether to keep going.
+let scannerActive = false;
+let cameraReleaseTimer = null;
+
+// How long a camera stream is held after the scanner closes. Safari asks for
+// permission per getUserMedia call, so stopping the tracks the instant the
+// sheet closes meant a fresh prompt for every single scan. Holding the stream
+// across a scanning burst turns that into one prompt. It is still released
+// afterwards — and immediately if the app is backgrounded — so the camera
+// indicator never stays lit on an idle app.
+const CAMERA_HOLD_MS = 120_000;
+
+async function acquireCameraStream() {
+  clearTimeout(cameraReleaseTimer);
+  const live = scanStream?.getVideoTracks().some((t) => t.readyState === "live");
+  if (live) return scanStream;
+  releaseCameraStream();
+  scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+  return scanStream;
+}
+
+function releaseCameraStream() {
+  clearTimeout(cameraReleaseTimer);
+  if (!scanStream) return;
+  scanStream.getTracks().forEach((t) => t.stop());
+  scanStream = null;
+}
 
 function openScanner() {
-  productCard.hidden = true;
   scanModal.hidden = false;
+  scannerActive = true;
   scanStatusEl.textContent = "Searching for barcode…";
 
-  navigator.mediaDevices
-    .getUserMedia({ video: { facingMode: "environment" } })
+  acquireCameraStream()
     .then((stream) => {
-      scanStream = stream;
+      if (!scannerActive) return;
       scanVideo.srcObject = stream;
       scanVideo.play();
       if (typeof BarcodeDetector !== "undefined") {
@@ -1646,15 +1583,13 @@ function openScanner() {
       }
     })
     .catch(() => {
-      scanStatusEl.textContent = "Camera access denied — please allow camera use and try again.";
+      scanStatusEl.textContent =
+        "Camera access denied — allow camera use for this site and try again.";
     });
 }
 
 function stopScanner() {
-  if (scanStream) {
-    scanStream.getTracks().forEach((t) => t.stop());
-    scanStream = null;
-  }
+  scannerActive = false;
   if (scanRafId) {
     cancelAnimationFrame(scanRafId);
     scanRafId = null;
@@ -1662,7 +1597,16 @@ function stopScanner() {
   quaggaLoopActive = false;
   scanVideo.srcObject = null;
   scanModal.hidden = true;
+  clearTimeout(cameraReleaseTimer);
+  cameraReleaseTimer = setTimeout(releaseCameraStream, CAMERA_HOLD_MS);
 }
+
+// Leaving the app drops the camera straight away rather than waiting out the
+// hold — a held stream is a convenience while scanning, not a reason to keep
+// the camera open in the background.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && !scannerActive) releaseCameraStream();
+});
 
 // Native BarcodeDetector (Chrome, Edge, Android WebView)
 function runBarcodeDetectorLoop() {
@@ -1671,7 +1615,7 @@ function runBarcodeDetectorLoop() {
   });
 
   async function tick() {
-    if (!scanStream) return;
+    if (!scannerActive) return;
     try {
       const results = await detector.detect(scanVideo);
       if (results.length > 0) {
@@ -1708,7 +1652,7 @@ function runQuaggaLoop() {
   const ctx = canvas.getContext("2d");
 
   function tick() {
-    if (!quaggaLoopActive || !scanStream) return;
+    if (!quaggaLoopActive || !scannerActive) return;
     if (scanVideo.readyState < 2) { requestAnimationFrame(tick); return; }
     canvas.width = scanVideo.videoWidth;
     canvas.height = scanVideo.videoHeight;
@@ -1737,18 +1681,10 @@ function runQuaggaLoop() {
 }
 
 async function handleBarcode(code) {
-  stopScanner();
   scanStatusEl.textContent = "Looking up product…";
-  productCard.hidden = false;
-  productNameEl.textContent = "Looking up…";
-  productBrandEl.textContent = "";
-  productKcalEl.textContent = "";
-  productNodataEl.hidden = true;
-  productErrEl.hidden = true;
-
   const product = await lookupOpenFoodFacts(code);
-  currentProduct = product;
-  showProductCard(product, code);
+  stopScanner();
+  openProductSheet(product);
 }
 
 async function lookupOpenFoodFacts(barcode) {
@@ -1802,95 +1738,392 @@ function numberOrNull(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-function showProductCard(product, barcode) {
-  productCard.hidden = false;
-  productNameEl.textContent = product.name || `Barcode: ${barcode}`;
-  productBrandEl.textContent = product.brand || "";
-  productBrandEl.hidden = !product.brand;
+// ── Confirm sheet ───────────────────────────────────────────────────────────
+// One rule, everywhere: the app never puts its own guess in the diary without
+// you seeing it first. Anything estimated or looked up lands here, editable,
+// and only reaches the diary when "Save" is pressed. Things you approved
+// earlier (a saved meal, a favourite, a repeat) still save on one tap — but
+// they say so, with an undo. Before this, a photo estimate saved itself and
+// then offered "Save corrections", while a scan waited for a second tap; that
+// inconsistency is what this replaces.
 
-  const hasKcal = product.kcalPer100g !== null;
-  productNodataEl.hidden = hasKcal;
+const confirmSheet = document.getElementById("confirm-sheet");
+const confirmTitleEl = document.getElementById("confirm-title");
+const confirmSourceEl = document.getElementById("confirm-source");
+const confirmNoteEl = document.getElementById("confirm-note");
+const confirmWarningEl = document.getElementById("confirm-warning");
+const confirmItemsEl = document.getElementById("confirm-items");
+const confirmTotalEl = document.getElementById("confirm-total");
+const confirmErrorEl = document.getElementById("confirm-error");
+const confirmSaveBtn = document.getElementById("confirm-save");
+const confirmDiscardBtn = document.getElementById("confirm-discard");
+const confirmAltBtn = document.getElementById("confirm-alt");
 
-  if (hasKcal) {
-    productServingInput.value = product.defaultServing ?? 100;
-    productServingInput.hidden = false;
-    updateKcalDisplay();
-  } else {
-    productServingInput.value = "";
-    productServingInput.hidden = true;
-    productKcalEl.textContent = "";
-  }
+// Null whenever the sheet is closed, so a stale save can't fire after it.
+let confirmState = null;
 
-  currentProduct = product;
+/**
+ * @param {object} opts
+ * @param {Array} opts.items      rows to show, in the API's item shape
+ * @param {string} opts.sourceLabel  badge text: where these figures came from
+ * @param {string} [opts.note]    one line under the title
+ * @param {string} [opts.warning] shown in red — a missing figure, say
+ * @param {{label: string, run: Function}} [opts.alt]  optional third button
+ */
+function openConfirmSheet({
+  items,
+  imageUrl = null,
+  rawInput = null,
+  source = "ai",
+  lastWeek = false,
+  sourceLabel = "Estimate",
+  note = "",
+  warning = "",
+  alt = null,
+}) {
+  confirmState = {
+    items: items.map(normaliseConfirmItem),
+    imageUrl,
+    rawInput,
+    source,
+    lastWeek,
+  };
+
+  confirmSourceEl.textContent = sourceLabel;
+  confirmNoteEl.textContent = note;
+  confirmNoteEl.hidden = !note;
+  const missingKcal = confirmState.items.some((i) => i.kcal === null);
+  const effectiveWarning =
+    warning
+    || (missingKcal
+      ? "That one couldn't be estimated — type the calories in yourself before saving."
+      : "");
+  confirmWarningEl.textContent = effectiveWarning;
+  confirmWarningEl.hidden = !effectiveWarning;
+  confirmErrorEl.hidden = true;
+
+  confirmState.alt = alt;
+  confirmAltBtn.hidden = !alt;
+  if (alt) confirmAltBtn.textContent = alt.label;
+
+  renderConfirmItems();
+  confirmSheet.hidden = false;
+  document.body.classList.add("sheet-open");
 }
 
-function updateKcalDisplay() {
-  if (!currentProduct?.kcalPer100g) { productKcalEl.textContent = ""; productMacrosEl.hidden = true; return; }
-  const g = Number(productServingInput.value) || 0;
-  const kcal = Math.round((currentProduct.kcalPer100g * g) / 100);
-  productKcalEl.textContent = g > 0 ? `${kcal} kcal` : "";
-
-  const macros = servingMacros(g);
-  const anyKnown = macros.protein !== null || macros.carbs !== null || macros.fat !== null;
-  if (g > 0 && anyKnown && currentUser?.macroTargets) {
-    productMacrosEl.textContent =
-      `P ${gramsOrDash(macros.protein)} · C ${gramsOrDash(macros.carbs)} · F ${gramsOrDash(macros.fat)}`;
-    productMacrosEl.hidden = false;
-  } else {
-    productMacrosEl.hidden = true;
-  }
+function normaliseConfirmItem(item) {
+  return {
+    label: item.label ?? "",
+    kcal: item.kcal ?? null,
+    protein: item.proteinG ?? item.protein ?? null,
+    carbs: item.carbsG ?? item.carbs ?? null,
+    fat: item.fatG ?? item.fat ?? null,
+    quantity: item.quantity ?? 1,
+    // Set only for packet items: per-100g figures plus the serving size, so
+    // changing the grams rescales calories and macros off the real label
+    // rather than an estimate.
+    per100: item.per100 ?? null,
+    grams: item.grams ?? null,
+  };
 }
 
-/** The packet's per-100g macros scaled to the serving being logged. */
-function servingMacros(grams) {
-  const per100 = currentProduct?.macrosPer100g ?? { protein: null, carbs: null, fat: null };
-  const scale = (value) => (value === null ? null : Math.round((value * grams) / 100 * 10) / 10);
-  return { protein: scale(per100.protein), carbs: scale(per100.carbs), fat: scale(per100.fat) };
+function closeConfirmSheet() {
+  confirmState = null;
+  confirmSheet.hidden = true;
+  confirmItemsEl.innerHTML = "";
+  document.body.classList.remove("sheet-open");
 }
 
-productServingInput.addEventListener("input", updateKcalDisplay);
+/** Recalculates one packet row's figures from its serving size. */
+function applyPer100(item) {
+  if (!item.per100 || item.grams === null) return;
+  const scale = (value) => (value === null || value === undefined ? null : Math.round((value * item.grams) / 100 * 10) / 10);
+  item.kcal = item.per100.kcal === null ? null : Math.round((item.per100.kcal * item.grams) / 100);
+  item.protein = scale(item.per100.protein);
+  item.carbs = scale(item.per100.carbs);
+  item.fat = scale(item.per100.fat);
+}
 
-productLogBtn.addEventListener("click", async () => {
-  if (!currentProduct) return;
+function renderConfirmItems() {
+  confirmItemsEl.innerHTML = "";
+  // Macro fields would be pure clutter for someone tracking calories alone,
+  // so they appear when macros are on or when there are figures to show.
+  const anyMacros = confirmState.items.some((i) => i.protein !== null || i.carbs !== null || i.fat !== null);
+  const showMacros = Boolean(currentUser?.macroTargets) || anyMacros;
 
-  const g = Number(productServingInput.value) || 0;
-  let directKcal = null;
-  if (currentProduct.kcalPer100g && g > 0) {
-    directKcal = Math.round((currentProduct.kcalPer100g * g) / 100);
-  }
-  const label = [currentProduct.name, currentProduct.brand].filter(Boolean).join(" – ") || `Barcode: ${currentProduct.barcode}`;
+  confirmState.items.forEach((item, index) => {
+    const row = document.createElement("div");
+    row.className = "confirm-item";
 
-  productLogBtn.disabled = true;
-  productErrEl.hidden = true;
+    const top = document.createElement("div");
+    top.className = "confirm-item-top";
 
-  try {
-    const body = new FormData();
-    body.append("text", label);
-    if (directKcal) body.append("directKcal", String(directKcal));
-    const macros = servingMacros(g);
-    if (macros.protein !== null) body.append("directProteinG", String(macros.protein));
-    if (macros.carbs !== null) body.append("directCarbsG", String(macros.carbs));
-    if (macros.fat !== null) body.append("directFatG", String(macros.fat));
+    const labelField = document.createElement("label");
+    labelField.className = "confirm-label-field";
+    const labelCaption = document.createElement("span");
+    labelCaption.textContent = "Item";
+    const labelInput = document.createElement("input");
+    labelInput.type = "text";
+    labelInput.className = "confirm-label";
+    labelInput.value = item.label;
+    labelInput.addEventListener("input", () => {
+      item.label = labelInput.value;
+    });
+    labelField.append(labelCaption, labelInput);
 
-    const res = await fetch("/api/entries", { method: "POST", body });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      productErrEl.textContent = err.error || "Failed to log entry.";
-      productErrEl.hidden = false;
-      return;
+    const kcalField = document.createElement("label");
+    kcalField.className = "confirm-kcal-field";
+    const kcalCaption = document.createElement("span");
+    kcalCaption.textContent = "kcal";
+    const kcalInput = document.createElement("input");
+    kcalInput.type = "number";
+    kcalInput.min = "0";
+    kcalInput.className = "confirm-kcal";
+    kcalInput.value = item.kcal ?? "";
+    kcalInput.addEventListener("input", () => {
+      item.kcal = kcalInput.value === "" ? null : Number(kcalInput.value);
+      renderConfirmTotal();
+    });
+    kcalField.append(kcalCaption, kcalInput);
+
+    top.append(labelField, kcalField);
+
+    if (confirmState.items.length > 1) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "confirm-remove";
+      remove.setAttribute("aria-label", `Remove ${item.label || "this item"}`);
+      remove.innerHTML = ICONS.x;
+      remove.addEventListener("click", () => {
+        confirmState.items.splice(index, 1);
+        renderConfirmItems();
+      });
+      top.appendChild(remove);
     }
 
-    productCard.hidden = true;
-    currentProduct = null;
-    textInput.value = "";
+    row.appendChild(top);
+
+    if (item.per100) {
+      const servingRow = document.createElement("label");
+      servingRow.className = "confirm-serving";
+      const caption = document.createElement("span");
+      caption.textContent = "Serving (g)";
+      const gramsInput = document.createElement("input");
+      gramsInput.type = "number";
+      gramsInput.min = "1";
+      gramsInput.step = "1";
+      gramsInput.value = item.grams ?? "";
+      gramsInput.addEventListener("input", () => {
+        item.grams = gramsInput.value === "" ? null : Number(gramsInput.value);
+        applyPer100(item);
+        renderConfirmItems();
+      });
+      servingRow.append(caption, gramsInput);
+      row.appendChild(servingRow);
+    }
+
+    if (showMacros) {
+      const macroRow = document.createElement("div");
+      macroRow.className = "confirm-macros";
+      for (const key of ["protein", "carbs", "fat"]) {
+        const field = document.createElement("label");
+        field.className = "confirm-macro-field";
+        const caption = document.createElement("span");
+        caption.textContent = MACRO_LABELS[key];
+        const input = document.createElement("input");
+        input.type = "number";
+        input.min = "0";
+        input.step = "1";
+        input.placeholder = "g";
+        input.value = item[key] ?? "";
+        input.setAttribute("aria-label", `${MACRO_LABELS[key]} in grams`);
+        input.addEventListener("input", () => {
+          item[key] = input.value === "" ? null : Number(input.value);
+          renderConfirmTotal();
+        });
+        field.append(caption, input);
+        macroRow.appendChild(field);
+      }
+      row.appendChild(macroRow);
+    }
+
+    confirmItemsEl.appendChild(row);
+  });
+
+  renderConfirmTotal();
+}
+
+function renderConfirmTotal() {
+  const items = confirmState?.items ?? [];
+  const kcal = items.reduce((sum, i) => sum + (i.kcal ?? 0) * (i.quantity ?? 1), 0);
+  const parts = [`${Math.round(kcal)} kcal`];
+  if (currentUser?.macroTargets) {
+    for (const key of ["protein", "carbs", "fat"]) {
+      const total = items.reduce((sum, i) => sum + (i[key] ?? 0) * (i.quantity ?? 1), 0);
+      if (total > 0) parts.push(`${MACRO_LABELS[key]} ${Math.round(total)}g`);
+    }
+  }
+  const missing = items.some((i) => i.kcal === null);
+  confirmTotalEl.textContent = `${items.length === 1 ? "Total" : `${items.length} items`}: ${parts.join(" · ")}` +
+    (missing ? " — one item has no calories yet" : "");
+}
+
+confirmDiscardBtn.addEventListener("click", () => {
+  closeConfirmSheet();
+});
+
+confirmAltBtn.addEventListener("click", () => {
+  const alt = confirmState?.alt;
+  closeConfirmSheet();
+  alt?.run();
+});
+
+// Tapping the backdrop is the same as Discard — nothing was saved, so there's
+// nothing to lose by closing it.
+confirmSheet.addEventListener("click", (event) => {
+  if (event.target === confirmSheet) closeConfirmSheet();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !confirmSheet.hidden) closeConfirmSheet();
+});
+
+confirmSaveBtn.addEventListener("click", async () => {
+  if (!confirmState) return;
+  const items = confirmState.items.filter((i) => i.label.trim().length > 0);
+  if (items.length === 0) {
+    confirmErrorEl.textContent = "Give at least one item a name, or discard this.";
+    confirmErrorEl.hidden = false;
+    return;
+  }
+
+  confirmSaveBtn.disabled = true;
+  confirmSaveBtn.textContent = "Saving…";
+  try {
+    const res = await fetch("/api/entries/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: items.map((i) => ({
+          label: i.label.trim(),
+          kcal: i.kcal === null ? null : Math.round(i.kcal),
+          proteinG: i.protein,
+          carbsG: i.carbs,
+          fatG: i.fat,
+          quantity: i.quantity,
+        })),
+        imageUrl: confirmState.imageUrl,
+        rawInput: confirmState.rawInput,
+        source: confirmState.source,
+        lastWeek: confirmState.lastWeek,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(typeof body.error === "string" ? body.error : "Couldn't save that — please try again.");
+    }
+    const created = await res.json();
+    haptic();
+    closeConfirmSheet();
+    showToast(
+      created.length === 1 ? "Saved to your diary" : `${created.length} items saved`,
+      { actionLabel: "Undo", onAction: () => undoEntries(created.map((e) => e.id)) },
+    );
     await refreshCurrentView();
-  } catch {
-    productErrEl.textContent = "Network error — please try again.";
-    productErrEl.hidden = false;
+  } catch (error) {
+    confirmErrorEl.textContent = error.message;
+    confirmErrorEl.hidden = false;
   } finally {
-    productLogBtn.disabled = false;
+    confirmSaveBtn.disabled = false;
+    confirmSaveBtn.textContent = "Save to diary";
   }
 });
+
+/** Opens the sheet for a scanned or searched packet. */
+function openProductSheet(product) {
+  const name = [product.brand, product.name].filter(Boolean).join(" ");
+
+  // No calorie data on the packet means there is nothing to confirm yet —
+  // send the name through the estimator so the sheet has real figures in it.
+  if (product.kcalPer100g === null || product.kcalPer100g === undefined) {
+    if (!name) {
+      showToast("That barcode isn't in the food database — describe it instead.");
+      return;
+    }
+    textInput.value = name;
+    navTo("today");
+    textInput.focus();
+    showToast("Not in the food database — check the description and tap Log it.");
+    return;
+  }
+
+  const grams = product.defaultServing ?? 100;
+  const item = normaliseConfirmItem({
+    label: name || "Scanned item",
+    per100: {
+      kcal: product.kcalPer100g,
+      protein: product.macrosPer100g?.protein ?? null,
+      carbs: product.macrosPer100g?.carbs ?? null,
+      fat: product.macrosPer100g?.fat ?? null,
+    },
+    grams,
+  });
+  applyPer100(item);
+
+  openConfirmSheet({
+    items: [item],
+    source: "database",
+    sourceLabel: "From the packet",
+    note: "Set the serving size — the figures update with it.",
+    alt: product.barcode ? { label: "Scan again", run: openScanner } : null,
+  });
+}
+
+// ── Toast ───────────────────────────────────────────────────────────────────
+// Every save says so. The one-tap paths (a favourite, a saved meal, a repeat)
+// don't get a confirm sheet — they were approved once already — so they get
+// this instead, with an undo for the taps that were a mistake.
+
+const toastEl = document.getElementById("toast");
+const toastTextEl = document.getElementById("toast-text");
+const toastActionBtn = document.getElementById("toast-action");
+let toastTimer = null;
+let toastAction = null;
+
+function showToast(message, { actionLabel = null, onAction = null, duration = 5000 } = {}) {
+  clearTimeout(toastTimer);
+  toastTextEl.textContent = message;
+  toastAction = onAction;
+  toastActionBtn.hidden = !actionLabel;
+  if (actionLabel) toastActionBtn.textContent = actionLabel;
+  toastEl.hidden = false;
+  // Next frame, so the transition runs from the hidden state rather than
+  // being skipped because both states were set in one paint.
+  requestAnimationFrame(() => toastEl.classList.add("toast--shown"));
+  toastTimer = setTimeout(hideToast, duration);
+}
+
+function hideToast() {
+  clearTimeout(toastTimer);
+  toastEl.classList.remove("toast--shown");
+  toastAction = null;
+  setTimeout(() => {
+    if (!toastEl.classList.contains("toast--shown")) toastEl.hidden = true;
+  }, 200);
+}
+
+toastActionBtn.addEventListener("click", async () => {
+  const run = toastAction;
+  hideToast();
+  if (run) await run();
+});
+
+async function undoEntries(ids) {
+  await Promise.all(ids.map((id) => fetch(`/api/entries/${id}`, { method: "DELETE" })));
+  await refreshCurrentView();
+}
+
+
 
 // ── Food library ────────────────────────────────────────────────────────────
 let foodSearchTimer = null;
@@ -2076,12 +2309,15 @@ async function logFood(food, btn) {
       body: JSON.stringify({ labelKey: food.labelKey }),
     });
     if (res.ok) {
-      btn.innerHTML = `Added ${ICONS.check}`;
+      const entry = await res.json();
+      haptic();
+      btn.textContent = "+Today";
+      flashSaved(btn);
+      showToast(`${food.label} logged`, { actionLabel: "Undo", onAction: () => undoEntries([entry.id]) });
       await refreshCurrentView();
       setTimeout(() => {
-        btn.textContent = "+Today";
         btn.disabled = false;
-      }, 1200);
+      }, 1100);
     } else {
       btn.textContent = "+Today";
       btn.disabled = false;
@@ -2099,11 +2335,6 @@ foodSearchInput.addEventListener("input", () => {
   foodSearchTimer = setTimeout(() => loadFoods(foodSearchInput.value), 250);
 });
 
-productRescanBtn.addEventListener("click", () => {
-  productCard.hidden = true;
-  currentProduct = null;
-  openScanner();
-});
 
 scanBarcodeBtn.addEventListener("click", openScanner);
 scanCloseBtn.addEventListener("click", stopScanner);
@@ -3399,6 +3630,15 @@ const quickAddChips = document.getElementById("quick-add-chips");
 const quickAddError = document.getElementById("quick-add-error");
 const quickAddManage = document.getElementById("quick-add-manage");
 const quickAddToggle = document.getElementById("quick-add-toggle");
+const quickAddLogBtn = document.getElementById("quick-add-log");
+const quickAddHint = document.getElementById("quick-add-hint");
+
+// What's been picked but not yet logged, keyed so the same chip can't be
+// selected twice. Tapping a chip used to save it there and then, which left
+// no way to tell an added item from an un-added one — and made it easy to add
+// something twice by tapping again, then reach for the Log button underneath
+// and add it a third time. Selecting is now free; only the button writes.
+const quickAddSelection = new Map();
 
 // The panel stays shut until asked for — it was competing with the thing
 // people came to the screen to do, which is type what they ate.
@@ -3411,7 +3651,20 @@ quickAddToggle.addEventListener("click", () => setQuickAddOpen(quickAddCard.hidd
 
 const QUICK_ADD_FOODS = 6;
 
+// Logging refreshes the Today screen, which rebuilds this strip — and a chip
+// that gets replaced mid-animation never shows its tick. So while a flash is
+// playing the rebuild waits, then runs once. (It also stops the chips
+// reshuffling into their new most-used order under the user's finger.)
+let quickAddFlashUntil = 0;
+let quickAddRebuildTimer = null;
+
 async function loadQuickAdd() {
+  const wait = quickAddFlashUntil - Date.now();
+  if (wait > 0) {
+    clearTimeout(quickAddRebuildTimer);
+    quickAddRebuildTimer = setTimeout(loadQuickAdd, wait + 50);
+    return;
+  }
   try {
     const [mealsRes, foodsRes] = await Promise.all([fetch("/api/meals"), fetch("/api/foods")]);
     if (!mealsRes.ok || !foodsRes.ok) throw new Error();
@@ -3428,6 +3681,9 @@ async function loadQuickAdd() {
 function renderQuickAdd(meals, foods) {
   quickAddChips.innerHTML = "";
   quickAddError.hidden = true;
+  // The old chips are gone, so anything selected on them is too.
+  quickAddSelection.clear();
+  renderQuickAddLogButton();
 
   // Favourites first, then whatever has been logged most — a food starred on
   // purpose is a stronger signal than one that merely recurs.
@@ -3440,10 +3696,11 @@ function renderQuickAdd(meals, foods) {
   for (const meal of meals) {
     quickAddChips.appendChild(
       quickChip({
+        key: `meal:${meal.id}`,
         label: meal.name,
         sub: meal.kind === "recipe" ? portionSubtitle(meal) : `${meal.items.length} items`,
         kind: "meal",
-        onTap: () => logSavedMeal(meal),
+        log: () => logSavedMeal(meal),
       }),
     );
   }
@@ -3451,11 +3708,12 @@ function renderQuickAdd(meals, foods) {
   for (const food of topFoods) {
     quickAddChips.appendChild(
       quickChip({
+        key: `food:${food.labelKey}`,
         label: food.label,
         sub: food.kcal !== null ? `${food.kcal} kcal` : null,
         kind: "food",
         favorite: food.favorite,
-        onTap: () => quickLogFood(food),
+        log: () => quickLogFood(food),
       }),
     );
   }
@@ -3471,10 +3729,11 @@ function portionSubtitle(meal) {
   return meal.kcalPerServing !== null ? `${meal.kcalPerServing} kcal / portion` : "recipe";
 }
 
-function quickChip({ label, sub, kind, favorite, onTap }) {
+function quickChip({ key, label, sub, kind, favorite, log }) {
   const chip = document.createElement("button");
   chip.type = "button";
   chip.className = `quick-chip quick-chip--${kind}`;
+  chip.setAttribute("aria-pressed", "false");
 
   if (favorite) {
     const star = document.createElement("span");
@@ -3497,39 +3756,118 @@ function quickChip({ label, sub, kind, favorite, onTap }) {
   }
   chip.appendChild(text);
 
-  chip.addEventListener("click", async () => {
+  chip.addEventListener("click", () => {
     if (chip.disabled) return;
-    chip.disabled = true;
-    chip.classList.add("quick-chip--busy");
-    try {
-      await onTap();
-    } finally {
-      chip.disabled = false;
-      chip.classList.remove("quick-chip--busy");
+    if (quickAddSelection.has(key)) {
+      quickAddSelection.delete(key);
+      chip.classList.remove("quick-chip--selected");
+      chip.setAttribute("aria-pressed", "false");
+    } else {
+      quickAddSelection.set(key, { label, log, chip });
+      chip.classList.add("quick-chip--selected");
+      chip.setAttribute("aria-pressed", "true");
+      haptic();
     }
+    renderQuickAddLogButton();
   });
   return chip;
 }
+
+function renderQuickAddLogButton() {
+  const count = quickAddSelection.size;
+  quickAddLogBtn.hidden = count === 0;
+  quickAddHint.hidden = count > 0;
+  quickAddLogBtn.textContent = count === 1 ? "Log 1 item" : `Log ${count} items`;
+}
+
+function clearQuickAddSelection() {
+  for (const { chip } of quickAddSelection.values()) {
+    chip.classList.remove("quick-chip--selected");
+    chip.setAttribute("aria-pressed", "false");
+  }
+  quickAddSelection.clear();
+  renderQuickAddLogButton();
+}
+
+/**
+ * Plays a green sweep-and-tick over a button that has just saved something.
+ * The confirmation happens on the control you pressed, so there's no hunting
+ * around the screen for whether the tap did anything.
+ */
+function flashSaved(el) {
+  if (!el.querySelector(".saved-tick")) {
+    const tick = document.createElement("span");
+    tick.className = "saved-tick";
+    tick.setAttribute("aria-hidden", "true");
+    tick.innerHTML = ICONS.check;
+    el.appendChild(tick);
+  }
+  el.classList.remove("is-saved");
+  // Forces a reflow so replaying the flash on the same element restarts the
+  // animation instead of being ignored as "already in that state".
+  void el.offsetWidth;
+  el.classList.add("is-saved");
+  setTimeout(() => el.classList.remove("is-saved"), 1100);
+}
+
+quickAddLogBtn.addEventListener("click", async () => {
+  const picked = [...quickAddSelection.values()];
+  if (picked.length === 0) return;
+
+  quickAddLogBtn.disabled = true;
+  quickAddLogBtn.textContent = "Logging…";
+  quickAddError.hidden = true;
+
+  const savedIds = [];
+  const failed = [];
+  for (const item of picked) {
+    try {
+      const ids = await item.log();
+      // A cancelled portions prompt returns null — not a failure, just a
+      // change of mind, so it leaves the chip selected and says nothing.
+      if (ids === null) continue;
+      savedIds.push(...ids);
+      quickAddFlashUntil = Date.now() + 1100;
+      flashSaved(item.chip);
+      item.chip.classList.remove("quick-chip--selected");
+      item.chip.setAttribute("aria-pressed", "false");
+      quickAddSelection.delete([...quickAddSelection.keys()].find((k) => quickAddSelection.get(k) === item));
+    } catch {
+      failed.push(item.label);
+    }
+  }
+
+  quickAddLogBtn.disabled = false;
+  renderQuickAddLogButton();
+
+  if (failed.length > 0) {
+    showQuickAddError(`Couldn't log ${listToSentence(failed)} — please try again.`);
+  }
+  if (savedIds.length > 0) {
+    haptic();
+    showToast(savedIds.length === 1 ? "Logged" : `${savedIds.length} items logged`, {
+      actionLabel: "Undo",
+      onAction: () => undoEntries(savedIds),
+    });
+    await refreshCurrentView();
+  }
+});
 
 function showQuickAddError(message) {
   quickAddError.textContent = message;
   quickAddError.hidden = false;
 }
 
+/** Writes one repeat food. Returns the new entry's id so it can be undone. */
 async function quickLogFood(food) {
-  try {
-    const res = await fetch("/api/foods/log", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ labelKey: food.labelKey }),
-    });
-    if (!res.ok) throw new Error();
-    quickAddError.hidden = true;
-    haptic();
-    await refreshCurrentView();
-  } catch {
-    showQuickAddError(`Couldn't log ${food.label} — please try again.`);
-  }
+  const res = await fetch("/api/foods/log", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ labelKey: food.labelKey }),
+  });
+  if (!res.ok) throw new Error("log failed");
+  const entry = await res.json();
+  return [entry.id];
 }
 
 // A recipe needs to know how much was eaten before it can be logged; a
@@ -3538,26 +3876,21 @@ async function logSavedMeal(meal) {
   let servings = 1;
   if (meal.kind === "recipe") {
     const answer = window.prompt(`How many portions of ${meal.name}?`, "1");
-    if (answer === null) return;
+    if (answer === null) return null;
     servings = Number(answer);
     if (!Number.isFinite(servings) || servings <= 0) {
       showQuickAddError("Enter a number of portions greater than zero.");
-      return;
+      return null;
     }
   }
-  try {
-    const res = await fetch(`/api/meals/${meal.id}/log`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ servings }),
-    });
-    if (!res.ok) throw new Error();
-    quickAddError.hidden = true;
-    haptic();
-    await refreshCurrentView();
-  } catch {
-    showQuickAddError(`Couldn't log ${meal.name} — please try again.`);
-  }
+  const res = await fetch(`/api/meals/${meal.id}/log`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ servings }),
+  });
+  if (!res.ok) throw new Error("log failed");
+  const created = await res.json();
+  return created.map((e) => e.id);
 }
 
 quickAddManage.addEventListener("click", () => {
@@ -3648,7 +3981,16 @@ function renderMealRow(meal) {
   logBtn.addEventListener("click", async () => {
     logBtn.disabled = true;
     try {
-      await logSavedMeal(meal);
+      const ids = await logSavedMeal(meal);
+      if (ids) {
+        haptic();
+        flashSaved(logBtn);
+        showToast(`${meal.name} logged`, { actionLabel: "Undo", onAction: () => undoEntries(ids) });
+        await refreshCurrentView();
+      }
+    } catch {
+      foodLibraryError.textContent = `Couldn't log ${meal.name} — please try again.`;
+      foodLibraryError.hidden = false;
     } finally {
       logBtn.disabled = false;
     }
@@ -3925,11 +4267,11 @@ function renderOffResults(products, query) {
 
     // Hands off to the same product card the barcode scanner uses, so a
     // searched item and a scanned one are logged through one path.
+    // A searched item and a scanned one go through exactly the same sheet,
+    // so they behave identically from here on.
     row.addEventListener("click", () => {
       foodSearchCard.hidden = true;
-      currentProduct = product;
-      showProductCard(product, product.barcode ?? "");
-      productCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      openProductSheet(product);
     });
 
     foodSearchResults.appendChild(row);
@@ -4169,6 +4511,12 @@ async function replayQueued(item) {
     return res.ok;
   }
 
+  // Queued entries are the one thing that still goes through the old
+  // estimate-and-save endpoint rather than preview-then-confirm: they flush
+  // when the network returns, which may be minutes later with the app in a
+  // pocket. There is nobody there to confirm a sheet, and holding food
+  // hostage until someone reopens the app would be worse than saving an
+  // estimate they can edit in the diary.
   // Entries carry an optional photo Blob, so they go back out as FormData.
   const body = new FormData();
   if (item.payload.text) body.append("text", item.payload.text);
@@ -4966,6 +5314,7 @@ function enterExerciseEditMode(row, exercise) {
 // The diary could say what you ate but never what you were aiming at. The
 // target is the user's own number rather than a derived one: the adaptive
 // TDEE can propose it, but it doesn't move on its own when a wearable syncs.
+const targetCard = document.getElementById("target-card");
 const targetToday = document.getElementById("target-today");
 const targetCalories = document.getElementById("target-calories");
 const targetTodayFigures = document.getElementById("target-today-figures");
@@ -4984,9 +5333,11 @@ function renderTargetToday(today) {
   // and gating the whole card on one hid their macros completely.
   if (!today || (!calorieTarget && !macroTargets)) {
     targetToday.hidden = true;
+    targetCard.hidden = true;
     return;
   }
 
+  targetCard.hidden = false;
   targetToday.hidden = false;
   targetCalories.hidden = !calorieTarget;
 

@@ -81,8 +81,7 @@ h2,
 .summary-total,
 .balance-number,
 .budget-title,
-.auth-title,
-.product-name {
+.auth-title {
   font-family: var(--font-heading);
 }
 
@@ -454,25 +453,6 @@ button.ghost:active {
   background: var(--pitch);
   color: #fff;
   transform: scale(0.98);
-}
-
-.result-row {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.result-row input {
-  margin-bottom: 0;
-}
-
-.result-row input[type="text"] {
-  flex: 1;
-}
-
-.result-row input[type="number"] {
-  max-width: 90px;
-  flex-shrink: 0;
 }
 
 .error {
@@ -1678,25 +1658,6 @@ tr.has-tooltip:active {
   padding: 14px 20px;
 }
 
-/* ── Product card ── */
-.product-card-eyebrow { font-size: 0.8rem; margin: 0 0 4px; }
-.product-name { font-size: 1.05rem; font-weight: 700; margin: 0 0 2px; }
-.product-brand { font-size: 0.85rem; margin: 0 0 14px; }
-.product-serving-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-.product-serving-row label { flex-shrink: 0; margin: 0; font-size: 0.9rem; }
-.product-serving-row input { width: 80px; margin: 0; }
-.product-kcal-badge {
-  font-weight: 700;
-  color: var(--pitch-dark);
-  font-size: 1rem;
-  margin-left: auto;
-}
-
 /* ── Secondary/icon buttons never inherit the primary CTA's gradient shadow ── */
 .log-week-btn,
 .ghost-sm,
@@ -2018,8 +1979,15 @@ tr.has-tooltip:active {
 .quick-chip:active {
   transform: scale(0.95);
 }
-.quick-chip--busy {
-  opacity: 0.55;
+/* Picked, not yet logged. The filled state has to be unmistakable at a
+   glance: an unselected chip and a selected one differ in border, fill and
+   weight, not just a shade. */
+.quick-chip--selected {
+  border-color: var(--pitch);
+  background: rgba(31, 157, 82, 0.14);
+  color: var(--pitch-dark);
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(31, 157, 82, 0.22);
 }
 .quick-chip-star {
   color: var(--gold);
@@ -3359,9 +3327,8 @@ tr.has-tooltip:active {
   white-space: nowrap;
 }
 
-/* The three gram fields shown in edit mode and on the result card. */
-.entry-macro-edit,
-.result-macro-row {
+/* The three gram fields shown in edit mode. */
+.entry-macro-edit {
   display: flex;
   gap: 8px;
   margin-top: 8px;
@@ -3426,12 +3393,6 @@ tr.has-tooltip:active {
   font-size: 0.85rem;
   color: var(--muted);
 }
-.product-macros {
-  margin: 6px 0 0;
-  font-size: 0.8rem;
-  font-variant-numeric: tabular-nums;
-}
-
 /* ── Bottom tab bar ────────────────────────────────────────────────────────
    Five destinations, always reachable. Replaces the corner icons, which put
    three of the five behind an unlabelled glyph and the other two nowhere at
@@ -3625,4 +3586,319 @@ tr.has-tooltip:active {
 
 @media (prefers-reduced-motion: reduce) {
   .today-ring-fill { transition: none; }
+}
+
+/* ── Confirm sheet ───────────────────────────────────────────────────────── */
+/* Everything the app guessed passes through here before it reaches the diary.
+   It sits above the tab bar (z-index 40) so nothing behind it is tappable
+   while a decision is pending. */
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(8, 14, 11, 0.55);
+  backdrop-filter: blur(2px);
+}
+.sheet-panel {
+  width: 100%;
+  max-width: 560px;
+  max-height: 88vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--card);
+  box-shadow: var(--shadow-lg);
+  animation: sheet-rise 0.22s var(--ease);
+}
+@keyframes sheet-rise {
+  from { transform: translateY(14px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet-panel { animation: none; }
+}
+@media (min-width: 720px) {
+  .sheet { align-items: center; }
+  .sheet-panel { border-radius: var(--radius-lg); }
+}
+.sheet-head {
+  display: flex;
+  /* Source order is title-then-badge for screen readers; reversing here puts
+     the badge above it visually without a second markup order to keep in step. */
+  flex-direction: column-reverse;
+  align-items: flex-start;
+  gap: 6px;
+}
+.sheet-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.4rem;
+  letter-spacing: 0.01em;
+}
+/* Says where the figures came from, because "from the packet" and "AI
+   estimate" deserve different amounts of scrutiny. */
+.sheet-source {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--pill-active-bg);
+  color: var(--pill-active-ink);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.sheet-note { margin: 0; font-size: 0.88rem; }
+.sheet-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.confirm-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.confirm-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+.confirm-item-top {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.confirm-label-field {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.confirm-item input { margin-bottom: 0; }
+.confirm-label { flex: 1 1 auto; min-width: 0; }
+/* The calorie box gets the same caption treatment as the macro boxes — a bare
+   number next to three labelled ones is the one field you have to guess at. */
+.confirm-kcal-field {
+  flex: 0 0 84px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.confirm-kcal {
+  width: 100%;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* The shared button rule would make this full width, 48px tall and green. */
+.confirm-remove {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  min-height: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--hairline);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--muted);
+  box-shadow: none;
+  cursor: pointer;
+}
+.confirm-remove:hover { color: var(--danger); border-color: var(--danger); }
+.confirm-remove .icon { width: 16px; height: 16px; }
+.confirm-serving {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.confirm-serving input {
+  flex: 0 0 96px;
+  font-variant-numeric: tabular-nums;
+}
+.confirm-macros {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.confirm-macro-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.confirm-macro-field input {
+  font-variant-numeric: tabular-nums;
+}
+.confirm-total {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Toast ───────────────────────────────────────────────────────────────── */
+/* Confirmation for the one-tap saves, which have no sheet of their own. Sits
+   clear of the tab bar so it never covers the thing you just tapped. */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(78px + env(safe-area-inset-bottom));
+  z-index: 80;
+  transform: translate(-50%, 12px);
+  opacity: 0;
+  transition: opacity 0.18s var(--ease), transform 0.18s var(--ease);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: min(92vw, 460px);
+  padding: 11px 14px;
+  border-radius: var(--radius-md);
+  background: var(--ink);
+  color: #fff;
+  box-shadow: var(--shadow-lg);
+  font-size: 0.9rem;
+}
+.toast--shown {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast { transition: none; }
+}
+.toast-text { flex: 1 1 auto; }
+/* Another one the shared button rule would turn into a full-width green CTA. */
+.toast-action {
+  flex: none;
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.toast-action:hover { background: rgba(255, 255, 255, 0.14); }
+
+/* Stops the page behind the sheet scrolling under it on iOS. */
+body.sheet-open { overflow: hidden; }
+
+/* ── Quick add: select, then log ─────────────────────────────────────────── */
+.quick-add-hint {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+}
+.quick-add-log {
+  margin-top: 10px;
+}
+
+/* ── "That saved" flash ──────────────────────────────────────────────────── */
+/* A green disc sweeps out from the left of the control and a tick lands in
+   the middle of it. Adapted from the interactive-hover-button motion the user
+   sent — same idea (a small dot growing to fill the control while an icon
+   slides in), rebuilt in plain CSS because this app has no React, Tailwind or
+   shadcn to drop that component into. Here it fires on a real save rather
+   than on hover, so the animation means something. */
+.saved-tick {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  color: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+.saved-tick .icon {
+  width: 22px;
+  height: 22px;
+  stroke-width: 3;
+  transform: scale(0.4);
+}
+.is-saved {
+  position: relative;
+  overflow: hidden;
+}
+.is-saved .saved-tick {
+  animation: saved-tick-in 1.1s var(--ease) forwards;
+}
+.is-saved .saved-tick::before {
+  content: "";
+  position: absolute;
+  left: 12%;
+  top: 42%;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--pitch);
+  animation: saved-fill 1.1s var(--ease) forwards;
+}
+.is-saved .saved-tick .icon {
+  position: relative;
+  animation: saved-check-in 1.1s var(--spring) forwards;
+}
+@keyframes saved-fill {
+  0% { left: 12%; top: 42%; width: 8px; height: 8px; border-radius: 999px; }
+  45% { left: 0; top: 0; width: 100%; height: 100%; border-radius: inherit; }
+  80% { left: 0; top: 0; width: 100%; height: 100%; border-radius: inherit; opacity: 1; }
+  100% { left: 0; top: 0; width: 100%; height: 100%; border-radius: inherit; opacity: 0; }
+}
+@keyframes saved-tick-in {
+  0% { opacity: 0; }
+  12% { opacity: 1; }
+  82% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes saved-check-in {
+  0% { transform: scale(0.3); opacity: 0; }
+  40% { transform: scale(1); opacity: 1; }
+  82% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
+}
+/* Reduced motion still gets the confirmation, just without the sweep. */
+@media (prefers-reduced-motion: reduce) {
+  .is-saved .saved-tick,
+  .is-saved .saved-tick::before,
+  .is-saved .saved-tick .icon {
+    animation: none;
+  }
+  .is-saved .saved-tick {
+    opacity: 1;
+    background: var(--pitch);
+  }
+  .is-saved .saved-tick .icon { transform: scale(1); }
 }
