@@ -27,6 +27,16 @@ vi.mock("../src/whoop/sync", () => ({
   getRecentSleepRecovery: vi.fn(async () => []),
 }));
 
+function filterByTimestamp<T extends { timestamp: Date }>(rows: T[], where: any): T[] {
+  const range = where?.timestamp;
+  if (!range) return rows;
+  return rows.filter((row) => {
+    if (range.gte && row.timestamp < range.gte) return false;
+    if (range.lt && row.timestamp >= range.lt) return false;
+    return true;
+  });
+}
+
 vi.mock("../src/db", () => {
   const prisma: any = {
     user: {
@@ -77,7 +87,14 @@ vi.mock("../src/db", () => {
         };
       }),
     },
-    entry: { findMany: vi.fn(async () => state.entries) },
+    // The route asks for one day at a time now, so the fake has to honour the
+    // range rather than handing back everything ever logged.
+    entry: {
+      findMany: vi.fn(async ({ where }: any = {}) => filterByTimestamp(state.entries, where)),
+    },
+    exercise: {
+      findMany: vi.fn(async ({ where }: any = {}) => filterByTimestamp(state.exercises, where)),
+    },
     waterLog: {
       findUnique: vi.fn(async ({ where }: any) =>
         state.water.find((w) => w.date === where.userId_date.date) ?? null,
@@ -151,8 +168,31 @@ function logToday(fields: Record<string, unknown>) {
   });
 }
 
-function getToday(cookie: string) {
-  return fetch(`${baseUrl}/api/stats/today`, { headers: { Cookie: cookie } });
+/** Files an entry onto a given local day, into whichever week holds it. */
+function logOnDay(daysAgo: number, fields: Record<string, unknown>) {
+  const timestamp = new Date(Date.now() - daysAgo * 86_400_000);
+  const { start, end } = getMatchWeekBoundaries(timestamp, TIMEZONE, { weekday: 0, hour: 17, minute: 0 });
+  let week = state.weeks.find((w) => w.startsAt.getTime() === start.getTime());
+  if (!week) {
+    week = { id: state.nextId++, userId: 1, startsAt: start, endsAt: end };
+    state.weeks.push(week);
+  }
+  state.entries.push({
+    id: state.nextId++,
+    matchWeekId: week.id,
+    timestamp,
+    kcal: null,
+    proteinG: null,
+    carbsG: null,
+    fatG: null,
+    ...fields,
+  });
+  return localDayKey(timestamp, TIMEZONE);
+}
+
+function getToday(cookie: string, date?: string) {
+  const query = date ? `?date=${date}` : "";
+  return fetch(`${baseUrl}/api/stats/today${query}`, { headers: { Cookie: cookie } });
 }
 
 describe("GET /api/stats/today", () => {
@@ -256,5 +296,117 @@ describe("GET /api/stats/today", () => {
     const body = (await (await getToday(cookie)).json()) as any;
     // Being 160g under a carb limit needs no comment.
     expect(body.insights.find((i: any) => i.id === "macro-floor")).toBeUndefined();
+  });
+});
+
+describe("GET /api/stats/today?date", () => {
+  it("marks today as today, with no day after it", async () => {
+    const cookie = await signUp();
+    const body = (await (await getToday(cookie)).json()) as any;
+
+    expect(body.isToday).toBe(true);
+    // There is no tomorrow to step into.
+    expect(body.nextDate).toBeNull();
+    expect(body.previousDate).not.toBeNull();
+  });
+
+  it("answers for an earlier day, with only that day's food on it", async () => {
+    const cookie = await signUp();
+    const twoDaysAgo = logOnDay(2, { kcal: 700, proteinG: 40, carbsG: 60, fatG: 20 });
+    logOnDay(0, { kcal: 250 });
+
+    const body = (await (await getToday(cookie, twoDaysAgo)).json()) as any;
+    expect(body.date).toBe(twoDaysAgo);
+    expect(body.isToday).toBe(false);
+    expect(body.kcal.eaten).toBe(700);
+    expect(body.entries).toHaveLength(1);
+    // Stepping forward from an earlier day is allowed; stepping past today
+    // is what the endpoint refuses.
+    expect(body.nextDate).not.toBeNull();
+  });
+
+  it("leaves today's food off an earlier day and the other way round", async () => {
+    const cookie = await signUp();
+    const yesterday = logOnDay(1, { kcal: 900 });
+    logOnDay(0, { kcal: 250 });
+
+    const past = (await (await getToday(cookie, yesterday)).json()) as any;
+    const today = (await (await getToday(cookie)).json()) as any;
+    expect(past.kcal.eaten).toBe(900);
+    expect(today.kcal.eaten).toBe(250);
+  });
+
+  it("steps back a day, including across a month boundary", async () => {
+    const cookie = await signUp();
+    const body = (await (await getToday(cookie, "2026-03-01")).json()) as any;
+    expect(body.previousDate).toBe("2026-02-28");
+    expect(body.nextDate).toBe("2026-03-02");
+  });
+
+  it("refuses a future date and falls back to today", async () => {
+    const cookie = await signUp();
+    const body = (await (await getToday(cookie, "2099-01-01")).json()) as any;
+    expect(body.date).toBe(localDayKey(new Date(), TIMEZONE));
+    expect(body.isToday).toBe(true);
+  });
+
+  it("ignores a malformed date rather than erroring", async () => {
+    const cookie = await signUp();
+    const res = await getToday(cookie, "not-a-date");
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as any).date).toBe(localDayKey(new Date(), TIMEZONE));
+  });
+});
+
+/** Files an entry at an exact instant, into whichever match week holds it. */
+function logAt(timestamp: Date, fields: Record<string, unknown>) {
+  const { start, end } = getMatchWeekBoundaries(timestamp, TIMEZONE, { weekday: 0, hour: 17, minute: 0 });
+  let week = state.weeks.find((w) => w.startsAt.getTime() === start.getTime());
+  if (!week) {
+    week = { id: state.nextId++, userId: 1, startsAt: start, endsAt: end };
+    state.weeks.push(week);
+  }
+  state.entries.push({
+    id: state.nextId++,
+    matchWeekId: week.id,
+    timestamp,
+    kcal: null,
+    proteinG: null,
+    carbsG: null,
+    fatG: null,
+    ...fields,
+  });
+}
+
+describe("a day that straddles the week rollover", () => {
+  // Monday 31 August 2026, the rollover day for a Monday 17:00 week. Lunch
+  // that day belongs to the week ending; dinner to the week beginning. The
+  // screen shows a calendar day, so it has to hold both — reading the day out
+  // of a single match week dropped whichever half fell in the other one.
+  const MONDAY = "2026-08-31";
+  const lunch = new Date("2026-08-31T11:00:00Z");   // 12:00 BST — before 17:00
+  const dinner = new Date("2026-08-31T19:00:00Z");  // 20:00 BST — after 17:00
+
+  it("counts both sides of the rollover on the same day", async () => {
+    const cookie = await signUp();
+    logAt(lunch, { kcal: 600 });
+    logAt(dinner, { kcal: 900 });
+
+    // The two really are in different weeks — otherwise this proves nothing.
+    expect(new Set(state.entries.map((e) => e.matchWeekId)).size).toBe(2);
+
+    const body = (await (await getToday(cookie, MONDAY)).json()) as any;
+    expect(body.kcal.eaten).toBe(1500);
+    expect(body.entries).toHaveLength(2);
+  });
+
+  it("keeps the neighbouring days out of it", async () => {
+    const cookie = await signUp();
+    logAt(lunch, { kcal: 600 });
+    logAt(new Date("2026-08-30T19:00:00Z"), { kcal: 400 });
+    logAt(new Date("2026-09-01T11:00:00Z"), { kcal: 300 });
+
+    const body = (await (await getToday(cookie, MONDAY)).json()) as any;
+    expect(body.kcal.eaten).toBe(600);
   });
 });
