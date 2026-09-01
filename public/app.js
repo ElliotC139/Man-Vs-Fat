@@ -1543,19 +1543,31 @@ let scannerActive = false;
 let cameraReleaseTimer = null;
 
 // How long a camera stream is held after the scanner closes. Safari asks for
-// permission per getUserMedia call, so stopping the tracks the instant the
-// sheet closes meant a fresh prompt for every single scan. Holding the stream
-// across a scanning burst turns that into one prompt. It is still released
-// afterwards — and immediately if the app is backgrounded — so the camera
-// indicator never stays lit on an idle app.
-const CAMERA_HOLD_MS = 120_000;
+// permission on every getUserMedia call, so a stream that dies between scans
+// means a fresh prompt for every single scan. Holding it across a scanning
+// burst turns that into one prompt. It is still released afterwards — and
+// immediately if the app is backgrounded — so the camera indicator never
+// stays lit on an idle app.
+const CAMERA_HOLD_MS = 300_000;
 
 async function acquireCameraStream() {
   clearTimeout(cameraReleaseTimer);
   const live = scanStream?.getVideoTracks().some((t) => t.readyState === "live");
-  if (live) return scanStream;
+  if (live) {
+    // Held streams are left attached but muted between scans; wake it back up.
+    scanStream.getVideoTracks().forEach((t) => { t.enabled = true; });
+    return scanStream;
+  }
   releaseCameraStream();
   scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+  // iOS can end a track on its own — a phone call, another app taking the
+  // camera. Forgetting it here means the next open asks for a fresh one
+  // instead of handing the detector a dead stream.
+  for (const track of scanStream.getVideoTracks()) {
+    track.addEventListener("ended", () => {
+      if (scanStream && scanStream.getVideoTracks().includes(track)) scanStream = null;
+    });
+  }
   return scanStream;
 }
 
@@ -1564,6 +1576,7 @@ function releaseCameraStream() {
   if (!scanStream) return;
   scanStream.getTracks().forEach((t) => t.stop());
   scanStream = null;
+  scanVideo.srcObject = null;
 }
 
 function openScanner() {
@@ -1574,12 +1587,23 @@ function openScanner() {
   acquireCameraStream()
     .then((stream) => {
       if (!scannerActive) return;
-      scanVideo.srcObject = stream;
-      scanVideo.play();
+      // Re-attached only when it isn't already the same stream, so reopening
+      // within the hold window doesn't restart the capture session.
+      if (scanVideo.srcObject !== stream) scanVideo.srcObject = stream;
+      // Closing the scanner pauses the video, which rejects a play() that is
+      // still starting up. Nothing has gone wrong when that happens, so it is
+      // swallowed rather than left as an unhandled rejection.
+      scanVideo.play().catch(() => {});
       if (typeof BarcodeDetector !== "undefined") {
         runBarcodeDetectorLoop();
       } else {
-        loadQuagga2().then(runQuaggaLoop);
+        // Safari and Firefox have no BarcodeDetector, so the decoder comes off
+        // a CDN. If that fetch fails the scanner would otherwise sit on
+        // "Searching for barcode…" for ever with nothing running behind it.
+        loadQuagga2().then(runQuaggaLoop).catch(() => {
+          scanStatusEl.textContent =
+            "Couldn't load the barcode reader — check your connection, or type the food in instead.";
+        });
       }
     })
     .catch(() => {
@@ -1595,8 +1619,16 @@ function stopScanner() {
     scanRafId = null;
   }
   quaggaLoopActive = false;
-  scanVideo.srcObject = null;
+
+  // The stream stays attached to the video element. Detaching it (srcObject =
+  // null) tears the capture session down on iOS: the track ends, the hold
+  // below has nothing left to hold, and the next scan asks for permission
+  // again — which is exactly what the hold was added to stop. Pausing and
+  // muting the track keeps the session alive with no frames flowing.
+  scanVideo.pause();
+  scanStream?.getVideoTracks().forEach((t) => { t.enabled = false; });
   scanModal.hidden = true;
+
   clearTimeout(cameraReleaseTimer);
   cameraReleaseTimer = setTimeout(releaseCameraStream, CAMERA_HOLD_MS);
 }
@@ -1855,6 +1887,18 @@ function renderConfirmItems() {
     const row = document.createElement("div");
     row.className = "confirm-item";
 
+    // The inputs a serving-size change has to update in place. Populated as
+    // they are built below; syncDerivedFields writes today's figures back
+    // into them without touching the DOM the user is typing in.
+    const derived = { kcal: null, protein: null, carbs: null, fat: null };
+    function syncDerivedFields() {
+      if (derived.kcal) derived.kcal.value = item.kcal ?? "";
+      for (const key of ["protein", "carbs", "fat"]) {
+        if (derived[key]) derived[key].value = item[key] ?? "";
+      }
+      renderConfirmTotal();
+    }
+
     const top = document.createElement("div");
     top.className = "confirm-item-top";
 
@@ -1885,6 +1929,7 @@ function renderConfirmItems() {
       renderConfirmTotal();
     });
     kcalField.append(kcalCaption, kcalInput);
+    derived.kcal = kcalInput;
 
     top.append(labelField, kcalField);
 
@@ -1913,10 +1958,13 @@ function renderConfirmItems() {
       gramsInput.min = "1";
       gramsInput.step = "1";
       gramsInput.value = item.grams ?? "";
+      // Writes into the sibling fields rather than re-rendering the list.
+      // Rebuilding replaced the very input being typed into, so iOS closed
+      // the keyboard after every digit — 250g took five attempts.
       gramsInput.addEventListener("input", () => {
         item.grams = gramsInput.value === "" ? null : Number(gramsInput.value);
         applyPer100(item);
-        renderConfirmItems();
+        syncDerivedFields();
       });
       servingRow.append(caption, gramsInput);
       row.appendChild(servingRow);
@@ -1941,6 +1989,7 @@ function renderConfirmItems() {
           item[key] = input.value === "" ? null : Number(input.value);
           renderConfirmTotal();
         });
+        derived[key] = input;
         field.append(caption, input);
         macroRow.appendChild(field);
       }
@@ -3586,8 +3635,12 @@ function navTo(target) {
   // Each tab refreshes as you arrive. Cheap at this size, and it means food
   // logged on Today shows in the week the moment you switch rather than
   // leaving a stale total behind.
-  if (target === "today") loadToday();
-  else if (target === "week") loadWeek();
+  // Arriving at the tab always lands on today; the arrows are for stepping
+  // back from there, not a place you get stuck after switching tabs.
+  if (target === "today") {
+    if (previous !== "today") todayViewDate = null;
+    loadToday();
+  } else if (target === "week") loadWeek();
   else if (target === "food-library") loadFoodLibraryScreen();
   else if (target === "stats") loadStatsScreen();
   else if (target === "settings") loadSettingsScreen();
@@ -6619,7 +6672,8 @@ const TODAY_RING_CIRCUMFERENCE = 2 * Math.PI * 52;
 
 async function loadToday() {
   try {
-    const res = await fetch("/api/stats/today");
+    const query = todayViewDate ? `?date=${encodeURIComponent(todayViewDate)}` : "";
+    const res = await fetch(`/api/stats/today${query}`);
     if (!res.ok) throw new Error();
     renderToday(await res.json());
   } catch {
@@ -6632,6 +6686,10 @@ async function loadToday() {
 function renderToday(data) {
   todayDateEl.textContent = data.label;
   currentTodayDate = data.date;
+  viewingToday = data.isToday !== false;
+  renderDayNav(data);
+
+  todayEntriesHeading.textContent = viewingToday ? "Logged today" : "Logged that day";
 
   const eaten = data.kcal.eaten ?? 0;
   todayKcalEl.textContent = eaten.toLocaleString();
@@ -6652,7 +6710,7 @@ function renderToday(data) {
     todayRemainingCaption.textContent = left >= 0 ? "kcal left" : "kcal over";
   } else {
     todayRemaining.textContent = eaten.toLocaleString();
-    todayRemainingCaption.textContent = "logged today";
+    todayRemainingCaption.textContent = viewingToday ? "logged today" : "logged";
   }
 
   // Only a measured burn goes in the burn tile. An estimate or a target
@@ -6694,6 +6752,50 @@ function renderToday(data) {
 }
 
 let currentTodayDate = null;
+
+// ── Stepping through days ───────────────────────────────────────────────────
+// Null means today. Set to a YYYY-MM-DD key while looking back at an earlier
+// day; the arrows mirror the week nav on the diary so the two read the same.
+let todayViewDate = null;
+// Whether the screen is showing today, which several captions depend on.
+let viewingToday = true;
+
+const todayEntriesHeading = document.getElementById("today-entries-heading");
+
+const dayPrevBtn = document.getElementById("day-prev");
+const dayNextBtn = document.getElementById("day-next");
+const dayPastNote = document.getElementById("day-past-note");
+const dayBackToTodayBtn = document.getElementById("day-back-to-today");
+
+function renderDayNav(data) {
+  // The server decides how far forward you can go, so the day can never be
+  // stepped into the future even if the device clock disagrees.
+  dayNextBtn.disabled = !data.nextDate;
+  dayPrevBtn.dataset.date = data.previousDate ?? "";
+  dayNextBtn.dataset.date = data.nextDate ?? "";
+
+  // Logging always writes to now, so on an earlier day the form would say one
+  // thing and do another. It comes off the screen entirely, with a way back.
+  const past = !data.isToday;
+  dayPastNote.hidden = !past;
+  form.hidden = past;
+  waterCard.hidden = past;
+}
+
+function goToDay(key) {
+  if (!key) return;
+  todayViewDate = key;
+  haptic();
+  loadToday();
+}
+
+dayPrevBtn.addEventListener("click", () => goToDay(dayPrevBtn.dataset.date));
+dayNextBtn.addEventListener("click", () => goToDay(dayNextBtn.dataset.date));
+dayBackToTodayBtn.addEventListener("click", () => {
+  todayViewDate = null;
+  haptic();
+  loadToday();
+});
 
 function renderTodayBody(whoop) {
   const hasRecovery = whoop?.recoveryScore != null;
@@ -6738,7 +6840,7 @@ function renderTodayEntries(entries) {
   if (entries.length === 0) {
     const empty = document.createElement("p");
     empty.className = "muted today-empty";
-    empty.textContent = "Nothing logged yet today.";
+    empty.textContent = viewingToday ? "Nothing logged yet today." : "Nothing was logged that day.";
     todayEntryList.appendChild(empty);
     return;
   }

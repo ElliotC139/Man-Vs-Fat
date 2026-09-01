@@ -136,7 +136,11 @@ body {
   position: relative;
   background: var(--pitch-deep);
   color: #fff;
-  padding: 22px 20px 18px;
+  /* The page runs under the status bar (viewport-fit=cover), so the header's
+     own padding has to clear it — otherwise the back arrow and the corner
+     icons sit behind the clock on an installed iPhone app and can't be
+     pressed at all. Zero on every device without a notch. */
+  padding: calc(22px + env(safe-area-inset-top)) 20px 18px;
   text-align: center;
   overflow: hidden;
 }
@@ -155,7 +159,7 @@ body {
 .stats-toggle,
 .library-back {
   position: absolute;
-  top: 14px;
+  top: calc(14px + env(safe-area-inset-top));
   width: 38px;
   height: 38px;
   min-height: 38px;
@@ -1609,7 +1613,7 @@ tr.has-tooltip:active {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  padding: calc(16px + env(safe-area-inset-top)) 20px 16px;
   color: #fff;
   font-size: 1rem;
   font-weight: 600;
@@ -3001,7 +3005,7 @@ tr.has-tooltip:active {
 }
 .photo-modal-close {
   position: absolute;
-  top: 16px;
+  top: calc(16px + env(safe-area-inset-top));
   right: 16px;
   width: 40px;
   height: 40px;
@@ -3503,8 +3507,14 @@ tr.has-tooltip:active {
 }
 
 /* ── Today ─────────────────────────────────────────────────────────────── */
+/* Borrows the week nav's arrows so stepping through days feels the same as
+   stepping through weeks — same control, same place, one width down. */
+.day-nav {
+  margin-top: 4px;
+}
 .today-date {
-  margin: 4px 0 0;
+  margin: 0;
+  min-width: 210px;
   font-family: var(--font-heading);
   font-size: 1.05rem;
   font-weight: 600;
@@ -3919,4 +3929,16 @@ body.sheet-open { overflow: hidden; }
     background: var(--pitch);
   }
   .is-saved .saved-tick .icon { transform: scale(1); }
+}
+
+/* Shown in place of the log form when looking back at an earlier day. */
+.day-past-note {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+.day-past-note p {
+  margin: 0;
+  font-size: 0.9rem;
 }

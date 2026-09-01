@@ -661,35 +661,52 @@ statsRouter.get("/today", async (req, res) => {
   const now = new Date();
   const todayKey = localDayKey(now, config.TIMEZONE);
 
-  const weekStart = await getUserWeekStart(userId);
-  const { start: weekStartsAt, end: weekEndsAt } = getMatchWeekBoundariesForWeeksAgo(now, 0, config.TIMEZONE, weekStart);
-  const trailingSince = new Date(now.getTime() - TODAY_AVERAGE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  // ?date lets the screen step back through earlier days. Anything unparseable
+  // or in the future falls back to today rather than erroring — a stale link
+  // should still show something useful.
+  const asked = typeof req.query.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)
+    ? req.query.date
+    : todayKey;
+  const dayKey = asked > todayKey ? todayKey : asked;
+  const isToday = dayKey === todayKey;
 
-  const [user, weekRow, trailingEntries, water, note, whoopRecent, cycles] = await Promise.all([
+  // Midday in the local zone, so the instant lands inside the day being asked
+  // for whatever the offset and whichever side of a DST change it falls.
+  const [y, m, d] = dayKey.split("-").map(Number) as [number, number, number];
+  const subject = isToday ? now : zonedTimeToUtc(y, m, d, 12, 0, config.TIMEZONE);
+
+  // The day is read as a span of time, not as a slice of one match week. On a
+  // rollover day the two are not the same thing: with a Monday 17:00 start,
+  // Monday's food before 17:00 belongs to the week that is ending and the rest
+  // to the week beginning, so no single week holds the whole day.
+  const [ny, nm, nd] = shiftDayKey(dayKey, 1).split("-").map(Number) as [number, number, number];
+  const dayStart = zonedTimeToUtc(y, m, d, 0, 0, config.TIMEZONE);
+  const dayEnd = zonedTimeToUtc(ny, nm, nd, 0, 0, config.TIMEZONE);
+  const trailingSince = new Date(subject.getTime() - TODAY_AVERAGE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+  const [user, entriesToday, exercisesToday, trailingEntries, water, note, whoopRecent, cycles] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId } }),
-    prisma.matchWeek.findUnique({
-      where: { userId_startsAt_endsAt: { userId, startsAt: weekStartsAt, endsAt: weekEndsAt } },
-      include: { entries: { orderBy: { timestamp: "asc" } }, exercises: { orderBy: { timestamp: "asc" } } },
+    prisma.entry.findMany({
+      where: { matchWeek: { userId }, timestamp: { gte: dayStart, lt: dayEnd } },
+      orderBy: { timestamp: "asc" },
+    }),
+    prisma.exercise.findMany({
+      where: { matchWeek: { userId }, timestamp: { gte: dayStart, lt: dayEnd } },
+      orderBy: { timestamp: "asc" },
     }),
     prisma.entry.findMany({
       where: { matchWeek: { userId }, timestamp: { gte: trailingSince }, kcal: { not: null } },
       select: { timestamp: true, kcal: true },
     }),
-    prisma.waterLog.findUnique({ where: { userId_date: { userId, date: todayKey } } }),
-    prisma.dayNote.findUnique({ where: { userId_date: { userId, date: todayKey } } }),
-    getRecentSleepRecovery(userId, 2).catch(() => []),
+    prisma.waterLog.findUnique({ where: { userId_date: { userId, date: dayKey } } }),
+    prisma.dayNote.findUnique({ where: { userId_date: { userId, date: dayKey } } }),
+    // Reaches back far enough to cover the day being shown, not just today.
+    getRecentSleepRecovery(userId, daysBetweenKeys(dayKey, todayKey) + 2).catch(() => []),
     prisma.whoopCycle.findMany({
       where: { userId, scoreState: "SCORED", kcalBurned: { not: null }, start: { gte: trailingSince } },
       select: { start: true, end: true, kcalBurned: true },
     }),
   ]);
-
-  const entriesToday = (weekRow?.entries ?? []).filter(
-    (entry) => localDayKey(entry.timestamp, config.TIMEZONE) === todayKey,
-  );
-  const exercisesToday = (weekRow?.exercises ?? []).filter(
-    (exercise) => localDayKey(exercise.timestamp, config.TIMEZONE) === todayKey,
-  );
 
   const eaten = entriesToday.reduce((sum, entry) => sum + (entry.kcal ?? 0), 0);
   const pending = entriesToday.filter((entry) => entry.kcal === null).length;
@@ -701,7 +718,7 @@ statsRouter.get("/today", async (req, res) => {
     const split = splitCycleAcrossDays(cycle.start, cycle.end ?? now, cycle.kcalBurned ?? 0, config.TIMEZONE);
     for (const [key, kcal] of split) burnByDay.set(key, (burnByDay.get(key) ?? 0) + kcal);
   }
-  const measuredBurn = burnByDay.get(todayKey) ?? null;
+  const measuredBurn = burnByDay.get(dayKey) ?? null;
 
   // Same order of authority the diary uses: measured, then the user's own
   // target, then a formula. See dailyReference() in public/app.js.
@@ -721,7 +738,7 @@ statsRouter.get("/today", async (req, res) => {
   const trailingByDay = new Map<string, number>();
   for (const entry of trailingEntries) {
     const key = localDayKey(entry.timestamp, config.TIMEZONE);
-    if (key === todayKey) continue;
+    if (key === dayKey) continue;
     trailingByDay.set(key, (trailingByDay.get(key) ?? 0) + (entry.kcal ?? 0));
   }
   const trailingDays = [...trailingByDay.values()];
@@ -729,11 +746,16 @@ statsRouter.get("/today", async (req, res) => {
     ? null
     : Math.round(trailingDays.reduce((a, b) => a + b, 0) / trailingDays.length);
 
-  const today = whoopRecent.find((day) => day.date === todayKey) ?? null;
+  const today = whoopRecent.find((day) => day.date === dayKey) ?? null;
 
   res.json({
-    date: todayKey,
-    label: localDayLabel(now, config.TIMEZONE),
+    date: dayKey,
+    isToday,
+    // The day before this one always exists; the day after only when the day
+    // being shown isn't today, so the screen can't be stepped into the future.
+    previousDate: shiftDayKey(dayKey, -1),
+    nextDate: isToday ? null : shiftDayKey(dayKey, 1),
+    label: localDayLabel(subject, config.TIMEZONE),
     kcal: {
       eaten,
       pendingEntries: pending,
@@ -1150,3 +1172,19 @@ statsRouter.get("/insights", async (req, res) => {
 
   res.json({ insights: [...insights, ...bodyFindings] });
 });
+
+/** Moves a YYYY-MM-DD key by whole days, in UTC so no offset can shift it. */
+function shiftDayKey(key: string, days: number): string {
+  const [y, m, d] = key.split("-").map(Number) as [number, number, number];
+  const moved = new Date(Date.UTC(y, m - 1, d) + days * 24 * 60 * 60 * 1000);
+  return moved.toISOString().slice(0, 10);
+}
+
+/** Whole days from one YYYY-MM-DD key to another, never negative. */
+function daysBetweenKeys(from: string, to: string): number {
+  const parse = (key: string) => {
+    const [y, m, d] = key.split("-").map(Number) as [number, number, number];
+    return Date.UTC(y, m - 1, d);
+  };
+  return Math.max(0, Math.round((parse(to) - parse(from)) / (24 * 60 * 60 * 1000)));
+}
