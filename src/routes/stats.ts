@@ -9,6 +9,7 @@ import {
   weightedDaysLogged,
   getUserWeekStart,
   localDayKey,
+  localDayLabel,
   zonedTimeToUtc,
 } from "../matchWeek";
 import { estimateAdaptiveTdee } from "../adaptiveTdee";
@@ -16,7 +17,8 @@ import { foodRecoveryFindings } from "../foodRecovery";
 import { latestWeightKg, weightRate } from "../weightStats";
 import { computeDeficitStreak, type DayVerdict } from "../deficitStreak";
 import { recordError } from "../errorLog";
-import { resolveMacroTargets, sumMacros } from "../macros";
+import { MACRO_KEYS, resolveMacroTargets, sumMacros, type MacroKey } from "../macros";
+import { getRecentSleepRecovery } from "../whoop/sync";
 
 export const statsRouter = Router();
 statsRouter.use(requireAuth);
@@ -642,6 +644,201 @@ statsRouter.get("/deficit-streak", async (req, res) => {
 
   res.json(computeDeficitStreak(verdicts));
 });
+
+// ── Today ────────────────────────────────────────────────────────────────
+//
+// Everything the Today screen shows, in one call. Deliberately one endpoint
+// rather than the five it would otherwise take: this is the screen the app
+// opens on, and five round trips means five chances to render half a page.
+//
+// Independent of the week paging on purpose — Today is always today, whatever
+// week the diary happens to be looking at.
+
+const TODAY_AVERAGE_WINDOW_DAYS = 7;
+
+statsRouter.get("/today", async (req, res) => {
+  const userId = req.userId!;
+  const now = new Date();
+  const todayKey = localDayKey(now, config.TIMEZONE);
+
+  const weekStart = await getUserWeekStart(userId);
+  const { start: weekStartsAt, end: weekEndsAt } = getMatchWeekBoundariesForWeeksAgo(now, 0, config.TIMEZONE, weekStart);
+  const trailingSince = new Date(now.getTime() - TODAY_AVERAGE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+  const [user, weekRow, trailingEntries, water, note, whoopRecent, cycles] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId } }),
+    prisma.matchWeek.findUnique({
+      where: { userId_startsAt_endsAt: { userId, startsAt: weekStartsAt, endsAt: weekEndsAt } },
+      include: { entries: { orderBy: { timestamp: "asc" } }, exercises: { orderBy: { timestamp: "asc" } } },
+    }),
+    prisma.entry.findMany({
+      where: { matchWeek: { userId }, timestamp: { gte: trailingSince }, kcal: { not: null } },
+      select: { timestamp: true, kcal: true },
+    }),
+    prisma.waterLog.findUnique({ where: { userId_date: { userId, date: todayKey } } }),
+    prisma.dayNote.findUnique({ where: { userId_date: { userId, date: todayKey } } }),
+    getRecentSleepRecovery(userId, 2).catch(() => []),
+    prisma.whoopCycle.findMany({
+      where: { userId, scoreState: "SCORED", kcalBurned: { not: null }, start: { gte: trailingSince } },
+      select: { start: true, end: true, kcalBurned: true },
+    }),
+  ]);
+
+  const entriesToday = (weekRow?.entries ?? []).filter(
+    (entry) => localDayKey(entry.timestamp, config.TIMEZONE) === todayKey,
+  );
+  const exercisesToday = (weekRow?.exercises ?? []).filter(
+    (exercise) => localDayKey(exercise.timestamp, config.TIMEZONE) === todayKey,
+  );
+
+  const eaten = entriesToday.reduce((sum, entry) => sum + (entry.kcal ?? 0), 0);
+  const pending = entriesToday.filter((entry) => entry.kcal === null).length;
+
+  // Measured burn for today, if a tracker has scored any of it. Part-days are
+  // normal here — the cycle covering right now is still open.
+  const burnByDay = new Map<string, number>();
+  for (const cycle of cycles) {
+    const split = splitCycleAcrossDays(cycle.start, cycle.end ?? now, cycle.kcalBurned ?? 0, config.TIMEZONE);
+    for (const [key, kcal] of split) burnByDay.set(key, (burnByDay.get(key) ?? 0) + kcal);
+  }
+  const measuredBurn = burnByDay.get(todayKey) ?? null;
+
+  // Same order of authority the diary uses: measured, then the user's own
+  // target, then a formula. See dailyReference() in public/app.js.
+  const target = user?.dailyCalorieTarget ?? null;
+  const estimated = estimateTdee(user ?? { weightKg: null, heightCm: null, ageYears: null, activityLevel: null });
+  const reference = target !== null
+    ? { kcal: target, source: "target" as const }
+    : estimated !== null
+      ? { kcal: estimated, source: "estimate" as const }
+      : null;
+
+  const macroTargets = user ? resolveMacroTargets(user) : null;
+  const macrosEaten = sumMacros(entriesToday);
+
+  // What a normal day looks like, for the "ahead of / behind your usual"
+  // read. Excludes today itself, which is only part-finished.
+  const trailingByDay = new Map<string, number>();
+  for (const entry of trailingEntries) {
+    const key = localDayKey(entry.timestamp, config.TIMEZONE);
+    if (key === todayKey) continue;
+    trailingByDay.set(key, (trailingByDay.get(key) ?? 0) + (entry.kcal ?? 0));
+  }
+  const trailingDays = [...trailingByDay.values()];
+  const trailingAverage = trailingDays.length === 0
+    ? null
+    : Math.round(trailingDays.reduce((a, b) => a + b, 0) / trailingDays.length);
+
+  const today = whoopRecent.find((day) => day.date === todayKey) ?? null;
+
+  res.json({
+    date: todayKey,
+    label: localDayLabel(now, config.TIMEZONE),
+    kcal: {
+      eaten,
+      pendingEntries: pending,
+      target,
+      remaining: target === null ? null : target - eaten,
+      measuredBurn: measuredBurn === null ? null : Math.round(measuredBurn),
+      reference: reference?.kcal ?? null,
+      referenceSource: reference?.source ?? null,
+      exerciseKcal: exercisesToday.reduce((sum, exercise) => sum + (exercise.kcalBurned ?? 0), 0),
+      trailingAverage,
+    },
+    macros: {
+      targets: macroTargets,
+      eaten: {
+        protein: macrosEaten.protein,
+        carbs: macrosEaten.carbs,
+        fat: macrosEaten.fat,
+        unknownEntries: macrosEaten.unknownEntries,
+      },
+    },
+    entries: entriesToday,
+    exercises: exercisesToday.map(({ whoopWorkoutId, ...rest }) => ({ ...rest, fromWhoop: whoopWorkoutId !== null })),
+    waterMl: water?.ml ?? 0,
+    note: note?.note ?? null,
+    whoop: {
+      connected: whoopRecent.length > 0,
+      recoveryScore: today?.recoveryScore ?? null,
+      sleepMinutes: today?.sleepMinutes ?? null,
+      sleepPerformance: today?.sleepPerformance ?? null,
+    },
+    insights: todayInsights({
+      eaten,
+      target,
+      trailingAverage,
+      macroTargets,
+      macrosEaten,
+      recoveryScore: today?.recoveryScore ?? null,
+      sleepMinutes: today?.sleepMinutes ?? null,
+      loggedCount: entriesToday.length,
+    }),
+  });
+});
+
+/**
+ * A short read on the day so far.
+ *
+ * Observations only — same rule the estimator prompt has always carried: this
+ * says what the numbers are, never what to do about them. Each one is gated
+ * on having the data behind it, so a day with nothing logged and no tracker
+ * produces an empty list rather than filler.
+ */
+function todayInsights(input: {
+  eaten: number;
+  target: number | null;
+  trailingAverage: number | null;
+  macroTargets: ReturnType<typeof resolveMacroTargets>;
+  macrosEaten: ReturnType<typeof sumMacros>;
+  recoveryScore: number | null;
+  sleepMinutes: number | null;
+  loggedCount: number;
+}): Insight[] {
+  const insights: Insight[] = [];
+
+  if (input.loggedCount === 0) return insights;
+
+  if (input.trailingAverage !== null && input.trailingAverage > 0) {
+    const diff = input.eaten - input.trailingAverage;
+    const pct = Math.round((Math.abs(diff) / input.trailingAverage) * 100);
+    if (pct >= 10) {
+      insights.push({
+        id: "vs-usual",
+        text: `You're ${pct}% ${diff > 0 ? "above" : "below"} your usual day at this point — ${input.eaten.toLocaleString()} logged against a ${input.trailingAverage.toLocaleString()} average.`,
+      });
+    }
+  }
+
+  // The macro most likely to need attention: the floor furthest from being
+  // met. Only floors, because a ceiling you're under needs nothing said.
+  if (input.macroTargets) {
+    let worst: { key: MacroKey; short: number } | null = null;
+    for (const key of MACRO_KEYS) {
+      const target = input.macroTargets.targets[key];
+      if (!target || target.op !== "min") continue;
+      const short = target.grams - input.macrosEaten[key];
+      if (short > 0 && (worst === null || short > worst.short)) worst = { key, short };
+    }
+    if (worst) {
+      insights.push({
+        id: "macro-floor",
+        text: `${Math.round(worst.short)}g of ${worst.key} still to go today.`,
+      });
+    }
+  }
+
+  if (input.recoveryScore !== null) {
+    insights.push({
+      id: "recovery",
+      text: `WHOOP has you at ${input.recoveryScore}% recovered today${
+        input.sleepMinutes ? `, on ${(input.sleepMinutes / 60).toFixed(1)}h of sleep` : ""
+      }.`,
+    });
+  }
+
+  return insights;
+}
 
 // ── Macros ───────────────────────────────────────────────────────────────
 //

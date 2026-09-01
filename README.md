@@ -197,6 +197,29 @@ Every entry gets assigned a `MatchWeek` row (created on first use, scoped to
 that user) via `findOrCreateMatchWeek`, so weeks are first-class rows in the
 DB, not a display-time calculation.
 
+## Screens
+
+Five, reachable from a bottom tab bar at every width:
+
+- **Today** — the landing screen, and where logging happens. A ring of the
+  day's calories against whatever it's being measured by, the macro rows,
+  the log form, water, WHOOP recovery and sleep, and a short read on the day
+  so far. Everything on it comes from one call (`GET /api/stats/today`): this
+  is the first thing anyone sees, and five round trips means five chances to
+  render half a page.
+- **My week** — the week's picture: the form guide, the week total and daily
+  breakdown, the calorie balance, exercise and the full diary.
+- **Food Library**, **Stats**, **Settings** as before.
+
+`navTo()` owns which screen is showing. Each screen used to hide the others
+from its own open/close pair, which with five destinations would have meant
+writing "hide the other four" five times — and any one of them getting it
+wrong shows two screens at once.
+
+Logging lives on Today rather than being duplicated: a mutation refreshes
+only the tab you are actually on (`refreshCurrentView()`), because `navTo()`
+reloads each tab as you arrive at it anyway.
+
 ## Week styles
 
 Two shapes, both driven by the one stored rollover time rather than a separate
