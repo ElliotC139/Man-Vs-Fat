@@ -827,7 +827,7 @@ form.addEventListener("submit", async (event) => {
       source: "ai",
       lastWeek: logToLastWeek,
       sourceLabel: "AI estimate",
-      note: "Check the figures — you can change anything before it's saved.",
+      note: "Change anything that's off, then log it.",
     });
 
     logToLastWeek = false;
@@ -2084,7 +2084,7 @@ confirmSaveBtn.addEventListener("click", async () => {
     confirmErrorEl.hidden = false;
   } finally {
     confirmSaveBtn.disabled = false;
-    confirmSaveBtn.textContent = "Save to diary";
+    confirmSaveBtn.textContent = "Log it";
   }
 });
 
@@ -2123,7 +2123,7 @@ function openProductSheet(product) {
     items: [item],
     source: "database",
     sourceLabel: "From the packet",
-    note: "Set the serving size — the figures update with it.",
+    note: "Set the serving size — the figures follow it.",
     alt: product.barcode ? { label: "Scan again", run: openScanner } : null,
   });
 }
@@ -4587,12 +4587,76 @@ window.addEventListener("online", () => {
 window.addEventListener("offline", refreshOfflineBanner);
 
 // ── Service worker ──────────────────────────────────────────────────────────
+// The worker caches a new deploy correctly, but that only changes what the
+// NEXT page load gets. An app added to the home screen is resumed rather than
+// reloaded, so without the code below it can sit on a months-old shell
+// indefinitely — which is exactly what happened: three deploys shipped and the
+// phone still showed the version from before the first of them.
+
+let swUpdateHandled = false;
+
+// Whether a worker was already in charge when this page loaded. On a first
+// ever visit there isn't one, and the worker that installs then claims the
+// page — which fires controllerchange for a version that is already the one
+// running. Reloading on that would bounce every new user for nothing.
+const hadServiceWorker = "serviceWorker" in navigator && Boolean(navigator.serviceWorker.controller);
+
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch((error) => {
-      // Not fatal: without a worker the app simply needs a connection.
-      console.warn("Service worker registration failed:", error);
-    });
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then(watchForUpdates)
+      .catch((error) => {
+        // Not fatal: without a worker the app simply needs a connection.
+        console.warn("Service worker registration failed:", error);
+      });
+  });
+
+  // A new worker taking over means the cache now holds a newer build than the
+  // page currently running.
+  navigator.serviceWorker.addEventListener("controllerchange", onNewVersionReady);
+}
+
+function watchForUpdates(registration) {
+  // Resuming the app is the moment worth checking on: a home-screen app may go
+  // days between cold starts, and nothing else would ask. Throttled so
+  // flicking in and out doesn't hammer it.
+  let lastCheck = 0;
+  const check = () => {
+    if (document.hidden) return;
+    if (Date.now() - lastCheck < 60_000) return;
+    lastCheck = Date.now();
+    registration.update().catch(() => {});
+  };
+  document.addEventListener("visibilitychange", check);
+  window.addEventListener("focus", check);
+
+  // Already waiting when the page loaded — an update that arrived and had
+  // nowhere to announce itself.
+  if (registration.waiting && navigator.serviceWorker.controller) onNewVersionReady();
+}
+
+function onNewVersionReady() {
+  if (!hadServiceWorker || swUpdateHandled) return;
+  swUpdateHandled = true;
+
+  // Reloading under someone's fingers would throw away what they were typing,
+  // so anything in progress gets asked rather than interrupted.
+  const busy =
+    (typeof confirmSheet !== "undefined" && confirmSheet && !confirmSheet.hidden)
+    || (typeof textInput !== "undefined" && textInput && textInput.value.trim() !== "")
+    || document.activeElement?.tagName === "INPUT"
+    || document.activeElement?.tagName === "TEXTAREA";
+
+  if (!busy) {
+    window.location.reload();
+    return;
+  }
+
+  showToast("A new version is ready", {
+    actionLabel: "Reload",
+    onAction: () => window.location.reload(),
+    duration: 30_000,
   });
 }
 
