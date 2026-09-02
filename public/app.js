@@ -3638,7 +3638,10 @@ function navTo(target) {
   // Arriving at the tab always lands on today; the arrows are for stepping
   // back from there, not a place you get stuck after switching tabs.
   if (target === "today") {
-    if (previous !== "today") todayViewDate = null;
+    if (previous !== "today") {
+      todayViewDate = null;
+      ringIntroPending = true;
+    }
     loadToday();
   } else if (target === "week") loadWeek();
   else if (target === "food-library") loadFoodLibraryScreen();
@@ -6734,6 +6737,94 @@ const todayEntryCount = document.getElementById("today-entry-count");
 // ring is hidden until its tab is opened.
 const TODAY_RING_CIRCUMFERENCE = 2 * Math.PI * 52;
 
+// ── The ring's motion ───────────────────────────────────────────────────────
+// Arriving at the screen sweeps the ring round from empty while the figure
+// counts up from zero, the two locked together because one rAF loop drives
+// both. Updating in place — you just logged something and are watching — gets
+// a short tween from where it was instead: replaying the full sweep every
+// time food is saved would put a second and a half between the tap and the
+// number, several times a day.
+const RING_INTRO_MS = 1500;
+const RING_UPDATE_MS = 450;
+// The easing from the reference component, which is a slow-in/slow-out with a
+// long tail — it lands rather than stops.
+const RING_EASE = [0.43, 0.13, 0.23, 0.96];
+
+let ringIntroPending = true;
+let ringShownKcal = 0;
+let ringShownPct = 0;
+let ringAnimId = null;
+
+/** cubic-bezier(x1, y1, x2, y2) as CSS defines it, solved for y at time t. */
+function cubicBezier([x1, y1, x2, y2]) {
+  const curve = (a, b, t) => {
+    const u = 1 - t;
+    return 3 * u * u * t * a + 3 * u * t * t * b + t * t * t;
+  };
+  return (t) => {
+    if (t <= 0) return 0;
+    if (t >= 1) return 1;
+    // Newton-Raphson for the parameter that puts the curve at time t, then
+    // read its y. Eight passes is well past converged at this precision.
+    let guess = t;
+    for (let i = 0; i < 8; i += 1) {
+      const x = curve(x1, x2, guess) - t;
+      const u = 1 - guess;
+      const dx = 3 * u * u * x1 + 6 * u * guess * (x2 - x1) + 3 * guess * guess * (1 - x2);
+      if (Math.abs(dx) < 1e-6) break;
+      guess -= x / dx;
+    }
+    return curve(y1, y2, guess);
+  };
+}
+
+const easeRing = cubicBezier(RING_EASE);
+
+function paintRing(kcal, pct) {
+  todayKcalEl.textContent = Math.round(kcal).toLocaleString();
+  todayRingFill.style.strokeDashoffset = `${TODAY_RING_CIRCUMFERENCE * (1 - pct)}`;
+}
+
+function animateRing(toKcal, toPct) {
+  if (ringAnimId) cancelAnimationFrame(ringAnimId);
+
+  const intro = ringIntroPending;
+  ringIntroPending = false;
+
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduced) {
+    ringShownKcal = toKcal;
+    ringShownPct = toPct;
+    paintRing(toKcal, toPct);
+    return;
+  }
+
+  const fromKcal = intro ? 0 : ringShownKcal;
+  const fromPct = intro ? 0 : ringShownPct;
+  const duration = intro ? RING_INTRO_MS : RING_UPDATE_MS;
+
+  if (fromKcal === toKcal && fromPct === toPct) {
+    paintRing(toKcal, toPct);
+    return;
+  }
+
+  const started = performance.now();
+  const step = (now) => {
+    const t = Math.min(1, (now - started) / duration);
+    const e = easeRing(t);
+    paintRing(fromKcal + (toKcal - fromKcal) * e, fromPct + (toPct - fromPct) * e);
+    if (t < 1) {
+      ringAnimId = requestAnimationFrame(step);
+      return;
+    }
+    ringAnimId = null;
+    ringShownKcal = toKcal;
+    ringShownPct = toPct;
+  };
+  paintRing(fromKcal, fromPct);
+  ringAnimId = requestAnimationFrame(step);
+}
+
 async function loadToday() {
   try {
     const query = todayViewDate ? `?date=${encodeURIComponent(todayViewDate)}` : "";
@@ -6756,7 +6847,6 @@ function renderToday(data) {
   todayEntriesHeading.textContent = viewingToday ? "Logged today" : "Logged that day";
 
   const eaten = data.kcal.eaten ?? 0;
-  todayKcalEl.textContent = eaten.toLocaleString();
 
   // The ring fills against whatever today is being measured by — the target
   // if there is one, otherwise measured burn. With neither there's nothing
@@ -6765,8 +6855,8 @@ function renderToday(data) {
   const ringBasis = data.kcal.target ?? data.kcal.measuredBurn ?? data.kcal.reference ?? null;
   const pct = ringBasis ? Math.max(0, Math.min(1, eaten / ringBasis)) : 0;
   todayRingFill.style.strokeDasharray = `${TODAY_RING_CIRCUMFERENCE}`;
-  todayRingFill.style.strokeDashoffset = `${TODAY_RING_CIRCUMFERENCE * (1 - pct)}`;
   todayRingFill.classList.toggle("today-ring-fill--over", Boolean(ringBasis) && eaten > ringBasis);
+  animateRing(eaten, pct);
 
   if (data.kcal.target !== null) {
     const left = data.kcal.remaining ?? 0;
@@ -6849,6 +6939,7 @@ function renderDayNav(data) {
 function goToDay(key) {
   if (!key) return;
   todayViewDate = key;
+  ringIntroPending = true;
   haptic();
   loadToday();
 }
@@ -6857,6 +6948,7 @@ dayPrevBtn.addEventListener("click", () => goToDay(dayPrevBtn.dataset.date));
 dayNextBtn.addEventListener("click", () => goToDay(dayNextBtn.dataset.date));
 dayBackToTodayBtn.addEventListener("click", () => {
   todayViewDate = null;
+  ringIntroPending = true;
   haptic();
   loadToday();
 });

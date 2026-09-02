@@ -3553,7 +3553,11 @@ tr.has-tooltip:active {
   stroke: var(--pitch);
   stroke-width: 10;
   stroke-linecap: round;
-  transition: stroke-dashoffset 600ms var(--ease), stroke 200ms var(--ease);
+  /* The sweep is driven frame by frame in JS (see animateRing in app.js) so it
+     stays locked to the counting figure — a CSS transition here would chase
+     each frame's target and lag behind the number. Only the colour, which JS
+     doesn't touch, still transitions. */
+  transition: stroke 200ms var(--ease);
 }
 .today-ring-fill--over {
   stroke: var(--floodlight);
