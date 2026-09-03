@@ -43,15 +43,17 @@ export function normalizeLabel(label: string): string {
 foodsRouter.get("/", async (req, res) => {
   const q = typeof req.query.q === "string" ? req.query.q.trim().toLowerCase() : "";
 
-  const [entries, favorites, tags] = await Promise.all([
+  const [entries, favorites, tags, overrides] = await Promise.all([
     prisma.entry.findMany({
       where: { matchWeek: { userId: req.userId! } },
       orderBy: { timestamp: "desc" },
-      select: { label: true, kcal: true, timestamp: true },
+      select: { label: true, kcal: true, proteinG: true, carbsG: true, fatG: true, timestamp: true },
     }),
     prisma.foodFavorite.findMany({ where: { userId: req.userId! } }),
     prisma.foodTag.findMany({ where: { userId: req.userId! }, orderBy: { tag: "asc" } }),
+    prisma.foodOverride.findMany({ where: { userId: req.userId! } }),
   ]);
+  const overrideByKey = new Map(overrides.map((o) => [o.labelKey, o]));
 
   const favoriteKeys = new Set(favorites.map((f) => f.labelKey));
   const tagsByKey = new Map<string, string[]>();
@@ -66,7 +68,16 @@ foodsRouter.get("/", async (req, res) => {
   // slightly different capitalization over time doesn't matter.
   const byKey = new Map<
     string,
-    { labelKey: string; label: string; kcal: number | null; count: number; lastLoggedAt: Date }
+    {
+      labelKey: string;
+      label: string;
+      kcal: number | null;
+      proteinG: number | null;
+      carbsG: number | null;
+      fatG: number | null;
+      count: number;
+      lastLoggedAt: Date;
+    }
   >();
   for (const entry of entries) {
     const labelKey = normalizeLabel(entry.label);
@@ -79,17 +90,31 @@ foodsRouter.get("/", async (req, res) => {
         labelKey,
         label: entry.label.trim(),
         kcal: entry.kcal,
+        proteinG: entry.proteinG,
+        carbsG: entry.carbsG,
+        fatG: entry.fatG,
         count: 1,
         lastLoggedAt: entry.timestamp,
       });
     }
   }
 
-  let foods = Array.from(byKey.values()).map((f) => ({
-    ...f,
-    favorite: favoriteKeys.has(f.labelKey),
-    tags: tagsByKey.get(f.labelKey) ?? [],
-  }));
+  let foods = Array.from(byKey.values()).map((f) => {
+    // A correction wins over whatever the last entry happened to say — that
+    // is the entire point of making one.
+    const fix = overrideByKey.get(f.labelKey);
+    return {
+      ...f,
+      label: fix?.label ?? f.label,
+      kcal: fix ? fix.kcal : f.kcal,
+      proteinG: fix ? fix.proteinG : f.proteinG,
+      carbsG: fix ? fix.carbsG : f.carbsG,
+      fatG: fix ? fix.fatG : f.fatG,
+      edited: Boolean(fix),
+      favorite: favoriteKeys.has(f.labelKey),
+      tags: tagsByKey.get(f.labelKey) ?? [],
+    };
+  });
 
   if (q) {
     foods = foods.filter((f) => f.label.toLowerCase().includes(q) || f.tags.some((t) => t.toLowerCase().includes(q)));
@@ -173,11 +198,22 @@ foodsRouter.post("/log", async (req, res) => {
   }
   const { labelKey } = parsed.data;
 
-  const candidates = await prisma.entry.findMany({
-    where: { matchWeek: { userId: req.userId! } },
-    orderBy: { timestamp: "desc" },
-    select: { label: true, kcal: true, imageUrl: true, source: true },
-  });
+  const [candidates, override] = await Promise.all([
+    prisma.entry.findMany({
+      where: { matchWeek: { userId: req.userId! } },
+      orderBy: { timestamp: "desc" },
+      select: {
+        label: true,
+        kcal: true,
+        proteinG: true,
+        carbsG: true,
+        fatG: true,
+        imageUrl: true,
+        source: true,
+      },
+    }),
+    prisma.foodOverride.findUnique({ where: { userId_labelKey: { userId: req.userId!, labelKey } } }),
+  ]);
   const match = candidates.find((e) => normalizeLabel(e.label) === labelKey);
   if (!match) {
     res.status(404).json({ error: "Food not found" });
@@ -193,14 +229,73 @@ foodsRouter.post("/log", async (req, res) => {
     data: {
       timestamp: entryTimestamp,
       rawInput: null,
-      label: match.label,
-      kcal: match.kcal,
+      label: override?.label ?? match.label,
+      kcal: override ? override.kcal : match.kcal,
+      // These were being dropped: a one-tap re-log copied the calories but
+      // left the macros null, so every quick add quietly landed as an entry
+      // with no macro breakdown and the day's totals came up short.
+      proteinG: override ? override.proteinG : match.proteinG,
+      carbsG: override ? override.carbsG : match.carbsG,
+      fatG: override ? override.fatG : match.fatG,
       imageUrl: match.imageUrl,
       mealType,
-      source: match.source,
+      // Figures the user typed themselves are no longer an estimate.
+      source: override ? "manual" : match.source,
       matchWeekId: matchWeek.id,
     },
   });
 
   res.status(201).json(entry);
+});
+
+const editSchema = z.object({
+  labelKey: z.string().min(1),
+  label: z.string().trim().min(1).max(200),
+  kcal: z.number().int().min(0).max(20000).nullable(),
+  proteinG: z.number().min(0).max(1000).nullable().optional(),
+  carbsG: z.number().min(0).max(1000).nullable().optional(),
+  fatG: z.number().min(0).max(1000).nullable().optional(),
+});
+
+/**
+ * Corrects a food's name and figures for every future one-tap log of it.
+ *
+ * Past entries are left exactly as they were. Someone fixing a bad estimate
+ * wants the next Greggs sausage roll to be right, not last Tuesday's diary
+ * rewritten under them — and the week totals they have already looked at
+ * should not move because of an edit made today.
+ */
+foodsRouter.put("/edit", async (req, res) => {
+  const parsed = editSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const { labelKey, label, kcal, proteinG, carbsG, fatG } = parsed.data;
+  const data = {
+    label,
+    kcal,
+    proteinG: proteinG ?? null,
+    carbsG: carbsG ?? null,
+    fatG: fatG ?? null,
+  };
+
+  const override = await prisma.foodOverride.upsert({
+    where: { userId_labelKey: { userId: req.userId!, labelKey } },
+    update: data,
+    create: { userId: req.userId!, labelKey, ...data },
+  });
+
+  res.json(override);
+});
+
+/** Drops a correction, so the food goes back to whatever was last logged. */
+foodsRouter.post("/edit/reset", async (req, res) => {
+  const labelKey = typeof req.body?.labelKey === "string" ? req.body.labelKey : "";
+  if (!labelKey) {
+    res.status(400).json({ error: "labelKey is required" });
+    return;
+  }
+  await prisma.foodOverride.deleteMany({ where: { userId: req.userId!, labelKey } });
+  res.json({ ok: true });
 });

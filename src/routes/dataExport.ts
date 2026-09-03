@@ -40,6 +40,7 @@ async function collectExport(userId: number) {
     exercises,
     weighIns,
     favorites,
+    overrides,
     tags,
     savedMeals,
     cycles,
@@ -55,6 +56,7 @@ async function collectExport(userId: number) {
     prisma.exercise.findMany({ where: { matchWeek: { userId } }, orderBy: { timestamp: "asc" } }),
     prisma.weighIn.findMany({ where: { userId }, orderBy: { date: "asc" } }),
     prisma.foodFavorite.findMany({ where: { userId } }),
+    prisma.foodOverride.findMany({ where: { userId } }),
     prisma.foodTag.findMany({ where: { userId } }),
     prisma.savedMeal.findMany({ where: { userId }, include: { items: true }, orderBy: { name: "asc" } }),
     prisma.whoopCycle.findMany({ where: { userId }, orderBy: { start: "asc" } }),
@@ -124,6 +126,16 @@ async function collectExport(userId: number) {
     dayNotes: dayNotes.map((n) => ({ date: n.date, note: n.note })),
     waterLogs: waterLogs.map((w) => ({ date: w.date, ml: w.ml })),
     foodFavorites: favorites.map((f) => f.labelKey),
+    // Corrections are the user's own work, so an export that left them out
+    // would not actually be all their data.
+    foodOverrides: overrides.map((o) => ({
+      labelKey: o.labelKey,
+      label: o.label,
+      kcal: o.kcal,
+      proteinG: o.proteinG,
+      carbsG: o.carbsG,
+      fatG: o.fatG,
+    })),
     foodTags: tags.map((t) => ({ labelKey: t.labelKey, tag: t.tag })),
     savedMeals: savedMeals.map((m) => ({
       name: m.name,
@@ -248,6 +260,18 @@ const importSchema = z.object({
   dayNotes: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), note: z.string() })).optional(),
   waterLogs: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), ml: z.number().int() })).optional(),
   foodFavorites: z.array(z.string()).optional(),
+  foodOverrides: z
+    .array(
+      z.object({
+        labelKey: z.string().min(1),
+        label: z.string().min(1),
+        kcal: z.number().int().nullable().optional(),
+        proteinG: z.number().nullable().optional(),
+        carbsG: z.number().nullable().optional(),
+        fatG: z.number().nullable().optional(),
+      }),
+    )
+    .optional(),
   foodTags: z.array(z.object({ labelKey: z.string(), tag: z.string() })).optional(),
   savedMeals: z
     .array(
@@ -369,6 +393,21 @@ dataRouter.post("/import", async (req, res) => {
       create: { userId, labelKey: key },
     });
     counts.favorites += 1;
+  }
+
+  for (const fix of data.foodOverrides ?? []) {
+    const fields = {
+      label: fix.label,
+      kcal: fix.kcal ?? null,
+      proteinG: fix.proteinG ?? null,
+      carbsG: fix.carbsG ?? null,
+      fatG: fix.fatG ?? null,
+    };
+    await prisma.foodOverride.upsert({
+      where: { userId_labelKey: { userId, labelKey: fix.labelKey } },
+      update: fields,
+      create: { userId, labelKey: fix.labelKey, ...fields },
+    });
   }
 
   for (const t of data.foodTags ?? []) {

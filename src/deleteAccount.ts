@@ -37,6 +37,7 @@ export async function deleteAccount(userId: number): Promise<void> {
     prisma.dayNote.deleteMany({ where: { userId } }),
     prisma.waterLog.deleteMany({ where: { userId } }),
     prisma.foodFavorite.deleteMany({ where: { userId } }),
+    prisma.foodOverride.deleteMany({ where: { userId } }),
     prisma.foodTag.deleteMany({ where: { userId } }),
     prisma.pushSubscription.deleteMany({ where: { userId } }),
     prisma.passwordResetToken.deleteMany({ where: { userId } }),
