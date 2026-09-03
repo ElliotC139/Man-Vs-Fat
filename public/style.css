@@ -110,12 +110,16 @@ h2,
   stroke-linejoin: round;
 }
 
-html,
-body {
-  /* Defensive guard against any single element pushing past viewport width
-     on a small screen — nothing in this layout should need to scroll
-     sideways. */
-  overflow-x: hidden;
+html {
+  /* Guard against any single element pushing past viewport width on a small
+     screen — nothing in this layout should need to scroll sideways.
+     `clip`, not `hidden`, and not on <body>: a non-visible overflow on the
+     root makes iOS Safari treat it as a scroll container, which stops
+     position:fixed pinning to the viewport — the bottom tab bar drifts with
+     the page instead of staying put. `clip` does the same job without
+     creating that scroll container. Desktop browsers never showed it, which
+     is why it survived this long. */
+  overflow-x: clip;
   max-width: 100%;
 }
 
@@ -748,6 +752,7 @@ h2 {
 
 .auth-screen:not([hidden]) {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2297,6 +2302,7 @@ tr.has-tooltip:active {
 /* ── First-run wizard ── */
 .onboarding-screen:not([hidden]) {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3946,3 +3952,91 @@ body.sheet-open { overflow: hidden; }
   margin: 0;
   font-size: 0.9rem;
 }
+
+/* ── Weigh-in and measurement forms ──────────────────────────────────────── */
+/* The Save button sat flush against the fields above it, and the primary
+   button's green glow spilled up over the date input — which reads as the
+   boxes overlapping. The date and number inputs also came out 2px different
+   in height, because a date input carries its own picker chrome, so the two
+   never lined up. */
+#weighin-form .settings-row,
+#measurement-form .settings-row {
+  margin-bottom: 14px;
+}
+#weighin-form input,
+#measurement-form input {
+  min-height: 44px;
+  margin-bottom: 0;
+}
+
+/* ── Editing a food ──────────────────────────────────────────────────────── */
+.food-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+/* The shared button rule would make this full width, 48px tall and green. */
+.food-edit-btn {
+  width: auto;
+  min-height: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--card);
+  background-image: none;
+  box-shadow: none;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.food-edit-btn:hover { color: var(--pitch-dark); border-color: var(--pitch); }
+.food-edited {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--pill-active-bg);
+  color: var(--pill-active-ink);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.food-editor {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 14px;
+}
+.food-editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.food-editor-field--wide { grid-column: 1 / -1; }
+.food-editor-field input {
+  margin-bottom: 0;
+  min-height: 42px;
+  font-variant-numeric: tabular-nums;
+}
+.food-editor-note,
+.food-editor .error {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.78rem;
+}
+.food-editor-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.food-editor-actions button { width: auto; flex: 1 1 auto; }

@@ -375,20 +375,27 @@ function renderFormGuide(days, whoopDailyBurn) {
     let detail = `${day.label}: nothing logged`;
 
     const measuredBurn = !burn?.future && burn?.kcalWeighted != null ? burn.kcalWeighted : null;
-    // Today is still in progress, so judging it would call a result at
-    // half-time.
-    const burnForDay = measuredBurn ?? (day.isToday ? null : reference?.kcal ?? null);
+    const burnForDay = measuredBurn ?? reference?.kcal ?? null;
 
     if (burnForDay != null && day.kcal > 0) {
       const net = day.kcal - burnForDay;
-      state = net <= 0 ? "under" : "over";
-      if (net <= 0) under += 1;
-      else over += 1;
+      // Today counts the moment it goes over, but never counts as under until
+      // the day is done. Going over is settled — you cannot un-eat it — while
+      // being under at four in the afternoon is just the day not being
+      // finished, and banking it as a win would call the result at half-time.
+      const settled = !day.isToday || net > 0;
+      state = !settled ? "logged" : net <= 0 ? "under" : "over";
+      if (settled) {
+        if (net <= 0) under += 1;
+        else over += 1;
+      }
       const word = net <= 0 ? "under" : "over";
       // Says what the verdict was measured against, because "300 over" means
       // something different against a measured burn and against a target.
       const source = measuredBurn != null ? "" : reference?.kind === "target" ? " (vs target)" : " (est.)";
-      detail = `${day.label}: ${Math.abs(Math.round(net)).toLocaleString()} kcal ${word}${source}`;
+      detail = settled
+        ? `${day.label}: ${Math.abs(Math.round(net)).toLocaleString()} kcal ${word}${source}`
+        : `${day.label}: ${day.kcal.toLocaleString()} kcal so far, ${Math.abs(Math.round(net)).toLocaleString()} to spare${source}`;
     } else if (day.kcal > 0) {
       state = "logged";
       detail = `${day.label}: ${day.kcal.toLocaleString()} kcal logged${day.isToday ? ", still going" : ""}`;
@@ -2301,14 +2308,167 @@ function renderFoodRow(food) {
 
   info.append(labelEl, metaEl, tagsEl);
 
+  // Says the figures were corrected by hand rather than estimated, which is
+  // the difference between a number to trust and one to check.
+  if (food.edited) {
+    const badge = document.createElement("span");
+    badge.className = "food-edited";
+    badge.textContent = "edited";
+    badge.title = "You corrected this food's figures";
+    metaEl.after(badge);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "food-actions";
+
+  const editBtn = document.createElement("button");
+  editBtn.type = "button";
+  editBtn.className = "food-edit-btn";
+  editBtn.textContent = "Edit";
+  editBtn.setAttribute("aria-label", `Edit ${food.label}`);
+  editBtn.addEventListener("click", () => openFoodEditor(row, food));
+
   const logBtn = document.createElement("button");
   logBtn.type = "button";
   logBtn.className = "food-log-btn";
   logBtn.textContent = "+Today";
   logBtn.addEventListener("click", () => logFood(food, logBtn));
 
-  row.append(starBtn, info, logBtn);
+  actions.append(editBtn, logBtn);
+  row.append(starBtn, info, actions);
   return row;
+}
+
+/**
+ * Corrects a food's name and figures in place, under the row it belongs to.
+ *
+ * What gets saved applies to every future one-tap log of this food, not to
+ * entries already in the diary — a bad estimate you are fixing today should
+ * not quietly move last week's totals.
+ */
+function openFoodEditor(row, food) {
+  const existing = row.parentElement?.querySelector(".food-editor");
+  if (existing) existing.remove();
+  if (existing && existing.dataset.key === food.labelKey) return;
+
+  const editor = document.createElement("form");
+  editor.className = "food-editor card";
+  editor.dataset.key = food.labelKey;
+
+  const field = (labelText, value, opts = {}) => {
+    const wrap = document.createElement("label");
+    wrap.className = opts.wide ? "food-editor-field food-editor-field--wide" : "food-editor-field";
+    const caption = document.createElement("span");
+    caption.textContent = labelText;
+    const input = document.createElement("input");
+    input.type = opts.type ?? "number";
+    if (input.type === "number") {
+      input.min = "0";
+      input.step = opts.step ?? "1";
+      input.inputMode = "decimal";
+    }
+    input.value = value ?? "";
+    if (opts.maxLength) input.maxLength = opts.maxLength;
+    wrap.append(caption, input);
+    editor.appendChild(wrap);
+    return input;
+  };
+
+  const nameInput = field("Name", food.label, { type: "text", wide: true, maxLength: 200 });
+  const kcalInput = field("kcal", food.kcal);
+  const proteinInput = field("Protein (g)", food.proteinG, { step: "0.1" });
+  const carbsInput = field("Carbs (g)", food.carbsG, { step: "0.1" });
+  const fatInput = field("Fat (g)", food.fatG, { step: "0.1" });
+
+  const note = document.createElement("p");
+  note.className = "muted food-editor-note";
+  note.textContent = "Applies from now on. Entries already in your diary stay as they are.";
+  editor.appendChild(note);
+
+  const errorEl = document.createElement("p");
+  errorEl.className = "error";
+  errorEl.hidden = true;
+  editor.appendChild(errorEl);
+
+  const actions = document.createElement("div");
+  actions.className = "food-editor-actions";
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "submit";
+  saveBtn.textContent = "Save";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "ghost-sm";
+  cancelBtn.textContent = "Cancel";
+  actions.append(saveBtn, cancelBtn);
+  // Only offered once there is something to undo.
+  if (food.edited) {
+    const resetBtn = document.createElement("button");
+    resetBtn.type = "button";
+    resetBtn.className = "ghost-sm";
+    resetBtn.textContent = "Reset";
+    resetBtn.title = "Go back to whatever was last logged";
+    resetBtn.addEventListener("click", async () => {
+      resetBtn.disabled = true;
+      const ok = await foodLibraryRequest("/api/foods/edit/reset", { labelKey: food.labelKey });
+      if (ok) {
+        showToast(`${food.label} reset`);
+        await loadFoods(foodSearchInput.value);
+        loadQuickAdd();
+      } else {
+        resetBtn.disabled = false;
+      }
+    });
+    actions.appendChild(resetBtn);
+  }
+  editor.appendChild(actions);
+
+  const number = (input) => (input.value.trim() === "" ? null : Number(input.value));
+
+  editor.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    errorEl.hidden = true;
+    const label = nameInput.value.trim();
+    if (!label) {
+      errorEl.textContent = "Give it a name.";
+      errorEl.hidden = false;
+      return;
+    }
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Saving…";
+    try {
+      const res = await fetch("/api/foods/edit", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          labelKey: food.labelKey,
+          label,
+          kcal: number(kcalInput) === null ? null : Math.round(number(kcalInput)),
+          proteinG: number(proteinInput),
+          carbsG: number(carbsInput),
+          fatG: number(fatInput),
+        }),
+      });
+      if (!res.ok) throw new Error();
+      haptic();
+      flashSaved(saveBtn);
+      showToast(`${label} updated`);
+      await loadFoods(foodSearchInput.value);
+      // The quick-add strip shows the same foods, so it would otherwise keep
+      // offering the old name until something else rebuilt it.
+      loadQuickAdd();
+    } catch {
+      errorEl.textContent = "Couldn't save that — please try again.";
+      errorEl.hidden = false;
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Save";
+    }
+  });
+
+  cancelBtn.addEventListener("click", () => editor.remove());
+
+  row.after(editor);
+  nameInput.focus();
+  nameInput.select();
 }
 
 async function foodLibraryRequest(url, body) {

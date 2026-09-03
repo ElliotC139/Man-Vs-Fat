@@ -11,26 +11,26 @@ datasource db {
 // (weekday + time) so e.g. one user's week can run Mon 17:00 -> Mon 17:00
 // while another's runs Wed 09:00 -> Wed 09:00.
 model User {
-  id               Int              @id @default(autoincrement())
-  username         String           @unique
+  id                 Int                  @id @default(autoincrement())
+  username           String               @unique
   // Null for accounts created via "Sign in with Google" that never set a password.
-  passwordHash     String?
+  passwordHash       String?
   // Set once an account is created or signed into via Google.
-  googleId         String?          @unique
-  email            String?          @unique
+  googleId           String?              @unique
+  email              String?              @unique
   // 0 = Monday .. 6 = Sunday, matching WEEKDAYS_MON_FIRST in matchWeek.ts.
-  weekStartWeekday Int              @default(0)
-  weekStartHour    Int              @default(17)
-  weekStartMinute  Int              @default(0)
+  weekStartWeekday   Int                  @default(0)
+  weekStartHour      Int                  @default(17)
+  weekStartMinute    Int                  @default(0)
   // Body stats and goal for calorie budget calculation.
-  weightKg         Float?
-  heightCm         Float?
-  ageYears         Int?
-  activityLevel    String?
-  weeklyGoalKg     Float?
+  weightKg           Float?
+  heightCm           Float?
+  ageYears           Int?
+  activityLevel      String?
+  weeklyGoalKg       Float?
   // Target weight. weeklyGoalKg is the desired *rate*; this is the
   // destination, which is what makes a projected arrival date possible.
-  goalWeightKg     Float?
+  goalWeightKg       Float?
   // A kcal figure the user has chosen to aim at. Deliberately separate from
   // the derived budget: the app can work one out from body stats or WHOOP,
   // but "what am I aiming at today" should be a number the user owns and can
@@ -74,40 +74,41 @@ model User {
   // Every session token issued before this instant is rejected (see
   // src/auth.ts). Setting it to now is what "sign out everywhere" does —
   // it revokes stateless tokens without needing a session table.
-  sessionsValidFrom DateTime?
+  sessionsValidFrom  DateTime?
   // Local hour (0-23) to send the "you haven't logged today" nudge, or null
   // for no reminder at all. Off by default: an app that starts nagging
   // without being asked gets its notifications turned off for good.
-  reminderHour     Int?
-  createdAt        DateTime         @default(now())
-  matchWeeks       MatchWeek[]
-  whoopConnection  WhoopConnection?
-  whoopCycles      WhoopCycle[]
-  whoopSleeps      WhoopSleep[]
-  whoopRecoveries  WhoopRecovery[]
-  foodFavorites    FoodFavorite[]
-  foodTags         FoodTag[]
-  weighIns         WeighIn[]
-  savedMeals       SavedMeal[]
-  pushSubscriptions PushSubscription[]
-  passwordResets   PasswordResetToken[]
-  measurements     Measurement[]
-  progressPhotos   ProgressPhoto[]
-  dayNotes         DayNote[]
-  waterLogs        WaterLog[]
+  reminderHour       Int?
+  createdAt          DateTime             @default(now())
+  matchWeeks         MatchWeek[]
+  whoopConnection    WhoopConnection?
+  whoopCycles        WhoopCycle[]
+  whoopSleeps        WhoopSleep[]
+  whoopRecoveries    WhoopRecovery[]
+  foodFavorites      FoodFavorite[]
+  foodOverrides      FoodOverride[]
+  foodTags           FoodTag[]
+  weighIns           WeighIn[]
+  savedMeals         SavedMeal[]
+  pushSubscriptions  PushSubscription[]
+  passwordResets     PasswordResetToken[]
+  measurements       Measurement[]
+  progressPhotos     ProgressPhoto[]
+  dayNotes           DayNote[]
+  waterLogs          WaterLog[]
 }
 
 // A single-use token for resetting a forgotten password. Only the hash is
 // stored, so a leaked database still doesn't hand anyone a working reset
 // link — the same reason passwordHash exists rather than the password.
 model PasswordResetToken {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   userId    Int
-  user      User     @relation(fields: [userId], references: [id])
-  tokenHash String   @unique
+  user      User      @relation(fields: [userId], references: [id])
+  tokenHash String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([userId])
 }
@@ -204,6 +205,27 @@ model FoodFavorite {
   user      User     @relation(fields: [userId], references: [id])
   labelKey  String
   createdAt DateTime @default(now())
+
+  @@unique([userId, labelKey])
+}
+
+// Corrected figures for a food, keyed the same way as FoodFavorite above.
+// A "food" is not a row anywhere — it is every Entry sharing a normalized
+// label, so there is nothing to edit directly. This holds what the food
+// *should* be, and both the library and one-tap logging read through it.
+// Past entries are deliberately left alone: correcting what gets logged from
+// here on is the ask; silently rewriting last month's diary is not.
+model FoodOverride {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  labelKey  String
+  label     String
+  kcal      Int?
+  proteinG  Float?
+  carbsG    Float?
+  fatG      Float?
+  updatedAt DateTime @updatedAt
 
   @@unique([userId, labelKey])
 }
