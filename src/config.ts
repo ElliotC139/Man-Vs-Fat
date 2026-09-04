@@ -31,6 +31,14 @@ const envSchema = z.object({
   // The From: address for those emails. Must be on a domain verified with
   // Resend, or delivery is rejected.
   MAIL_FROM: z.string().default("Food Diary <onboarding@resend.dev>"),
+  // Optional Nutritionix credentials. These are what put restaurant and pub
+  // menus into food search — Open Food Facts is packaged groceries only, so
+  // without a key nothing off a menu is findable. See src/foodSearchProviders.ts.
+  NUTRITIONIX_APP_ID: z.string().optional(),
+  NUTRITIONIX_APP_KEY: z.string().optional(),
+  // Optional USDA FoodData Central key, which adds plain ingredients — the
+  // chicken breasts and jacket potatoes that never had a packet.
+  USDA_API_KEY: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

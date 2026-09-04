@@ -69,6 +69,8 @@ See `.env.example` for the full list with comments. The essentials:
 | `GOOGLE_SIGNIN_CLIENT_ID` | Optional, separate from the Drive client above. Enables the "Sign in with Google" button. Leave unset to keep username/password as the only sign-in method. |
 | `RESEND_API_KEY` / `MAIL_FROM` | Optional. Enables "Forgotten your password?" to email a one-hour reset link. Unset, the app says so plainly and falls back to signing in with a linked Google account. |
 | `ERROR_WEBHOOK_URL` | Optional Slack-style incoming webhook. Every recorded server error is POSTed as `{"text": "..."}`. Errors are stored and shown in Settings → Diagnostics either way. |
+| `NUTRITIONIX_APP_ID` / `NUTRITIONIX_APP_KEY` | Optional. Adds restaurant and pub menus to food search, plus everyday foods that never came in a packet. Unset, search still covers the user's own diary and Open Food Facts — it just can't find anything off a menu. |
+| `USDA_API_KEY` | Optional. Adds plain ingredients (FoodData Central), already stated per 100g. Unset, search has packets but no raw chicken breast. |
 
 ## Google Drive one-time setup
 

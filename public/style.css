@@ -2061,6 +2061,10 @@ tr.has-tooltip:active {
 }
 .food-search-result {
   width: 100%;
+  /* Badge on the left, name and figures stacked beside it. */
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   text-align: left;
   background: var(--bg);
   background-image: none;
@@ -2081,6 +2085,7 @@ tr.has-tooltip:active {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  flex: 1;
 }
 .food-search-result-name {
   font-size: 0.9rem;
@@ -4230,4 +4235,71 @@ body.sheet-open { overflow: hidden; }
   padding: 0 16px;
   font-size: 0.9rem;
   box-shadow: none;
+}
+
+/* ── Food search ── */
+/* Filter chips above the results. Each one narrows to a kind of answer, and
+   the ones whose source this deployment can't reach stay hidden rather than
+   offering a filter that could only ever come back empty. */
+.food-search-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 4px;
+}
+/* Undoing the global button rule again: these are chips, not slabs. */
+.food-filter {
+  width: auto;
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  box-shadow: none;
+}
+.food-filter--on {
+  background: var(--pitch);
+  color: #fff;
+}
+/* Says at a glance which of the four kinds of answer a row is: something they
+   have eaten before, a menu item, a packet, or a plain ingredient. */
+.food-badge {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 2px 7px;
+  /* One width for all four, so the names line up down the list instead of
+     stepping in and out with the length of the label. */
+  min-width: 72px;
+  text-align: center;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.food-badge--yours {
+  background: var(--pitch);
+  color: #fff;
+}
+.food-badge--menu {
+  background: var(--amber);
+  color: #fff;
+}
+.food-badge--packet {
+  background: rgba(31, 157, 82, 0.12);
+  color: var(--pitch-deep);
+}
+.food-badge--generic {
+  background: rgba(15, 20, 23, 0.08);
+  color: var(--muted);
+}
+.food-search-estimate {
+  margin-top: 10px;
+  width: 100%;
+  justify-content: center;
 }
