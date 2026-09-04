@@ -336,6 +336,7 @@
           <p id="pending-note" class="error" hidden></p>
           <div class="summary-actions">
             <button type="button" id="open-review-btn" class="ghost-sm">Weekly review</button>
+            <button type="button" id="share-week-btn" class="ghost-sm">Share week</button>
             <a id="export-pdf" class="button-link" href="/api/match-weeks/current/report.pdf">Export PDF</a>
           </div>
         </section>
@@ -1443,6 +1444,25 @@
       </button>
       <img id="photo-modal-img" alt="" />
       <p id="photo-modal-caption" class="photo-modal-caption"></p>
+    </div>
+
+    <div id="share-modal" class="share-modal" hidden>
+      <div class="share-panel">
+        <div class="share-panel-head">
+          <span>Share your week</span>
+          <button type="button" id="share-close-btn" class="share-close-btn" aria-label="Close">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="share-preview">
+          <canvas id="share-canvas" width="1080" height="1350"></canvas>
+        </div>
+        <p id="share-status" class="muted share-status" hidden></p>
+        <div class="share-actions">
+          <button type="button" id="share-send-btn">Share</button>
+          <button type="button" id="share-save-btn" class="ghost-sm">Save image</button>
+        </div>
+      </div>
     </div>
 
     <div id="scan-modal" class="scan-modal" hidden>

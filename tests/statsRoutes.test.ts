@@ -69,6 +69,7 @@ vi.mock("../src/db", () => {
       findMany: vi.fn(async ({ where }: any) => {
         let items = state.entries.filter((e) => e.userId === where.matchWeek.userId);
         if (where.timestamp?.gte) items = items.filter((e) => e.timestamp.getTime() >= where.timestamp.gte.getTime());
+        if (where.timestamp?.lt) items = items.filter((e) => e.timestamp.getTime() < where.timestamp.lt.getTime());
         if (where.kcal?.not === null) items = items.filter((e) => e.kcal !== null);
         return items;
       }),
@@ -76,7 +77,9 @@ vi.mock("../src/db", () => {
     weighIn: {
       findMany: vi.fn(async ({ where }: any) =>
         state.weighIns
-          .filter((w) => w.userId === where.userId && (!where.date?.gte || w.date >= where.date.gte))
+          .filter((w) => w.userId === where.userId
+            && (!where.date?.gte || w.date >= where.date.gte)
+            && (!where.date?.lte || w.date <= where.date.lte))
           .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)),
       ),
     },
@@ -661,5 +664,100 @@ describe("GET /api/stats/deficit-streak", () => {
     const body = await fetchStreak(cookie);
     expect(body.judgedDays).toBe(0);
     expect(body.current).toBe(0);
+  });
+});
+
+describe("GET /api/stats/share-card", () => {
+  interface ShareCard {
+    label: string;
+    kcalTotal: number;
+    avgKcal: number;
+    daysLogged: number;
+    daysSoFar: number;
+    netKcal: number | null;
+    weightChangeKg: number | null;
+    weighInCount: number;
+    exerciseKcal: number;
+  }
+
+  async function fetchCard(cookie: string): Promise<ShareCard> {
+    const res = await fetch(`${baseUrl}/api/stats/share-card`, { headers: { Cookie: cookie } });
+    return (await res.json()) as ShareCard;
+  }
+
+  it("rejects an unauthenticated request", async () => {
+    expect((await fetch(`${baseUrl}/api/stats/share-card`)).status).toBe(401);
+  });
+
+  it("answers for a week with nothing on it", async () => {
+    const { cookie } = await signUp("alice");
+    const card = await fetchCard(cookie);
+    expect(card).toMatchObject({ kcalTotal: 0, daysLogged: 0, netKcal: null, weightChangeKg: null });
+  });
+
+  it("totals the week and averages over the days that have happened", async () => {
+    const { cookie, userId } = await signUp("alice");
+    const day1 = await middayInCurrentWeek(cookie, 1);
+    const day2 = await middayInCurrentWeek(cookie, 2);
+    state.entries.push(
+      { userId, timestamp: day1, kcal: 2000 },
+      { userId, timestamp: day2, kcal: 1600 },
+    );
+
+    const card = await fetchCard(cookie);
+    expect(card.kcalTotal).toBe(3600);
+    expect(card.daysLogged).toBe(2);
+    // Averaged over the days so far, not a flat seven — a card made on
+    // Wednesday shouldn't be dragged down by four days that haven't arrived.
+    expect(card.avgKcal).toBe(Math.round(3600 / card.daysSoFar));
+  });
+
+  it("calls two weigh-ins a change and one of them nothing", async () => {
+    const { cookie, userId } = await signUp("alice");
+    const start = await middayInCurrentWeek(cookie, 1);
+    state.weighIns.push({ userId, date: localDayKey(start, TIMEZONE), weightKg: 90.4 });
+
+    expect((await fetchCard(cookie)).weightChangeKg).toBeNull();
+
+    const later = await middayInCurrentWeek(cookie, 3);
+    state.weighIns.push({ userId, date: localDayKey(later, TIMEZONE), weightKg: 89.2 });
+    const card = await fetchCard(cookie);
+    expect(card.weightChangeKg).toBe(-1.2);
+    expect(card.weighInCount).toBe(2);
+  });
+
+  it("has no net figure without a measured burn behind it", async () => {
+    const { cookie, userId } = await signUp("alice");
+    state.entries.push({ userId, timestamp: await middayInCurrentWeek(cookie, 1), kcal: 2000 });
+    expect((await fetchCard(cookie)).netKcal).toBeNull();
+  });
+
+  it("counts a day's net only once that day has finished", async () => {
+    const { cookie, userId } = await signUp("alice");
+    const day = await middayInCurrentWeek(cookie, 1);
+    state.entries.push({ userId, timestamp: day, kcal: 2000 });
+    // A cycle covering the whole of that local day.
+    const dayStart = new Date(`${localDayKey(day, TIMEZONE)}T00:00:00Z`);
+    state.whoopCycles.push({
+      userId,
+      scoreState: "SCORED",
+      start: dayStart,
+      end: new Date(dayStart.getTime() + 23 * 3_600_000),
+      kcalBurned: 2600,
+    });
+
+    const card = await fetchCard(cookie);
+    // Only counted if that day is neither today nor still running.
+    if (localDayKey(day, TIMEZONE) === localDayKey(new Date(), TIMEZONE)) {
+      expect(card.netKcal).toBeNull();
+    } else {
+      expect(card.netKcal).toBe(-600);
+    }
+  });
+
+  it("says which week it is", async () => {
+    const { cookie } = await signUp("alice");
+    const card = await fetchCard(cookie);
+    expect(card.label).toMatch(/ – /);
   });
 });
