@@ -286,11 +286,14 @@ export async function fetchRecentSleep(accessToken: string, since: Date): Promis
 }
 
 export interface WhoopRecoveryRecord {
-  // Recovery is 1:1 with a cycle, and carries no start/end of its own — the
-  // calendar date it applies to is derived from the matching WhoopCycle's
-  // start at sync time (see syncUserRecovery).
+  // Recovery is 1:1 with a cycle and carries no start/end of its own. The
+  // calendar date it applies to comes from the matching WhoopCycle's start
+  // where that has been synced, and from createdAt below where it hasn't —
+  // see syncUserRecovery.
   whoopCycleId: bigint;
   whoopUserId: bigint;
+  /** When WHOOP created the record, which is when the cycle it scores began. */
+  createdAt: Date | null;
   scoreState: string;
   recoveryScore: number | null;
   restingHeartRate: number | null;
@@ -300,6 +303,7 @@ export interface WhoopRecoveryRecord {
 interface RawRecoveryRecord {
   cycle_id: number | string;
   user_id: number | string;
+  created_at?: string;
   score_state?: string;
   score?: {
     recovery_score?: number;
@@ -332,6 +336,10 @@ export async function fetchRecentRecovery(accessToken: string, since: Date): Pro
         records.push({
           whoopCycleId: BigInt(r.cycle_id),
           whoopUserId: BigInt(r.user_id),
+          // WHOOP creates a recovery when the cycle it scores begins, so this
+          // lands on the right calendar day even before the cycle itself has
+          // been synced — see syncUserRecovery, which used to drop those.
+          createdAt: typeof r.created_at === "string" ? new Date(r.created_at) : null,
           scoreState,
           recoveryScore:
             scoreState === "SCORED" && typeof r.score?.recovery_score === "number"

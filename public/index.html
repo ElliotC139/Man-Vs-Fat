@@ -167,7 +167,7 @@
 
         <section id="today-body-card" class="card" data-module="today:body" data-module-name="Recovery and sleep" hidden>
           <div class="section-header"><h2>Body</h2></div>
-          <div class="balance-grid">
+          <div class="balance-grid" id="today-body-grid">
             <div class="balance-cell" id="today-recovery-cell" hidden>
               <span id="today-recovery" class="balance-number">—</span>
               <span class="balance-caption">recovery</span>
@@ -970,11 +970,22 @@
             </button>
             <div class="settings-section-body" hidden>
             <p class="muted">
-              Scanning holds the camera open for a couple of minutes so a run of scans only
-              asks once. If your phone asks again every time you open the app, that's the
-              browser, not this app — on iPhone, open Settings → Apps → Safari → Camera (and
-              Microphone) and set them to Allow. Adding this to your home screen also helps:
-              an installed app keeps its permissions between launches.
+              The camera is only ever used for scanning a barcode, and only while the scanner
+              is open. This app tells your browser that nothing else loaded inside it — no
+              script, no embedded page — may reach the camera at all.
+            </p>
+            <p class="muted">
+              <strong>To allow it for this site alone</strong>, rather than for every site you
+              visit: on iPhone, open this page in Safari, tap <strong>aA</strong> in the address
+              bar, choose <strong>Website Settings</strong>, and set Camera to Allow. That
+              grant applies to this address and nothing else. On Android Chrome it's the
+              padlock in the address bar → Permissions → Camera.
+            </p>
+            <p class="muted">
+              Better still, add this to your home screen: an installed app keeps its own
+              permissions between launches, so it asks once rather than every session. A run
+              of scans only asks once either way — the camera is held open for a couple of
+              minutes between them.
             </p>
           </div>
           </section>

@@ -1779,9 +1779,12 @@ tr.has-tooltip:active {
     align-items: start;
   }
   #settings-card > .muted,
+  #settings-card > .settings-group,
   #settings-card > #settings-save,
   #settings-card > #settings-error,
-  #settings-card > #logout-btn {
+  #settings-card > #logout-btn,
+  #settings-card > .settings-section--danger,
+  #settings-card > .settings-legal {
     grid-column: 1 / -1;
   }
 
@@ -3541,25 +3544,34 @@ tr.has-tooltip:active {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
 }
+/* Caption left, figure hard right, filling the width beside the ring.
+   Stacked value-over-caption left the right-hand third of the card empty and
+   the three numbers ragged; as rows they line up in a column you can read
+   down, and the space is used. row-reverse rather than reordering the markup,
+   so the figure is still announced before its caption. */
 .today-stat {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  flex-direction: row-reverse;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
 }
 .today-stat-value {
   font-family: var(--font-heading);
-  font-size: 1.35rem;
+  font-size: 1.5rem;
   font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
 }
 .today-stat-value--under { color: var(--pitch-dark); }
 .today-stat-value--over { color: var(--amber); }
 .today-stat-caption {
-  font-size: 0.74rem;
+  font-size: 0.8rem;
   color: var(--muted);
+  min-width: 0;
 }
 .today-empty {
   padding: 18px 0;
@@ -4547,4 +4559,23 @@ body.sheet-open { overflow: hidden; }
 }
 .card > *:last-child {
   margin-bottom: 0;
+}
+
+/* ── Settings footer ── */
+/* Save, Log out and Delete account were three siblings with no margins, so
+   the delete panel sat flush against the log-out button — two very different
+   consequences a fingernail apart. */
+#settings-save {
+  margin-top: 20px;
+}
+#logout-btn {
+  margin-top: 10px;
+}
+/* Set apart from everything above it, because it is not like anything above
+   it. */
+.settings-section--danger {
+  margin-top: 28px;
+}
+#settings-error:not([hidden]) {
+  margin: 10px 0 0;
 }

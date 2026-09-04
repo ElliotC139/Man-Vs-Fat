@@ -106,6 +106,19 @@ async function syncUserSleep(userId: number, accessToken: string, since: Date): 
   }
 }
 
+/**
+ * Which calendar day a recovery belongs to.
+ *
+ * The cycle's own start is the right answer and is used whenever the cycle has
+ * been synced. When it hasn't — which is the normal state for today's recovery,
+ * since the cycle it scores is still running — the recovery's own creation time
+ * says the same thing, because WHOOP creates it when that cycle begins.
+ */
+export function recoveryDate(cycleStart: Date | null, createdAt: Date | null): string | null {
+  const anchor = cycleStart ?? createdAt;
+  return anchor ? localDayKey(anchor, config.TIMEZONE) : null;
+}
+
 async function syncUserRecovery(userId: number, accessToken: string, since: Date): Promise<void> {
   let recoveries;
   try {
@@ -118,14 +131,20 @@ async function syncUserRecovery(userId: number, accessToken: string, since: Date
   }
 
   for (const recovery of recoveries) {
-    // Recovery carries no start/end of its own — assign it to the calendar
-    // day of the cycle it belongs to (cycles are synced before recovery in
-    // syncUserUnguarded, so the row should already exist). A recovery whose
-    // cycle hasn't synced yet is skipped rather than guessed at; it'll be
-    // picked up on the next sync once the cycle exists.
+    // Recovery carries no start/end of its own, so it takes the calendar day
+    // of the cycle it belongs to. Cycles are synced first, so that row is
+    // normally there.
+    //
+    // It isn't always. Today's recovery scores the cycle that is still running,
+    // and a cycle the API hasn't handed over yet leaves the recovery with
+    // nothing to attach to — this used to skip it, which meant today's recovery
+    // could be missing all day while today's sleep showed up fine. WHOOP
+    // creates the recovery when the cycle begins, so its own timestamp lands on
+    // the same day; that is used when the cycle isn't there, and a later sync
+    // that does find the cycle corrects the date through the upsert below.
     const cycle = await prisma.whoopCycle.findUnique({ where: { whoopCycleId: recovery.whoopCycleId } });
-    if (!cycle) continue;
-    const date = localDayKey(cycle.start, config.TIMEZONE);
+    const date = recoveryDate(cycle?.start ?? null, recovery.createdAt);
+    if (!date) continue;
 
     await prisma.whoopRecovery.upsert({
       where: { whoopCycleId: recovery.whoopCycleId },
@@ -208,6 +227,31 @@ async function syncUserUnguarded(userId: number): Promise<void> {
   // Recovery is synced last since it looks up already-upserted WhoopCycle
   // rows above to assign itself a calendar date.
   await syncUserRecovery(userId, accessToken, since);
+}
+
+/**
+ * A nudge to try again when today's figures haven't turned up.
+ *
+ * Recovery is scored some time after you wake, so a sync that ran before that
+ * gets sleep and no recovery — and until the next scheduled sync comes round
+ * the screen keeps saying nothing. Opening Today asks WHOOP again, at most
+ * once every few minutes so that a screen refreshed repeatedly doesn't turn
+ * into a poll.
+ *
+ * Deliberately fire-and-forget: the screen has already been answered from what
+ * is stored, and nothing about it should wait on a third party's API.
+ */
+const WHOOP_REFRESH_MIN_MS = 5 * 60 * 1000;
+const lastRefreshAttempt = new Map<number, number>();
+
+export function refreshWhoopSoon(userId: number): boolean {
+  const now = Date.now();
+  const last = lastRefreshAttempt.get(userId) ?? 0;
+  if (now - last < WHOOP_REFRESH_MIN_MS) return false;
+  lastRefreshAttempt.set(userId, now);
+
+  void syncUser(userId).catch((e) => recordError("whoop.refresh", e, userId));
+  return true;
 }
 
 /** Resyncs every connected user — used by the periodic scheduler as a backstop for missed webhooks. */
