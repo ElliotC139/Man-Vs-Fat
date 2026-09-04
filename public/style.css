@@ -4303,3 +4303,73 @@ body.sheet-open { overflow: hidden; }
   width: 100%;
   justify-content: center;
 }
+
+/* ── Share card ── */
+/* Full-screen so the preview is big enough to judge before it's posted. */
+.share-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(7, 20, 13, 0.72);
+  overflow-y: auto;
+}
+.share-panel {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--card);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+}
+.share-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+/* Undoes the global button rule for the icon-only close. */
+.share-close-btn {
+  width: auto;
+  min-height: 36px;
+  padding: 0 6px;
+  background: none;
+  box-shadow: none;
+  color: var(--muted);
+}
+.share-preview {
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  line-height: 0;
+}
+/* The canvas is drawn at 1080x1350 so the exported file is sharp; on screen it
+   scales down to whatever the panel is. */
+.share-preview canvas {
+  width: 100%;
+  height: auto;
+}
+.share-status {
+  margin: 0;
+  font-size: 0.85rem;
+}
+.share-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.share-actions button {
+  flex: 1;
+}
+.share-actions .ghost-sm {
+  flex: 0 0 auto;
+}

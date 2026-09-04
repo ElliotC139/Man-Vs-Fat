@@ -1191,6 +1191,98 @@ statsRouter.get("/eating-window", async (req, res) => {
   });
 });
 
+// ── Share card ───────────────────────────────────────────────────────────
+//
+// The figures behind the image someone posts about their week. The drawing
+// happens in the browser (see drawShareCard in public/app.js) so the card can
+// be branded and sharp on a phone screen without this server growing an image
+// pipeline; this endpoint's job is to make sure the numbers on it are the same
+// ones the app has been showing all week.
+//
+// Deliberately nothing identifying: no name, no username, no photographs. A
+// card is posted to other people, and what goes on it should be the week, not
+// the person.
+
+statsRouter.get("/share-card", async (req, res) => {
+  const userId = req.userId!;
+  const weeksAgo = clampInt(req.query.weeksAgo, 0, BREAKDOWN_MAX_WEEKS, 0);
+  const now = new Date();
+  const weekStartConfig = await getUserWeekStart(userId);
+  const { start, end } = getMatchWeekBoundariesForWeeksAgo(now, weeksAgo, config.TIMEZONE, weekStartConfig);
+
+  const startKey = localDayKey(start, config.TIMEZONE);
+  const endKey = localDayKey(new Date(end.getTime() - 1), config.TIMEZONE);
+
+  const [entries, weighIns, cycles, exercises] = await Promise.all([
+    prisma.entry.findMany({
+      where: { matchWeek: { userId }, timestamp: { gte: start, lt: end } },
+      select: { timestamp: true, kcal: true },
+    }),
+    prisma.weighIn.findMany({
+      where: { userId, date: { gte: startKey, lte: endKey } },
+      orderBy: { date: "asc" },
+    }),
+    prisma.whoopCycle.findMany({
+      where: { userId, scoreState: "SCORED", kcalBurned: { not: null }, start: { gte: start, lt: end } },
+      select: { start: true, end: true, kcalBurned: true },
+    }),
+    prisma.exercise.findMany({
+      where: { matchWeek: { userId }, timestamp: { gte: start, lt: end } },
+      select: { kcalBurned: true },
+    }),
+  ]);
+
+  const kcalByDay = new Map<string, number>();
+  for (const entry of entries) {
+    const key = localDayKey(entry.timestamp, config.TIMEZONE);
+    kcalByDay.set(key, (kcalByDay.get(key) ?? 0) + (entry.kcal ?? 0));
+  }
+
+  const kcalTotal = [...kcalByDay.values()].reduce((a, b) => a + b, 0);
+  const calendarDays = matchWeekCalendarDays(start, config.TIMEZONE);
+  // Only days that have actually happened can be "missed", so the average is
+  // over the days so far rather than a flat seven — otherwise a card made on
+  // Wednesday would report an average dragged down by four days that haven't
+  // arrived.
+  const todayKey = localDayKey(now, config.TIMEZONE);
+  const daysSoFar = calendarDays.filter((day) => day <= todayKey);
+  const daysLogged = daysSoFar.filter((day) => (kcalByDay.get(day) ?? 0) > 0).length;
+
+  // Measured burn, only for whole days that have finished. A part-day would
+  // make the week look like a bigger deficit than it was.
+  const burnByDay = new Map<string, number>();
+  for (const cycle of cycles) {
+    const split = splitCycleAcrossDays(cycle.start, cycle.end ?? now, cycle.kcalBurned ?? 0, config.TIMEZONE);
+    for (const [key, kcal] of split) burnByDay.set(key, (burnByDay.get(key) ?? 0) + kcal);
+  }
+  const completeDays = daysSoFar.filter((day) => day !== todayKey && burnByDay.has(day));
+  const netKcal = completeDays.length === 0
+    ? null
+    : Math.round(completeDays.reduce((sum, day) => sum + (kcalByDay.get(day) ?? 0) - (burnByDay.get(day) ?? 0), 0));
+
+  // Two weigh-ins in the same week is the minimum that says anything; one is a
+  // reading, not a change.
+  const weightChangeKg = weighIns.length >= 2
+    ? Math.round((weighIns[weighIns.length - 1]!.weightKg - weighIns[0]!.weightKg) * 100) / 100
+    : null;
+
+  res.json({
+    weekStart: startKey,
+    weekEnd: endKey,
+    label: `${localDayLabel(start, config.TIMEZONE)} – ${localDayLabel(new Date(end.getTime() - 1), config.TIMEZONE)}`,
+    kcalTotal,
+    avgKcal: daysSoFar.length === 0 ? 0 : Math.round(kcalTotal / daysSoFar.length),
+    daysLogged,
+    daysSoFar: daysSoFar.length,
+    calendarDays: calendarDays.length,
+    netKcal,
+    netDays: completeDays.length,
+    weightChangeKg,
+    weighInCount: weighIns.length,
+    exerciseKcal: exercises.reduce((sum, exercise) => sum + (exercise.kcalBurned ?? 0), 0),
+  });
+});
+
 // ── Insights ─────────────────────────────────────────────────────────────
 // Deliberately simple, sample-size-gated observations — plain grouped
 // averages over the user's own data, not statistical inference. Each one

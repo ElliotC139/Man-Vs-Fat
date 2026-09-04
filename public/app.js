@@ -4861,6 +4861,263 @@ function handleLaunchParams() {
   window.history.replaceState({}, "", query ? `${window.location.pathname}?${query}` : window.location.pathname);
 }
 
+// ── Share card ──────────────────────────────────────────────────────────────
+//
+// An image of the week, drawn here rather than on the server: the phone
+// already has the brand, the fonts and a retina screen, and generating a PNG
+// server-side would mean an image pipeline in a food diary.
+//
+// Nothing identifying goes on it — no name, no username, no photographs. A
+// card gets posted to other people, and what belongs on it is the week.
+
+const shareWeekBtn = document.getElementById("share-week-btn");
+const shareModal = document.getElementById("share-modal");
+const shareCloseBtn = document.getElementById("share-close-btn");
+const shareCanvas = document.getElementById("share-canvas");
+const shareStatus = document.getElementById("share-status");
+const shareSendBtn = document.getElementById("share-send-btn");
+const shareSaveBtn = document.getElementById("share-save-btn");
+
+// Portrait, and the aspect a phone gallery and every social app expect.
+const SHARE_W = 1080;
+const SHARE_H = 1350;
+const PAD = 96;
+const BLOCK_GAP = 70;
+const TILE_GAP = 40;
+const HEADING_STACK = '"Barlow Condensed", "Arial Narrow", sans-serif';
+
+let shareBlob = null;
+
+shareWeekBtn.addEventListener("click", openShareCard);
+shareCloseBtn.addEventListener("click", closeShareCard);
+shareModal.addEventListener("click", (event) => {
+  if (event.target === shareModal) closeShareCard();
+});
+
+function closeShareCard() {
+  shareModal.hidden = true;
+  shareBlob = null;
+}
+
+async function openShareCard() {
+  shareModal.hidden = false;
+  shareStatus.hidden = false;
+  shareStatus.textContent = "Building your card…";
+  shareSendBtn.disabled = true;
+  shareSaveBtn.disabled = true;
+
+  try {
+    const res = await fetch(`/api/stats/share-card?weeksAgo=${weeksAgo}`);
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    // Barlow Condensed is what the app's headings are set in, and a canvas
+    // will silently fall back to something else if it draws before the font
+    // has loaded — which is the sort of bug you only see in the exported image.
+    if (document.fonts?.ready) await document.fonts.ready;
+    drawShareCard(shareCanvas.getContext("2d"), data);
+    shareBlob = await new Promise((resolve) => shareCanvas.toBlob(resolve, "image/png"));
+    shareStatus.hidden = true;
+    shareSendBtn.disabled = false;
+    shareSaveBtn.disabled = false;
+  } catch {
+    shareStatus.textContent = "Couldn't build the card — check your connection and try again.";
+    shareStatus.hidden = false;
+  }
+}
+
+const SHARE_COLOURS = {
+  ink: "#0f1417",
+  pitchDeep: "#0b3a22",
+  pitch: "#1f9d52",
+  pitchLight: "#35c46f",
+  amber: "#b06f05",
+  paper: "#f7f7f5",
+  faint: "rgba(255, 255, 255, 0.62)",
+};
+
+function drawShareCard(ctx, data) {
+  ctx.clearRect(0, 0, SHARE_W, SHARE_H);
+
+  // The pitch, top to bottom, with the goalmouth arc the app's icon uses.
+  const sky = ctx.createLinearGradient(0, 0, 0, SHARE_H);
+  sky.addColorStop(0, SHARE_COLOURS.pitchDeep);
+  sky.addColorStop(1, "#072a18");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, SHARE_W, SHARE_H);
+
+  ctx.save();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.07)";
+  ctx.lineWidth = 6;
+  for (let y = 220; y < SHARE_H; y += 150) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(SHARE_W, y);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.arc(SHARE_W / 2, SHARE_H + 60, 320, Math.PI, 2 * Math.PI);
+  ctx.stroke();
+  ctx.restore();
+
+  heading(ctx, "MATCH WEEK", 64, PAD, 128, SHARE_COLOURS.pitchLight, 0.16);
+  body(ctx, data.label, 36, PAD, 186, SHARE_COLOURS.faint);
+  body(ctx, "Tracked with Match Week Food Diary", 30, PAD, SHARE_H - PAD, SHARE_COLOURS.faint);
+
+  // Laid out as blocks with their heights known up front, so the middle of the
+  // card is centred between the header and the footer whether or not there is
+  // a weight row. Flowing top-down instead left a card with no weigh-ins
+  // looking like something had failed to load.
+  const blocks = [
+    { height: 250, draw: (y) => drawHero(ctx, data, y) },
+    { height: 230, draw: (y) => drawTiles(ctx, data, y) },
+  ];
+  if (data.weightChangeKg !== null) {
+    blocks.push({ height: 150, draw: (y) => drawWeight(ctx, data, y) });
+  }
+
+  const top = 240;
+  const bottom = SHARE_H - 160;
+  const total = blocks.reduce((sum, block) => sum + block.height, 0) + BLOCK_GAP * (blocks.length - 1);
+  let y = top + Math.max(0, (bottom - top - total) / 2);
+  for (const block of blocks) {
+    block.draw(y);
+    y += block.height + BLOCK_GAP;
+  }
+}
+
+function drawHero(ctx, data, y) {
+  heading(ctx, data.kcalTotal.toLocaleString(), 190, PAD, y + 160, "#ffffff", 0);
+  body(ctx, "kcal logged this week", 40, PAD, y + 222, SHARE_COLOURS.faint);
+}
+
+function drawTiles(ctx, data, y) {
+  const tiles = [
+    { value: data.avgKcal.toLocaleString(), caption: "kcal a day" },
+    { value: `${data.daysLogged}/${data.daysSoFar}`, caption: "days logged" },
+  ];
+  // Net beats exercise for the third tile: it is the whole week's in-vs-out,
+  // and exercise on its own says nothing about the balance.
+  if (data.netKcal !== null) {
+    tiles.push({
+      value: `${data.netKcal > 0 ? "+" : data.netKcal < 0 ? "−" : ""}${Math.abs(data.netKcal).toLocaleString()}`,
+      caption: "kcal net",
+      colour: data.netKcal < 0 ? SHARE_COLOURS.pitchLight : SHARE_COLOURS.amber,
+    });
+  } else if (data.exerciseKcal > 0) {
+    tiles.push({ value: data.exerciseKcal.toLocaleString(), caption: "kcal exercise" });
+  }
+
+  const width = (SHARE_W - PAD * 2 - TILE_GAP * (tiles.length - 1)) / tiles.length;
+  tiles.forEach((tile, index) => {
+    const x = PAD + index * (width + TILE_GAP);
+    roundedRect(ctx, x, y, width, 230, 28);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.07)";
+    ctx.fill();
+    heading(ctx, tile.value, 76, x + 32, y + 118, tile.colour ?? "#ffffff", 0);
+    body(ctx, tile.caption, 30, x + 32, y + 168, SHARE_COLOURS.faint);
+  });
+}
+
+/**
+ * Only drawn when two weigh-ins in the week make it a change. One reading says
+ * nothing about a direction, and a card is not the place to imply one.
+ */
+function drawWeight(ctx, data, y) {
+  const down = data.weightChangeKg < 0;
+  const figure = `${down ? "−" : "+"}${Math.abs(data.weightChangeKg).toFixed(1)} kg`;
+
+  roundedRect(ctx, PAD, y, SHARE_W - PAD * 2, 150, 28);
+  ctx.fillStyle = down ? "rgba(53, 196, 111, 0.16)" : "rgba(255, 255, 255, 0.07)";
+  ctx.fill();
+
+  const x = PAD + 32;
+  heading(ctx, figure, 72, x, y + 96, down ? SHARE_COLOURS.pitchLight : "#ffffff", 0);
+  // Measured with the heading's own font set, not whatever the canvas was last
+  // left on — otherwise the caption lands somewhere arbitrary.
+  body(ctx, "on the scale this week", 32, x + headingWidth(ctx, figure, 72) + 28, y + 92, SHARE_COLOURS.faint);
+}
+
+function headingWidth(ctx, textValue, size) {
+  ctx.save();
+  ctx.font = `700 ${size}px ${HEADING_STACK}`;
+  const width = ctx.measureText(textValue).width;
+  ctx.restore();
+  return width;
+}
+
+function heading(ctx, textValue, size, x, baseline, colour, tracking) {
+  ctx.save();
+  ctx.font = `700 ${size}px ${HEADING_STACK}`;
+  ctx.fillStyle = colour;
+  ctx.textBaseline = "alphabetic";
+  // Canvas has no letter-spacing everywhere yet, so tracked headings are drawn
+  // a character at a time where it isn't supported.
+  if (tracking && "letterSpacing" in ctx) {
+    ctx.letterSpacing = `${Math.round(size * tracking)}px`;
+    ctx.fillText(textValue, x, baseline);
+  } else if (tracking) {
+    let cursor = x;
+    for (const char of textValue) {
+      ctx.fillText(char, cursor, baseline);
+      cursor += ctx.measureText(char).width + size * tracking;
+    }
+  } else {
+    ctx.fillText(textValue, x, baseline);
+  }
+  ctx.restore();
+}
+
+function body(ctx, textValue, size, x, baseline, colour) {
+  ctx.save();
+  ctx.font = `500 ${size}px Inter, -apple-system, BlinkMacSystemFont, sans-serif`;
+  ctx.fillStyle = colour;
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText(textValue, x, baseline);
+  ctx.restore();
+}
+
+function roundedRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+shareSendBtn.addEventListener("click", async () => {
+  if (!shareBlob) return;
+  const file = new File([shareBlob], "my-week.png", { type: "image/png" });
+
+  // The share sheet is the point on a phone — it puts the card straight into
+  // whatever they were going to post it to. Where there isn't one (most
+  // desktops), saving the file is the same outcome by a longer route.
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: "My week" });
+      return;
+    } catch (error) {
+      // A cancelled share sheet is a change of mind, not a failure.
+      if (error?.name === "AbortError") return;
+    }
+  }
+  saveShareImage();
+});
+
+shareSaveBtn.addEventListener("click", saveShareImage);
+
+function saveShareImage() {
+  if (!shareBlob) return;
+  const url = URL.createObjectURL(shareBlob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "my-week.png";
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast("Saved to your downloads.");
+}
+
 // ── Offline ─────────────────────────────────────────────────────────────────
 // Logging happens in kitchens, gyms and pub gardens, which is exactly where
 // signal isn't. Anything the user writes while offline goes into IndexedDB
