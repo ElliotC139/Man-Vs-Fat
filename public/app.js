@@ -1859,42 +1859,92 @@ function runQuaggaLoop() {
 async function handleBarcode(code) {
   stopScanHints();
   scanStatusEl.textContent = "Looking up product…";
-  const product = await lookupOpenFoodFacts(code);
+  const product = await lookupBarcode(code);
   stopScanner();
   openProductSheet(product);
 }
 
-async function lookupOpenFoodFacts(barcode) {
+/**
+ * A scanned barcode, answered from the phone first.
+ *
+ * A product's calories don't change between one shop and the next, so a
+ * barcode that has been scanned before is answered from the phone's own store
+ * straight away — instantly, and with no signal at all. The lookup still runs
+ * behind that to keep the figures current, but nobody waits for it.
+ *
+ * The lookup itself goes through this app's server rather than straight to
+ * Open Food Facts: the server can identify itself the way Open Food Facts asks
+ * callers to, it can fall back to a second database for the barcodes Open Food
+ * Facts has never been shown, and its answer is cached once for everybody.
+ */
+async function lookupBarcode(barcode) {
+  const cached = await readCachedBarcode(barcode);
+  if (cached) {
+    // Refreshed behind the answer, not in front of it.
+    fetchBarcode(barcode).then((fresh) => {
+      if (fresh) cacheBarcode(barcode, fresh);
+    }).catch(() => {});
+    return cached;
+  }
+
+  const fresh = await fetchBarcode(barcode);
+  if (fresh) {
+    cacheBarcode(barcode, fresh);
+    return fresh;
+  }
+  return emptyProduct(barcode);
+}
+
+/** Turns a search result from the server into what the product sheet wants. */
+async function fetchBarcode(barcode) {
   try {
-    const url =
-      `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}` +
-      `?fields=product_name,brands,nutriments,serving_size,serving_quantity`;
-    const res = await fetch(url);
-    if (!res.ok) return emptyProduct(barcode);
-    const data = await res.json();
-    if (data.status !== 1) return emptyProduct(barcode);
-    const p = data.product;
-    const kcalPer100g =
-      p.nutriments?.["energy-kcal_100g"] ??
-      p.nutriments?.["energy-kcal"] ??
-      null;
-    const defaultServing = p.serving_quantity ? Math.round(Number(p.serving_quantity)) : null;
+    const res = await fetch(`/api/food-search/barcode/${encodeURIComponent(barcode)}`);
+    if (!res.ok) return null;
+    const { product } = await res.json();
+    if (!product) return null;
     return {
       barcode,
-      name: p.product_name || null,
-      brand: p.brands || null,
-      kcalPer100g: kcalPer100g !== null ? Number(kcalPer100g) : null,
-      // Real label figures off the packet, so these skip the estimator
-      // entirely — the same reason the calories do.
+      name: product.name ?? null,
+      brand: product.brand ?? null,
+      kcalPer100g: product.per100g?.kcal ?? null,
       macrosPer100g: {
-        protein: numberOrNull(p.nutriments?.["proteins_100g"]),
-        carbs: numberOrNull(p.nutriments?.["carbohydrates_100g"]),
-        fat: numberOrNull(p.nutriments?.["fat_100g"]),
+        protein: product.per100g?.protein ?? null,
+        carbs: product.per100g?.carbs ?? null,
+        fat: product.per100g?.fat ?? null,
       },
-      defaultServing,
+      defaultServing: product.servingGrams ?? null,
     };
   } catch {
-    return emptyProduct(barcode);
+    return null;
+  }
+}
+
+// Enough for a shop's worth of regulars several times over. Beyond it the
+// least recently scanned go, so the store can't grow without limit on a phone.
+const BARCODE_CACHE_MAX = 400;
+
+async function readCachedBarcode(barcode) {
+  try {
+    const store = await barcodeTx("readonly");
+    const row = await requestToPromise(store.get(barcode));
+    return row?.product ?? null;
+  } catch {
+    // IndexedDB blocked, as it is in some private-browsing modes. No cache is
+    // a slower scan, not a broken one.
+    return null;
+  }
+}
+
+async function cacheBarcode(barcode, product) {
+  try {
+    const store = await barcodeTx("readwrite");
+    await requestToPromise(store.put({ barcode, product, at: Date.now() }));
+    const all = await requestToPromise(store.getAll());
+    if (all.length <= BARCODE_CACHE_MAX) return;
+    const surplus = all.sort((a, b) => a.at - b.at).slice(0, all.length - BARCODE_CACHE_MAX);
+    for (const row of surplus) await requestToPromise(store.delete(row.barcode));
+  } catch {
+    // Same again: a cache that won't write is not worth failing a scan over.
   }
 }
 
@@ -1907,12 +1957,6 @@ function emptyProduct(barcode) {
     macrosPer100g: { protein: null, carbs: null, fat: null },
     defaultServing: null,
   };
-}
-
-function numberOrNull(value) {
-  if (value === null || value === undefined) return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
 }
 
 // ── Confirm sheet ───────────────────────────────────────────────────────────
@@ -4511,20 +4555,27 @@ mealEditor.addEventListener("submit", async (event) => {
   }
 });
 
-// ── Open Food Facts text search ─────────────────────────────────────────────
-// Runs in the browser, like the barcode lookup above it, so it goes straight
-// to Open Food Facts rather than through this app's server.
+// ── Food search ─────────────────────────────────────────────────────────────
+// Goes through this app's own server rather than straight to one database, so
+// one search covers the user's own diary, packaged groceries, restaurant and
+// pub menus, and plain ingredients at once — and so the results can be sorted
+// by something better than the order they happened to come back in. See
+// src/foodSearch.ts for what each source covers and why.
 const foodSearchBtn = document.getElementById("food-search-btn");
 const foodSearchCard = document.getElementById("food-search-card");
 const foodSearchClose = document.getElementById("food-search-close");
 const foodSearchQuery = document.getElementById("food-search-query");
 const foodSearchStatus = document.getElementById("food-search-status");
 const foodSearchResults = document.getElementById("food-search-results");
+const foodSearchFilters = document.getElementById("food-search-filters");
+const foodSearchEstimate = document.getElementById("food-search-estimate");
 
-let offSearchTimer = null;
+let dbSearchTimer = null;
 // Bumped on every keystroke so a slow earlier response can't overwrite the
 // results for what's actually in the box now.
-let offSearchSeq = 0;
+let foodSearchSeq = 0;
+let foodSearchKind = "";
+let foodSearchLastQuery = "";
 
 foodSearchBtn.addEventListener("click", () => {
   const opening = foodSearchCard.hidden;
@@ -4533,8 +4584,9 @@ foodSearchBtn.addEventListener("click", () => {
     foodSearchQuery.value = textInput.value.trim();
     foodSearchResults.innerHTML = "";
     foodSearchStatus.hidden = true;
+    foodSearchEstimate.hidden = true;
     foodSearchQuery.focus();
-    if (foodSearchQuery.value) runOffSearch(foodSearchQuery.value);
+    if (foodSearchQuery.value) runFoodSearch(foodSearchQuery.value);
   }
 });
 
@@ -4542,94 +4594,186 @@ foodSearchClose.addEventListener("click", () => {
   foodSearchCard.hidden = true;
 });
 
-foodSearchQuery.addEventListener("input", () => {
-  clearTimeout(offSearchTimer);
-  const q = foodSearchQuery.value.trim();
-  if (q.length < 3) {
-    foodSearchResults.innerHTML = "";
-    foodSearchStatus.hidden = true;
-    return;
+foodSearchFilters.addEventListener("click", (event) => {
+  const btn = event.target.closest(".food-filter");
+  if (!btn) return;
+  foodSearchKind = btn.dataset.kind;
+  for (const other of foodSearchFilters.querySelectorAll(".food-filter")) {
+    other.classList.toggle("food-filter--on", other === btn);
   }
-  // Open Food Facts asks callers not to hammer its search endpoint, so this
-  // waits for a pause in typing rather than firing per keystroke.
-  offSearchTimer = setTimeout(() => runOffSearch(q), 400);
+  if (foodSearchLastQuery) runFoodSearch(foodSearchLastQuery);
 });
 
-async function runOffSearch(query) {
-  const seq = ++offSearchSeq;
+foodSearchQuery.addEventListener("input", () => {
+  clearTimeout(dbSearchTimer);
+  const q = foodSearchQuery.value.trim();
+  if (q.length < 2) {
+    foodSearchResults.innerHTML = "";
+    foodSearchStatus.hidden = true;
+    foodSearchEstimate.hidden = true;
+    return;
+  }
+  // Several databases are being asked at once behind this, so it waits for a
+  // pause in typing rather than firing per keystroke.
+  dbSearchTimer = setTimeout(() => runFoodSearch(q), 350);
+});
+
+async function runFoodSearch(query) {
+  const seq = ++foodSearchSeq;
+  foodSearchLastQuery = query;
   foodSearchStatus.textContent = "Searching…";
   foodSearchStatus.hidden = false;
   try {
-    const url =
-      "https://world.openfoodfacts.org/cgi/search.pl?search_simple=1&action=process&json=1&page_size=15" +
-      `&fields=code,product_name,brands,nutriments,serving_quantity&search_terms=${encodeURIComponent(query)}`;
-    const res = await fetch(url);
+    const params = new URLSearchParams({ q: query });
+    if (foodSearchKind) params.set("kind", foodSearchKind);
+    const res = await fetch(`/api/food-search?${params}`);
     if (!res.ok) throw new Error();
     const data = await res.json();
-    if (seq !== offSearchSeq) return;
-
-    const products = (data.products ?? [])
-      .map((p) => ({
-        barcode: p.code ?? null,
-        name: p.product_name || null,
-        brand: p.brands || null,
-        kcalPer100g:
-          p.nutriments?.["energy-kcal_100g"] !== undefined
-            ? Number(p.nutriments["energy-kcal_100g"])
-            : null,
-        defaultServing: p.serving_quantity ? Math.round(Number(p.serving_quantity)) : null,
-      }))
-      // A result with no name or no calories can't be logged, so showing it
-      // would only waste a tap.
-      .filter((p) => p.name && p.kcalPer100g !== null && Number.isFinite(p.kcalPer100g));
-
-    renderOffResults(products, query);
+    if (seq !== foodSearchSeq) return;
+    applySourceAvailability(data.sources);
+    renderFoodResults(data.results, query);
   } catch {
-    if (seq !== offSearchSeq) return;
-    foodSearchStatus.textContent = "Couldn't reach the food database — describe it instead and it'll be estimated.";
+    if (seq !== foodSearchSeq) return;
+    foodSearchStatus.textContent = "Couldn't reach the food databases — describe it instead and it'll be estimated.";
     foodSearchStatus.hidden = false;
     foodSearchResults.innerHTML = "";
+    showEstimateFallback(query);
   }
 }
 
-function renderOffResults(products, query) {
+// A filter for a source this deployment can't reach could only ever return
+// nothing, so the chip stays off the screen rather than looking broken.
+function applySourceAvailability(sources) {
+  foodSearchFilters.querySelector('[data-kind="restaurant"]').hidden = !sources?.menus;
+  foodSearchFilters.querySelector('[data-kind="generic"]').hidden = !sources?.ingredients;
+}
+
+const FOOD_KIND_BADGES = {
+  yours: { text: "Yours", cls: "food-badge--yours" },
+  restaurant: { text: "Menu", cls: "food-badge--menu" },
+  branded: { text: "Packet", cls: "food-badge--packet" },
+  generic: { text: "Ingredient", cls: "food-badge--generic" },
+};
+
+function renderFoodResults(results, query) {
   foodSearchResults.innerHTML = "";
-  if (products.length === 0) {
-    foodSearchStatus.textContent = `Nothing found for "${query}" — describe it instead and it'll be estimated.`;
+  if (results.length === 0) {
+    foodSearchStatus.textContent = `Nothing found for "${query}".`;
     foodSearchStatus.hidden = false;
+    showEstimateFallback(query);
     return;
   }
   foodSearchStatus.hidden = true;
+  // Always offered, not only when the search comes up empty: a database can
+  // have a "chicken salad" in it and still not have the one they made.
+  showEstimateFallback(query);
 
-  for (const product of products) {
-    const row = document.createElement("button");
-    row.type = "button";
-    row.className = "food-search-result";
-
-    const info = document.createElement("span");
-    info.className = "food-search-result-info";
-    const name = document.createElement("span");
-    name.className = "food-search-result-name";
-    name.textContent = product.name;
-    const meta = document.createElement("span");
-    meta.className = "food-search-result-meta";
-    meta.textContent = [product.brand, `${Math.round(product.kcalPer100g)} kcal / 100g`]
-      .filter(Boolean)
-      .join(" · ");
-    info.append(name, meta);
-    row.appendChild(info);
-
-    // Hands off to the same product card the barcode scanner uses, so a
-    // searched item and a scanned one are logged through one path.
-    // A searched item and a scanned one go through exactly the same sheet,
-    // so they behave identically from here on.
-    row.addEventListener("click", () => {
-      foodSearchCard.hidden = true;
-      openProductSheet(product);
-    });
-
-    foodSearchResults.appendChild(row);
+  for (const result of results) {
+    foodSearchResults.appendChild(foodResultRow(result));
   }
+}
+
+function foodResultRow(result) {
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = "food-search-result";
+
+  const badge = FOOD_KIND_BADGES[result.kind];
+  if (badge) {
+    const chip = document.createElement("span");
+    chip.className = `food-badge ${badge.cls}`;
+    chip.textContent = badge.text;
+    row.appendChild(chip);
+  }
+
+  const info = document.createElement("span");
+  info.className = "food-search-result-info";
+
+  const name = document.createElement("span");
+  name.className = "food-search-result-name";
+  name.textContent = result.name;
+  info.appendChild(name);
+
+  const meta = document.createElement("span");
+  meta.className = "food-search-result-meta";
+  meta.textContent = [result.brand, foodResultFigures(result)].filter(Boolean).join(" · ");
+  info.appendChild(meta);
+
+  row.appendChild(info);
+  row.addEventListener("click", () => {
+    foodSearchCard.hidden = true;
+    openFoodResult(result);
+  });
+  return row;
+}
+
+function foodResultFigures(result) {
+  if (result.per100g) return `${Math.round(result.per100g.kcal)} kcal / 100g`;
+  if (result.portion) return `${Math.round(result.portion.kcal)} kcal · ${result.portion.label}`;
+  return "";
+}
+
+/**
+ * Two shapes of answer, two sheets. Anything with per-100g figures gets the
+ * packet sheet, where the serving size is in grams and the figures follow it.
+ * A menu item or one of their own meals is a portion, not a weight — a pint
+ * has no meaningful grams — so that goes to the ordinary confirm sheet, where
+ * the quantity is how many of them.
+ *
+ * Both still have to be approved before anything is written. Nothing here
+ * logs on a tap.
+ */
+function openFoodResult(result) {
+  if (result.per100g) {
+    openProductSheet({
+      barcode: result.barcode,
+      name: result.name,
+      brand: result.brand,
+      kcalPer100g: result.per100g.kcal,
+      macrosPer100g: {
+        protein: result.per100g.protein,
+        carbs: result.per100g.carbs,
+        fat: result.per100g.fat,
+      },
+      defaultServing: result.servingGrams,
+    });
+    return;
+  }
+
+  if (!result.portion) {
+    showToast("No figures for that one — describe it instead and it'll be estimated.");
+    return;
+  }
+
+  openConfirmSheet({
+    items: [
+      normaliseConfirmItem({
+        label: [result.brand, result.name].filter(Boolean).join(" "),
+        kcal: result.portion.kcal,
+        protein: result.portion.protein,
+        carbs: result.portion.carbs,
+        fat: result.portion.fat,
+      }),
+    ],
+    // Their own past entry is theirs; anything else came off a database.
+    source: result.kind === "yours" ? "manual" : "database",
+    sourceLabel: result.kind === "yours" ? "From your diary" : `Per ${result.portion.label}`,
+    note: "Change the quantity if you had more than one.",
+  });
+}
+
+// The estimator is the answer to "the database doesn't have it" — a home-made
+// chilli was never going to be in one. Offered alongside the results rather
+// than only when there are none.
+function showEstimateFallback(query) {
+  foodSearchEstimate.hidden = false;
+  foodSearchEstimate.textContent = `Estimate "${query}" instead`;
+  foodSearchEstimate.onclick = () => {
+    foodSearchCard.hidden = true;
+    textInput.value = query;
+    navTo("today");
+    textInput.focus();
+  };
 }
 
 // ── Voice capture ───────────────────────────────────────────────────────────
@@ -4727,8 +4871,13 @@ function handleLaunchParams() {
 // Background Sync is Chrome-only, and half the point is that it works on an
 // iPhone.
 const DB_NAME = "food-diary-offline";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const QUEUE_STORE = "pending";
+// Scanned products, kept so a shelf with no signal still scans and a repeat
+// scan of the weekly shop is instant. Same database as the queue because it
+// is the same problem: kitchens, gyms and the back of a supermarket are where
+// the signal isn't.
+const BARCODE_STORE = "barcodes";
 
 let dbPromise = null;
 
@@ -4741,6 +4890,9 @@ function openQueueDb() {
       if (!db.objectStoreNames.contains(QUEUE_STORE)) {
         db.createObjectStore(QUEUE_STORE, { keyPath: "id", autoIncrement: true });
       }
+      if (!db.objectStoreNames.contains(BARCODE_STORE)) {
+        db.createObjectStore(BARCODE_STORE, { keyPath: "barcode" });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -4750,6 +4902,10 @@ function openQueueDb() {
 
 function queueTx(mode) {
   return openQueueDb().then((db) => db.transaction(QUEUE_STORE, mode).objectStore(QUEUE_STORE));
+}
+
+function barcodeTx(mode) {
+  return openQueueDb().then((db) => db.transaction(BARCODE_STORE, mode).objectStore(BARCODE_STORE));
 }
 
 function requestToPromise(request) {
