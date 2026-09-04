@@ -20,7 +20,7 @@ import { recordError } from "../errorLog";
 import { MACRO_KEYS, resolveMacroTargets, sumMacros, type MacroKey } from "../macros";
 import { expectedBurnToday, macroRoom, whatCanIStillEat, type WhatNowFood, type WhatNowMeal } from "../whatNow";
 import { normalizeLabel } from "./foods";
-import { getRecentSleepRecovery } from "../whoop/sync";
+import { getRecentSleepRecovery, refreshWhoopSoon } from "../whoop/sync";
 
 export const statsRouter = Router();
 statsRouter.use(requireAuth);
@@ -771,6 +771,15 @@ statsRouter.get("/today", async (req, res) => {
 
   const today = whoopRecent.find((day) => day.date === dayKey) ?? null;
 
+  // Recovery is scored some time after waking, so a sync that ran before that
+  // leaves today with sleep and no recovery. Asking WHOOP again in the
+  // background means the next look has it, rather than waiting for the next
+  // scheduled sync. Nothing here waits on it — the screen has already been
+  // answered from what is stored.
+  const whoopConnected = whoopRecent.length > 0;
+  const refreshing =
+    isToday && whoopConnected && today?.recoveryScore == null ? refreshWhoopSoon(userId) : false;
+
   res.json({
     date: dayKey,
     isToday,
@@ -804,7 +813,10 @@ statsRouter.get("/today", async (req, res) => {
     waterMl: water?.ml ?? 0,
     note: note?.note ?? null,
     whoop: {
-      connected: whoopRecent.length > 0,
+      connected: whoopConnected,
+      // True when a fresh look at WHOOP was just started, so the screen knows
+      // there is a reason to check back rather than settling on "nothing".
+      refreshing,
       recoveryScore: today?.recoveryScore ?? null,
       sleepMinutes: today?.sleepMinutes ?? null,
       sleepPerformance: today?.sleepPerformance ?? null,

@@ -7719,6 +7719,7 @@ const todayPending = document.getElementById("today-pending");
 const todayInsightsCard = document.getElementById("today-insights-card");
 const todayInsightsList = document.getElementById("today-insights");
 const todayBodyCard = document.getElementById("today-body-card");
+const todayBodyGrid = document.getElementById("today-body-grid");
 const todayRecoveryCell = document.getElementById("today-recovery-cell");
 const todayRecovery = document.getElementById("today-recovery");
 const todaySleepCell = document.getElementById("today-sleep-cell");
@@ -7954,6 +7955,10 @@ function renderTodayBody(whoop) {
   const hasSleep = whoop?.sleepMinutes != null;
   todayBodyCard.hidden = !hasRecovery && !hasSleep;
 
+  // One tile takes the whole row rather than half of it. A lone figure with an
+  // equal-sized hole beside it reads as something that failed to load.
+  todayBodyGrid.classList.toggle("balance-grid--single", hasRecovery !== hasSleep);
+
   todayRecoveryCell.hidden = !hasRecovery;
   if (hasRecovery) {
     todayRecovery.textContent = `${whoop.recoveryScore}%`;
@@ -7967,7 +7972,21 @@ function renderTodayBody(whoop) {
 
   todaySleepCell.hidden = !hasSleep;
   if (hasSleep) todaySleep.textContent = formatSleepDuration(whoop.sleepMinutes);
+
+  // The server has just gone back to WHOOP for a figure that wasn't there yet.
+  // One look back a few seconds later picks it up, rather than the card sitting
+  // on "nothing" until the next scheduled sync hours later. Once only — if it
+  // still isn't scored, it isn't scored.
+  if (whoop?.refreshing) {
+    clearTimeout(whoopRecheckTimer);
+    whoopRecheckTimer = setTimeout(() => {
+      if (!todayViewDate) loadToday();
+    }, WHOOP_RECHECK_MS);
+  }
 }
+
+const WHOOP_RECHECK_MS = 9000;
+let whoopRecheckTimer = null;
 
 // ── What still fits ─────────────────────────────────────────────────────────
 //

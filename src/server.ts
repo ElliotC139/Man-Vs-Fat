@@ -28,6 +28,31 @@ ensureUploadsDir();
 
 const app = express();
 
+/**
+ * Response headers.
+ *
+ * Permissions-Policy is the one that matters here: `camera=(self)` means the
+ * camera can only ever be reached by this origin's own pages. Anything the
+ * browser loads inside this app — a font, a script, an embedded frame — is
+ * refused it outright, so granting this site the camera grants it to this site
+ * and nothing else riding along inside it.
+ *
+ * What it cannot do is narrow the browser's own permission prompt: whether a
+ * phone remembers "allow" for this site alone or for everything is a device
+ * setting, and Settings > Camera & microphone says where to find it.
+ */
+app.use((_req, res, next) => {
+  res.setHeader("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(), payment=()");
+  // Nothing here should ever be framed by another site — the app holds a
+  // logged-in session, and a frame around it is how that gets used by someone
+  // else's page.
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  // Enough for an analytics referrer, never the path of a page someone was on.
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
