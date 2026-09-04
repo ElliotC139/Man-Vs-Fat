@@ -18,6 +18,8 @@ import { latestWeightKg, weightRate } from "../weightStats";
 import { computeDeficitStreak, type DayVerdict } from "../deficitStreak";
 import { recordError } from "../errorLog";
 import { MACRO_KEYS, resolveMacroTargets, sumMacros, type MacroKey } from "../macros";
+import { macroRoom, whatCanIStillEat, type WhatNowFood, type WhatNowMeal } from "../whatNow";
+import { normalizeLabel } from "./foods";
 import { getRecentSleepRecovery } from "../whoop/sync";
 
 export const statsRouter = Router();
@@ -813,6 +815,123 @@ statsRouter.get("/today", async (req, res) => {
       sleepMinutes: today?.sleepMinutes ?? null,
       loggedCount: entriesToday.length,
     }),
+  });
+});
+
+// ── What can I still eat? ────────────────────────────────────────────────
+//
+// The arithmetic of "I've got 640 kcal and 48g of protein left, so what
+// fits?" done from the user's own library rather than left in their head.
+// Always about today: the question doesn't mean anything about a day that's
+// already finished, so this takes no ?date and the Today screen hides the
+// card when it's paged back.
+
+statsRouter.get("/what-now", async (req, res) => {
+  const userId = req.userId!;
+  const now = new Date();
+  const dayKey = localDayKey(now, config.TIMEZONE);
+
+  const [y, m, d] = dayKey.split("-").map(Number) as [number, number, number];
+  const [ny, nm, nd] = shiftDayKey(dayKey, 1).split("-").map(Number) as [number, number, number];
+  const dayStart = zonedTimeToUtc(y, m, d, 0, 0, config.TIMEZONE);
+  const dayEnd = zonedTimeToUtc(ny, nm, nd, 0, 0, config.TIMEZONE);
+
+  const [user, entriesToday, libraryEntries, overrides, meals] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId } }),
+    prisma.entry.findMany({
+      where: { matchWeek: { userId }, timestamp: { gte: dayStart, lt: dayEnd } },
+      select: { kcal: true, proteinG: true, carbsG: true, fatG: true },
+    }),
+    prisma.entry.findMany({
+      where: { matchWeek: { userId } },
+      orderBy: { timestamp: "desc" },
+      select: { label: true, kcal: true, proteinG: true, carbsG: true, fatG: true },
+    }),
+    prisma.foodOverride.findMany({ where: { userId } }),
+    prisma.savedMeal.findMany({ where: { userId }, include: { items: true } }),
+  ]);
+
+  // Same order of authority as the Today card: the user's own target first,
+  // then a formula. Without either there's no "remaining" to report.
+  const target = user?.dailyCalorieTarget ?? null;
+  const estimated = estimateTdee(user ?? { weightKg: null, heightCm: null, ageYears: null, activityLevel: null, sex: null });
+  const reference = target ?? (estimated === null ? null : Math.round(estimated));
+
+  const eatenKcal = entriesToday.reduce((sum, entry) => sum + (entry.kcal ?? 0), 0);
+  const remainingKcal = reference === null ? null : reference - eatenKcal;
+
+  const macroTargets = user ? resolveMacroTargets(user) : null;
+  const eatenMacros = sumMacros(entriesToday);
+  const rooms = macroRoom(macroTargets, {
+    protein: eatenMacros.protein,
+    carbs: eatenMacros.carbs,
+    fat: eatenMacros.fat,
+  });
+
+  // The library, aggregated exactly as GET /api/foods does it: one row per
+  // distinct food, newest logging of it supplying the figures, then any
+  // correction laid over the top.
+  const overrideByKey = new Map(overrides.map((o) => [o.labelKey, o]));
+  const byKey = new Map<string, WhatNowFood>();
+  for (const entry of libraryEntries) {
+    const labelKey = normalizeLabel(entry.label);
+    if (!labelKey) continue;
+    const existing = byKey.get(labelKey);
+    if (existing) {
+      existing.count += 1;
+      continue;
+    }
+    byKey.set(labelKey, {
+      labelKey,
+      label: entry.label.trim(),
+      kcal: entry.kcal ?? 0,
+      proteinG: entry.proteinG,
+      carbsG: entry.carbsG,
+      fatG: entry.fatG,
+      count: 1,
+    });
+  }
+  const foods = [...byKey.values()].map((food) => {
+    const fix = overrideByKey.get(food.labelKey);
+    if (!fix) return food;
+    return {
+      ...food,
+      label: fix.label,
+      kcal: fix.kcal ?? 0,
+      proteinG: fix.proteinG,
+      carbsG: fix.carbsG,
+      fatG: fix.fatG,
+    };
+  });
+
+  // Meals are costed per serving, which is the unit the "log it" button uses.
+  // A meal with any un-costed ingredient reports no total at all rather than
+  // one that quietly omits it, so it can't be offered here either.
+  const mealCandidates: WhatNowMeal[] = [];
+  for (const meal of meals) {
+    if (meal.items.length === 0 || meal.items.some((item) => item.kcal === null)) continue;
+    const servings = meal.servings > 0 ? meal.servings : 1;
+    const totals = sumMacros(meal.items);
+    const complete = totals.unknownEntries === 0;
+    mealCandidates.push({
+      id: meal.id,
+      name: meal.name,
+      kind: meal.kind,
+      kcal: Math.round(meal.items.reduce((sum, item) => sum + (item.kcal ?? 0), 0) / servings),
+      proteinG: complete ? Math.round((totals.protein / servings) * 10) / 10 : null,
+      carbsG: complete ? Math.round((totals.carbs / servings) * 10) / 10 : null,
+      fatG: complete ? Math.round((totals.fat / servings) * 10) / 10 : null,
+    });
+  }
+
+  const result = whatCanIStillEat({ remainingKcal, rooms, foods, meals: mealCandidates });
+
+  res.json({
+    date: dayKey,
+    referenceKcal: reference,
+    referenceSource: target !== null ? "target" : reference === null ? null : "estimate",
+    eatenKcal,
+    ...result,
   });
 });
 

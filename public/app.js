@@ -7014,6 +7014,7 @@ async function loadToday() {
     // screen would throw away the last good numbers for no gain.
   }
   loadQuickAdd();
+  loadWhatNow();
 }
 
 function renderToday(data) {
@@ -7149,6 +7150,177 @@ function renderTodayBody(whoop) {
 
   todaySleepCell.hidden = !hasSleep;
   if (hasSleep) todaySleep.textContent = formatSleepDuration(whoop.sleepMinutes);
+}
+
+// ── What still fits ─────────────────────────────────────────────────────────
+//
+// The card that answers "I've got 640 kcal and 48g of protein left — what can
+// I have?" from the user's own library. Fetched separately from /api/stats/today
+// rather than folded into it: it reads the whole entry history and every saved
+// meal, and the screen shouldn't wait on that to paint the ring.
+//
+// Only ever about today. Paged back to an earlier day the question doesn't
+// mean anything, so the card comes off the screen entirely.
+
+const whatNowCard = document.getElementById("what-now-card");
+const whatNowRoom = document.getElementById("what-now-room");
+const whatNowNote = document.getElementById("what-now-note");
+const whatNowList = document.getElementById("what-now-list");
+const whatNowSkipped = document.getElementById("what-now-skipped");
+
+async function loadWhatNow() {
+  if (todayViewDate) {
+    whatNowCard.hidden = true;
+    return;
+  }
+  try {
+    const res = await fetch("/api/stats/what-now");
+    if (!res.ok) throw new Error();
+    renderWhatNow(await res.json());
+  } catch {
+    // Offline or a failed call. This card is an extra, so it just stays as it
+    // was rather than replacing good numbers with an error.
+  }
+}
+
+function renderWhatNow(data) {
+  whatNowList.innerHTML = "";
+  whatNowSkipped.hidden = true;
+
+  // Without a calorie reference there's no "remaining" for anything to fit
+  // inside, so there's no card either.
+  if (data.reason === "no-reference") {
+    whatNowCard.hidden = true;
+    return;
+  }
+  whatNowCard.hidden = false;
+
+  whatNowRoom.textContent = data.remainingKcal === null
+    ? ""
+    : data.remainingKcal > 0
+      ? `${data.remainingKcal.toLocaleString()} kcal left`
+      : `${Math.abs(data.remainingKcal).toLocaleString()} kcal over`;
+
+  if (!data.available) {
+    whatNowNote.hidden = false;
+    whatNowNote.textContent = whatNowEmptyText(data);
+    return;
+  }
+
+  // A ceiling that's already been passed can't be respected by anything, so
+  // the list changes meaning — say so rather than letting it look like these
+  // still fit.
+  if (data.breachedCeilings.length > 0) {
+    const names = listToSentence(data.breachedCeilings.map((key) => (MACRO_LABELS[key] ?? key).toLowerCase()));
+    whatNowNote.hidden = false;
+    whatNowNote.textContent = `You're already past your ${names} target for today, so these are the ones with the least ${names} that fit the calories left.`;
+  } else {
+    whatNowNote.hidden = true;
+  }
+
+  for (const suggestion of data.suggestions) {
+    whatNowList.appendChild(whatNowRow(suggestion));
+  }
+
+  if (data.skippedForMissingMacros > 0) {
+    const n = data.skippedForMissingMacros;
+    whatNowSkipped.hidden = false;
+    whatNowSkipped.textContent = `${n} ${n === 1 ? "food has" : "foods have"} no macro breakdown, so ${n === 1 ? "it isn't" : "they aren't"} included. Add the figures in the food library to bring ${n === 1 ? "it" : "them"} in.`;
+  }
+}
+
+function whatNowEmptyText(data) {
+  switch (data.reason) {
+    case "no-room":
+      return "There's nothing left of today's calories to fit anything into.";
+    case "empty-library":
+      return "Nothing to suggest yet — log a few meals and they'll start showing up here.";
+    case "macros-unknown":
+      return "None of your foods have a macro breakdown yet, so there's nothing to measure against today's macro targets. Add the figures in the food library and they'll show up here.";
+    default:
+      return data.skippedForMissingMacros > 0
+        ? "Nothing in your library fits what's left of today's calories and macros. Some foods are missing their macro breakdown, so they weren't considered."
+        : "Nothing in your library fits what's left of today's calories and macros.";
+  }
+}
+
+function whatNowRow(suggestion) {
+  const row = document.createElement("li");
+  row.className = "what-now-row";
+
+  const main = document.createElement("div");
+  main.className = "what-now-main";
+
+  const label = document.createElement("span");
+  label.className = "what-now-label";
+  label.textContent = suggestion.label;
+  main.appendChild(label);
+
+  const figures = document.createElement("span");
+  figures.className = "what-now-figures";
+  figures.textContent = hasMacros(suggestion)
+    ? `${suggestion.kcal.toLocaleString()} kcal · ${macroLine(suggestion)}`
+    : `${suggestion.kcal.toLocaleString()} kcal`;
+  main.appendChild(figures);
+
+  const why = document.createElement("span");
+  why.className = "what-now-why";
+  why.textContent = suggestion.why;
+  main.appendChild(why);
+
+  row.appendChild(main);
+
+  const log = document.createElement("button");
+  log.type = "button";
+  log.className = "what-now-log";
+  log.textContent = "Log";
+  log.addEventListener("click", () => logSuggestion(suggestion, log));
+  row.appendChild(log);
+
+  return row;
+}
+
+/**
+ * Writes every part of a suggestion, then offers the same Undo the quick-add
+ * strip does — a pair logged in one tap has to come back out in one tap too.
+ */
+async function logSuggestion(suggestion, button) {
+  if (button.disabled) return;
+  button.disabled = true;
+
+  const savedIds = [];
+  try {
+    for (const part of suggestion.parts) {
+      const res = part.kind === "meal"
+        ? await fetch(`/api/meals/${part.mealId}/log`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            // The card costs a meal per serving, so one serving is what it
+            // offered and one serving is what it logs.
+            body: JSON.stringify({ servings: 1 }),
+          })
+        : await fetch("/api/foods/log", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ labelKey: part.labelKey }),
+          });
+      if (!res.ok) throw new Error("log failed");
+      const created = await res.json();
+      savedIds.push(...(Array.isArray(created) ? created.map((e) => e.id) : [created.id]));
+    }
+  } catch {
+    button.disabled = false;
+    showToast("Couldn't log that — please try again.");
+    return;
+  }
+
+  flashSaved(button);
+  haptic();
+  showToast(savedIds.length === 1 ? "Logged" : `${savedIds.length} items logged`, {
+    actionLabel: "Undo",
+    onAction: () => undoEntries(savedIds),
+  });
+  await refreshCurrentView();
 }
 
 function renderTodayInsights(insights) {
