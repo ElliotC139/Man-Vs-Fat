@@ -58,6 +58,21 @@ const settingsSchema = z.object({
   fatPct: z.number().int().min(0).max(100).nullable().optional(),
   // Null turns the daily reminder off entirely.
   reminderHour: z.number().int().min(0).max(23).nullable().optional(),
+  // Which cards each screen shows and in what order. Validated by shape rather
+  // than against a list of card names on purpose: the cards live in the page's
+  // markup, and a server that had to be redeployed to know about a new one
+  // would be a second copy of that list to keep in step. A key the page
+  // doesn't recognise is simply ignored when the layout is applied.
+  layout: z
+    .record(
+      z.string().max(40),
+      z.object({
+        order: z.array(z.string().max(60)).max(40),
+        hidden: z.array(z.string().max(60)).max(40),
+      }),
+    )
+    .nullable()
+    .optional(),
 });
 
 const googleSchema = z.object({
@@ -67,6 +82,23 @@ const googleSchema = z.object({
 // Undefined (not just falsy) when GOOGLE_SIGNIN_CLIENT_ID is unset, so the
 // button-config endpoint and the verify endpoint agree on "configured".
 const googleClient = config.GOOGLE_SIGNIN_CLIENT_ID ? new OAuth2Client(config.GOOGLE_SIGNIN_CLIENT_ID) : undefined;
+
+/**
+ * The saved layout, or nothing.
+ *
+ * Text that won't parse reads as no layout rather than as an error: a screen
+ * arranged oddly is a small problem, a screen that won't load because one row
+ * holds bad JSON is a large one.
+ */
+function parseLayout(value: string | null | undefined): unknown {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 function toPublicUser(user: {
   id: number;
@@ -93,6 +125,7 @@ function toPublicUser(user: {
   carbsPct?: number | null;
   fatPct?: number | null;
   reminderHour?: number | null;
+  layout?: string | null;
   email?: string | null;
   googleId?: string | null;
   passwordHash?: string | null;
@@ -125,6 +158,10 @@ function toPublicUser(user: {
     // apart on how a percentage becomes grams.
     macroTargets: resolveMacroTargets(user),
     reminderHour: user.reminderHour ?? null,
+    // Stored as a string, since SQLite has no JSON column. A row that somehow
+    // holds unparseable text reads as no layout at all rather than breaking
+    // every screen it touches.
+    layout: parseLayout(user.layout),
     email: user.email ?? null,
     // The settings screen needs to know which recovery routes exist for this
     // account without being told the secrets behind them.
@@ -309,14 +346,21 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
   // percentages and the calorie target they divide up can arrive in separate
   // requests, and checking only what's in this one would let the pair end up
   // in a state neither request looked wrong on its own.
-  const merged = { ...current, ...parsed.data };
+  const merged = { ...current, ...parsed.data, layout: current.layout };
   const macroError = validateMacroSettings(merged);
   if (macroError) {
     res.status(400).json({ error: macroError });
     return;
   }
 
-  const user = await prisma.user.update({ where: { id: req.userId! }, data: parsed.data });
+  // The layout is the one field that isn't stored as it arrives: SQLite has no
+  // JSON column, so it goes in as text.
+  const { layout, ...fields } = parsed.data;
+  const data = layout === undefined
+    ? fields
+    : { ...fields, layout: layout === null ? null : JSON.stringify(layout) };
+
+  const user = await prisma.user.update({ where: { id: req.userId! }, data });
 
   // Changing the rollover re-slices every week the user has ever logged, and
   // entries are filed against a week's exact boundaries — so without this the

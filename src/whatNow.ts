@@ -462,12 +462,17 @@ function score(candidate: Candidate, rooms: MacroRoom[], remainingKcal: number):
 }
 
 /**
- * One sentence of what this would do to the day, in the app's usual voice:
- * a statement of the arithmetic, never a suggestion that it's a good idea.
+ * What this would do to the day, as short as it can be said.
+ *
+ * This was a full sentence per row, and six of them stacked read as a wall of
+ * near-identical text — the card's whole job is to be glanced at. It is now
+ * two clauses separated by a dot: what it does to the target that is still
+ * short, then what is left afterwards. Still a statement of the arithmetic
+ * and never a suggestion that it's a good idea.
  */
 function explain(candidate: Candidate, rooms: MacroRoom[], remainingKcal: number): string {
   const left = Math.round(remainingKcal - candidate.kcal);
-  const leftClause = left <= 0 ? "uses the last of today's calories" : `leaves ${withThousands(left)} kcal`;
+  const leftClause = left <= 0 ? "uses up the day" : `${withThousands(left)} kcal left`;
 
   // The gap it makes the biggest dent in, if any.
   const outstanding = rooms
@@ -476,17 +481,18 @@ function explain(candidate: Candidate, rooms: MacroRoom[], remainingKcal: number
     .sort((a, b) => b.covered / b.room.gap - a.covered / a.room.gap);
 
   const best = outstanding[0];
-  if (best) {
-    const name = macroName(best.room.key);
-    if (best.covered >= best.room.gap - 0.5) {
-      return `Clears the ${Math.round(best.room.gap)}g of ${name} still to go, and ${leftClause}.`;
-    }
-    return `Covers ${Math.round(best.covered)}g of the ${Math.round(best.room.gap)}g of ${name} still to go, and ${leftClause}.`;
-  }
+  if (!best) return capitalise(leftClause);
 
-  return left <= 0
-    ? "Uses the last of today's calories."
-    : `Leaves ${withThousands(left)} kcal of today's allowance.`;
+  const name = macroName(best.room.key);
+  const gapClause = best.covered >= best.room.gap - 0.5
+    ? `Clears your ${name}`
+    : `${Math.round(best.covered)}g of ${Math.round(best.room.gap)}g ${name}`;
+
+  return `${gapClause} · ${leftClause}`;
+}
+
+function capitalise(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 /**

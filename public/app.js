@@ -24,6 +24,7 @@ const ICONS = {
   droplet: icon('<path d="M12 2.7 6.9 8.1a7.2 7.2 0 1 0 10.2 0Z"/>'),
   note: icon('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z"/><path d="M14 3v6h6"/>'),
   chevronDown: icon('<polyline points="6 9 12 15 18 9"/>'),
+  chevronUp: icon('<polyline points="18 15 12 9 6 15"/>'),
 };
 
 const authScreen = document.getElementById("auth-screen");
@@ -668,6 +669,28 @@ function enterEditMode(row, entry) {
   qtyInput.title = "How many";
   qtyInput.setAttribute("aria-label", "Quantity");
 
+  /**
+   * Changing "how many" multiplies the figures, in the box, as you type.
+   *
+   * The server has always known how to rescale a quantity change, but this
+   * form sent the calorie field on every save whether or not it had been
+   * touched — and an explicitly sent figure rightly wins over the arithmetic.
+   * So the rescale never once applied: setting a 46 kcal biscuit to 3 saved
+   * 46 kcal. Doing it here instead means what you see in the box is what gets
+   * saved, and there is no rule about which of two numbers wins.
+   *
+   * `perUnit` is the figures for one of them, kept up to date so typing over a
+   * calorie figure and then changing the quantity scales from the number you
+   * typed rather than the one it replaced.
+   */
+  const startQty = Number(entry.quantity) > 0 ? Number(entry.quantity) : 1;
+  const perUnit = {
+    kcal: entry.kcal === null || entry.kcal === undefined ? null : entry.kcal / startQty,
+    protein: entry.proteinG === null || entry.proteinG === undefined ? null : entry.proteinG / startQty,
+    carbs: entry.carbsG === null || entry.carbsG === undefined ? null : entry.carbsG / startQty,
+    fat: entry.fatG === null || entry.fatG === undefined ? null : entry.fatG / startQty,
+  };
+
   // Only offered when macros are on. Adding three more fields to every edit
   // row for someone tracking calories alone would be pure clutter.
   const macroInputs = {};
@@ -691,6 +714,35 @@ function enterEditMode(row, entry) {
       field.append(caption, input);
       macroRow.appendChild(field);
     }
+  }
+
+  function currentQty() {
+    const value = Number(qtyInput.value);
+    return Number.isFinite(value) && value > 0 ? value : 1;
+  }
+
+  qtyInput.addEventListener("input", () => {
+    const qty = currentQty();
+    if (perUnit.kcal !== null) kcalInput.value = Math.round(perUnit.kcal * qty);
+    for (const key of ["protein", "carbs", "fat"]) {
+      const input = macroInputs[key];
+      if (input && perUnit[key] !== null) input.value = Math.round(perUnit[key] * qty * 10) / 10;
+    }
+  });
+
+  // Typing over a figure redefines what one of them costs, so a later quantity
+  // change scales from the new number rather than reverting to the old one.
+  kcalInput.addEventListener("input", () => {
+    const typed = kcalInput.value === "" ? null : Number(kcalInput.value);
+    perUnit.kcal = typed === null || !Number.isFinite(typed) ? null : typed / currentQty();
+  });
+  for (const key of ["protein", "carbs", "fat"]) {
+    const input = macroInputs[key];
+    if (!input) continue;
+    input.addEventListener("input", () => {
+      const typed = input.value === "" ? null : Number(input.value);
+      perUnit[key] = typed === null || !Number.isFinite(typed) ? null : typed / currentQty();
+    });
   }
 
   const dateInput = document.createElement("input");
@@ -725,27 +777,19 @@ function enterEditMode(row, entry) {
   saveBtn.textContent = "Save";
   saveBtn.style.width = "auto";
   saveBtn.addEventListener("click", async () => {
+    // Everything in the boxes is already the total for the whole entry, scaled
+    // as the quantity was changed, so it all goes as it stands. Nothing is
+    // left for the server to work out.
     const body = {
       label: labelInput.value.trim(),
       kcal: kcalInput.value === "" ? null : Number(kcalInput.value),
+      quantity: currentQty(),
       date: dateInput.value,
     };
-    // Only sent when it actually changed. Sending it every time would make
-    // the server rescale kcal on every save, undoing a figure typed by hand
-    // in the same edit.
-    const newQty = Number(qtyInput.value);
-    if (Number.isFinite(newQty) && newQty > 0 && newQty !== (entry.quantity ?? 1)) {
-      body.quantity = newQty;
-    }
-    // Sent only when edited, for the same reason as quantity: sending them
-    // unchanged would override the server's quantity rescaling with the old
-    // pre-scaled figures.
     for (const key of ["protein", "carbs", "fat"]) {
       const input = macroInputs[key];
       if (!input) continue;
-      const typed = input.value === "" ? null : Number(input.value);
-      const current = entry[`${key}G`] ?? null;
-      if (typed !== current) body[`${key}G`] = typed;
+      body[`${key}G`] = input.value === "" ? null : Number(input.value);
     }
     if (isRolloverDay(dateInput.value)) {
       body.hour = weekSelect.value === "last"
@@ -1061,6 +1105,11 @@ settingsSave.addEventListener("click", async () => {
 
 function populateSettings(user) {
   currentUser = user;
+  // The saved arrangement rides in with the rest of the profile, so the cards
+  // are in the right order before the first screen is looked at.
+  loadLayout();
+  renderLayoutEditor();
+  loadBackfillStatus();
   settingsUsername.textContent = user.username;
   settingsReminderHour.value = user.reminderHour === null ? "" : String(user.reminderHour);
   settingsWeekday.value = String(user.weekStartWeekday);
@@ -4567,14 +4616,12 @@ const foodSearchClose = document.getElementById("food-search-close");
 const foodSearchQuery = document.getElementById("food-search-query");
 const foodSearchStatus = document.getElementById("food-search-status");
 const foodSearchResults = document.getElementById("food-search-results");
-const foodSearchFilters = document.getElementById("food-search-filters");
 const foodSearchEstimate = document.getElementById("food-search-estimate");
 
 let dbSearchTimer = null;
 // Bumped on every keystroke so a slow earlier response can't overwrite the
 // results for what's actually in the box now.
 let foodSearchSeq = 0;
-let foodSearchKind = "";
 let foodSearchLastQuery = "";
 
 foodSearchBtn.addEventListener("click", () => {
@@ -4592,16 +4639,6 @@ foodSearchBtn.addEventListener("click", () => {
 
 foodSearchClose.addEventListener("click", () => {
   foodSearchCard.hidden = true;
-});
-
-foodSearchFilters.addEventListener("click", (event) => {
-  const btn = event.target.closest(".food-filter");
-  if (!btn) return;
-  foodSearchKind = btn.dataset.kind;
-  for (const other of foodSearchFilters.querySelectorAll(".food-filter")) {
-    other.classList.toggle("food-filter--on", other === btn);
-  }
-  if (foodSearchLastQuery) runFoodSearch(foodSearchLastQuery);
 });
 
 foodSearchQuery.addEventListener("input", () => {
@@ -4624,13 +4661,10 @@ async function runFoodSearch(query) {
   foodSearchStatus.textContent = "Searching…";
   foodSearchStatus.hidden = false;
   try {
-    const params = new URLSearchParams({ q: query });
-    if (foodSearchKind) params.set("kind", foodSearchKind);
-    const res = await fetch(`/api/food-search?${params}`);
+    const res = await fetch(`/api/food-search?q=${encodeURIComponent(query)}`);
     if (!res.ok) throw new Error();
     const data = await res.json();
     if (seq !== foodSearchSeq) return;
-    applySourceAvailability(data.sources);
     renderFoodResults(data.results, query);
   } catch {
     if (seq !== foodSearchSeq) return;
@@ -4641,18 +4675,13 @@ async function runFoodSearch(query) {
   }
 }
 
-// A filter for a source this deployment can't reach could only ever return
-// nothing, so the chip stays off the screen rather than looking broken.
-function applySourceAvailability(sources) {
-  foodSearchFilters.querySelector('[data-kind="restaurant"]').hidden = !sources?.menus;
-  foodSearchFilters.querySelector('[data-kind="generic"]').hidden = !sources?.ingredients;
-}
-
+// Only the two labels that tell someone something they'd act on. "Packet" and
+// "Ingredient" were the app describing its own plumbing — nobody searching for
+// hobnobs needs to be told which database they came out of, and four filter
+// chips above a list of five results was noise on top of that.
 const FOOD_KIND_BADGES = {
   yours: { text: "Yours", cls: "food-badge--yours" },
   restaurant: { text: "Menu", cls: "food-badge--menu" },
-  branded: { text: "Packet", cls: "food-badge--packet" },
-  generic: { text: "Ingredient", cls: "food-badge--generic" },
 };
 
 function renderFoodResults(results, query) {
@@ -5116,6 +5145,296 @@ function saveShareImage() {
   link.click();
   URL.revokeObjectURL(url);
   showToast("Saved to your downloads.");
+}
+
+// ── Filling in missing macros ───────────────────────────────────────────────
+// A one-off over the diary's history. Runs a batch at a time with the count
+// going down in front of the user, rather than one long request that either
+// finishes or doesn't: years of diary is a lot of estimating, and a progress
+// number that moves is the difference between waiting and wondering.
+const backfillStatusEl = document.getElementById("backfill-status");
+const backfillRunBtn = document.getElementById("backfill-run");
+let backfillRunning = false;
+
+async function loadBackfillStatus() {
+  if (!backfillStatusEl) return;
+  try {
+    const res = await fetch("/api/entries/macro-backfill");
+    if (!res.ok) throw new Error();
+    renderBackfillStatus(await res.json());
+  } catch {
+    backfillStatusEl.textContent = "Couldn't check just now.";
+    backfillRunBtn.hidden = true;
+  }
+}
+
+function renderBackfillStatus({ entries, foods }) {
+  if (entries === 0) {
+    backfillStatusEl.textContent = "Every entry has a macro breakdown.";
+    backfillRunBtn.hidden = true;
+    return;
+  }
+  backfillStatusEl.textContent =
+    `${entries.toLocaleString()} ${entries === 1 ? "entry has" : "entries have"} calories but no macro breakdown, ` +
+    `across ${foods.toLocaleString()} ${foods === 1 ? "food" : "different foods"}. ` +
+    "Filling them in works each food out once and applies it to every entry of it, keeping the calories you already logged.";
+  backfillRunBtn.hidden = false;
+}
+
+backfillRunBtn?.addEventListener("click", async () => {
+  if (backfillRunning) return;
+  backfillRunning = true;
+  backfillRunBtn.disabled = true;
+
+  let filled = 0;
+  const couldNot = new Set();
+  try {
+    // Batch after batch until the server says there is nothing left it can
+    // move. Foods the estimator can't answer for stay in the count for ever,
+    // so "no progress" is the stopping condition, not "the count hit zero".
+    for (;;) {
+      const res = await fetch("/api/entries/macro-backfill", { method: "POST" });
+      if (res.status === 429) {
+        backfillStatusEl.textContent = `${filled.toLocaleString()} filled in so far — pausing for a minute, then carrying on.`;
+        await new Promise((resolve) => setTimeout(resolve, 60_000));
+        continue;
+      }
+      if (!res.ok) throw new Error();
+      const result = await res.json();
+      filled += result.updated;
+      for (const label of result.failed) couldNot.add(label);
+      backfillStatusEl.textContent =
+        `${filled.toLocaleString()} filled in, ${result.entries.toLocaleString()} to go…`;
+      if (result.done) break;
+    }
+
+    const note = couldNot.size > 0
+      ? ` ${couldNot.size} ${couldNot.size === 1 ? "food" : "foods"} couldn't be worked out — you can add those by hand in the food library.`
+      : "";
+    showToast(`${filled.toLocaleString()} ${filled === 1 ? "entry" : "entries"} filled in.`);
+    await loadBackfillStatus();
+    if (note) backfillStatusEl.textContent += note;
+    refreshCurrentView();
+  } catch {
+    backfillStatusEl.textContent = `Stopped after ${filled.toLocaleString()} — try again in a moment.`;
+  }
+  backfillRunning = false;
+  backfillRunBtn.disabled = false;
+});
+
+// ── Settings sections ───────────────────────────────────────────────────────
+// Settings was thirteen panels stacked into a page you scroll for a minute to
+// find the one you wanted. They are the same thirteen panels, closed, under
+// five headings — so the whole of Settings is one screen of headings, and
+// opening one is a tap rather than a hunt.
+function initSettingsSections() {
+  for (const section of document.querySelectorAll("[data-settings-section]")) {
+    const head = section.querySelector(".settings-section-head");
+    const body = section.querySelector(".settings-section-body");
+    const chevron = section.querySelector(".settings-section-chevron");
+    if (!head || !body) continue;
+    chevron.innerHTML = ICONS.chevronDown;
+
+    head.addEventListener("click", () => {
+      const open = body.hidden;
+      body.hidden = !open;
+      head.setAttribute("aria-expanded", String(open));
+      section.classList.toggle("settings-section--open", open);
+      if (open) haptic();
+    });
+  }
+}
+
+// ── Page layout ─────────────────────────────────────────────────────────────
+//
+// Which cards a screen shows, and in what order. Every movable card carries a
+// data-module in the markup, so the list of them is driven by the page rather
+// than by a second copy kept in step by hand.
+//
+// Stored as an order and a set of hidden cards, rather than as a list of the
+// ones that are on. That distinction matters: a card added in a later version
+// is in neither list, so it appears for everybody in its markup position —
+// where "the ones that are on" would have silently left it off for anyone who
+// had ever touched their layout.
+//
+// Turning a card off never deletes anything. It stops being on the screen and
+// the data behind it is exactly where it was, which is worth saying in the UI
+// because "hide" and "delete" are easy to confuse when it's your food diary.
+const LAYOUT_SCREENS = [
+  { key: "today", label: "Today" },
+  { key: "week", label: "My Week" },
+];
+
+/** screen → [{ key, name }], in the order the markup declares them. */
+let defaultLayout = new Map();
+/** screen → { order: string[], hidden: string[] }, as the user arranged it. */
+let layoutChoice = {};
+
+/**
+ * The order the markup declares, read once and kept.
+ *
+ * Applying a layout physically moves the cards, so after the first arrangement
+ * the DOM is no longer the default — re-reading it would make "reset to the
+ * default layout" mean "keep whatever order you last chose", which is what it
+ * did until this was pinned.
+ */
+function readDefaultLayout() {
+  if (defaultLayout.size > 0) return;
+  for (const el of document.querySelectorAll("[data-module]")) {
+    const [screen] = el.dataset.module.split(":");
+    if (!defaultLayout.has(screen)) defaultLayout.set(screen, []);
+    defaultLayout.get(screen).push({ key: el.dataset.module, name: el.dataset.moduleName ?? el.dataset.module });
+  }
+}
+
+/** The saved order, with anything it doesn't mention kept in its markup place. */
+function orderFor(screen, modules) {
+  const saved = layoutChoice[screen]?.order ?? [];
+  const keys = modules.map((m) => m.key);
+  const known = new Set(saved.filter((key) => keys.includes(key)));
+  return [...saved.filter((key) => keys.includes(key)), ...keys.filter((key) => !known.has(key))];
+}
+
+function hiddenFor(screen) {
+  return new Set(layoutChoice[screen]?.hidden ?? []);
+}
+
+function applyLayout() {
+  for (const [screen, modules] of defaultLayout) {
+    const hidden = hiddenFor(screen);
+    let previous = null;
+    for (const key of orderFor(screen, modules)) {
+      const el = document.querySelector(`[data-module="${key}"]`);
+      if (!el) continue;
+      el.classList.toggle("module--off", hidden.has(key));
+      // Moved rather than re-created, so nothing inside loses its state.
+      if (previous) previous.after(el);
+      else el.parentElement.prepend(el);
+      previous = el;
+    }
+  }
+}
+
+function loadLayout() {
+  readDefaultLayout();
+  layoutChoice = currentUser?.layout ?? {};
+  applyLayout();
+}
+
+const layoutScreensEl = document.getElementById("layout-screens");
+const layoutResetBtn = document.getElementById("layout-reset");
+
+function renderLayoutEditor() {
+  if (!layoutScreensEl) return;
+  layoutScreensEl.innerHTML = "";
+  readDefaultLayout();
+
+  for (const screen of LAYOUT_SCREENS) {
+    const modules = defaultLayout.get(screen.key) ?? [];
+    if (modules.length === 0) continue;
+
+    const group = document.createElement("div");
+    group.className = "layout-screen";
+
+    const heading = document.createElement("h3");
+    heading.className = "layout-screen-title";
+    heading.textContent = screen.label;
+    group.appendChild(heading);
+
+    const list = document.createElement("ul");
+    list.className = "layout-list";
+    const order = orderFor(screen.key, modules);
+    const hidden = hiddenFor(screen.key);
+    const byKey = new Map(modules.map((m) => [m.key, m]));
+
+    order.forEach((key, index) => {
+      const module = byKey.get(key);
+      if (module) list.appendChild(layoutRow(screen.key, module, order, index, !hidden.has(key)));
+    });
+
+    group.appendChild(list);
+    layoutScreensEl.appendChild(group);
+  }
+}
+
+function layoutRow(screenKey, module, order, index, on) {
+  const row = document.createElement("li");
+  row.className = "layout-row";
+
+  const toggle = document.createElement("label");
+  toggle.className = "layout-toggle";
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = on;
+  checkbox.addEventListener("change", () => {
+    const hidden = hiddenFor(screenKey);
+    if (checkbox.checked) hidden.delete(module.key);
+    else hidden.add(module.key);
+    saveLayout(screenKey, order, [...hidden]);
+  });
+
+  const name = document.createElement("span");
+  name.textContent = module.name;
+  toggle.append(checkbox, name);
+  row.appendChild(toggle);
+
+  const moves = document.createElement("div");
+  moves.className = "layout-moves";
+  moves.append(
+    moveButton("Move up", ICONS.chevronUp, index === 0, () => moveModule(screenKey, order, index, index - 1)),
+    moveButton("Move down", ICONS.chevronDown, index === order.length - 1, () => moveModule(screenKey, order, index, index + 1)),
+  );
+  row.appendChild(moves);
+
+  return row;
+}
+
+function moveButton(label, iconMarkup, disabled, run) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "layout-move";
+  button.innerHTML = iconMarkup;
+  button.setAttribute("aria-label", label);
+  button.disabled = disabled;
+  button.addEventListener("click", run);
+  return button;
+}
+
+function moveModule(screenKey, order, from, to) {
+  const next = [...order];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  saveLayout(screenKey, next, [...hiddenFor(screenKey)]);
+}
+
+async function saveLayout(screenKey, order, hidden) {
+  layoutChoice = { ...layoutChoice, [screenKey]: { order, hidden } };
+  applyLayout();
+  renderLayoutEditor();
+  haptic();
+  await persistLayout(layoutChoice);
+}
+
+layoutResetBtn?.addEventListener("click", async () => {
+  layoutChoice = {};
+  applyLayout();
+  renderLayoutEditor();
+  await persistLayout(null);
+  showToast("Back to the default layout.");
+});
+
+async function persistLayout(layout) {
+  try {
+    const res = await fetch("/api/auth/me", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ layout }),
+    });
+    if (!res.ok) throw new Error();
+    if (currentUser) currentUser.layout = layout ?? {};
+  } catch {
+    showToast("Couldn't save that layout — please try again.");
+  }
 }
 
 // ── Offline ─────────────────────────────────────────────────────────────────
@@ -6147,48 +6466,10 @@ function enterExerciseEditMode(row, exercise) {
 // The diary could say what you ate but never what you were aiming at. The
 // target is the user's own number rather than a derived one: the adaptive
 // TDEE can propose it, but it doesn't move on its own when a wearable syncs.
-const targetCard = document.getElementById("target-card");
-const targetToday = document.getElementById("target-today");
-const targetCalories = document.getElementById("target-calories");
-const targetTodayFigures = document.getElementById("target-today-figures");
-const targetTodayNote = document.getElementById("target-today-note");
-const targetFill = document.getElementById("target-fill");
+// ── Daily calorie target (Settings) ────────────────────────────────────────
 const settingsCalorieTarget = document.getElementById("settings-calorie-target");
 const suggestTargetBtn = document.getElementById("suggest-target-btn");
 const suggestTargetNote = document.getElementById("suggest-target-note");
-
-function renderTargetToday(today) {
-  const calorieTarget = currentUser?.dailyCalorieTarget ?? null;
-  const macroTargets = currentUser?.macroTargets ?? null;
-
-  // The two halves are independent. Someone tracking "at least 180g of
-  // protein" and nothing else has no reason to have set a calorie target,
-  // and gating the whole card on one hid their macros completely.
-  if (!today || (!calorieTarget && !macroTargets)) {
-    targetToday.hidden = true;
-    targetCard.hidden = true;
-    return;
-  }
-
-  targetCard.hidden = false;
-  targetToday.hidden = false;
-  targetCalories.hidden = !calorieTarget;
-
-  if (calorieTarget) {
-    const logged = today.kcal ?? 0;
-    const left = calorieTarget - logged;
-    targetTodayFigures.textContent = `${logged.toLocaleString()} / ${calorieTarget.toLocaleString()} kcal`;
-
-    const pct = Math.max(0, Math.min(100, (logged / calorieTarget) * 100));
-    targetFill.style.width = `${pct}%`;
-    targetFill.classList.toggle("target-fill--over", logged > calorieTarget);
-
-    targetTodayNote.textContent =
-      left >= 0 ? `${left.toLocaleString()} kcal left today` : `${Math.abs(left).toLocaleString()} kcal over`;
-  }
-
-  renderMacroToday(today, { standalone: !calorieTarget });
-}
 
 // ── Macros: today's remaining ──────────────────────────────────────────────
 // Deliberately on the diary screen rather than a tab of their own: "how much
@@ -6196,7 +6477,6 @@ function renderTargetToday(today) {
 // and a separate tab would only ever be seen afterwards.
 const macroToday = document.getElementById("macro-today");
 const macroTodayNote = document.getElementById("macro-today-note");
-const macroTodayHeading = document.getElementById("macro-today-heading");
 
 const MACRO_LABELS = { protein: "Protein", carbs: "Carbs", fat: "Fat" };
 const MACRO_OP_WORDS = { min: "at least", max: "at most", eq: "about" };
@@ -6256,17 +6536,18 @@ function describeTarget(key, target) {
   return `${MACRO_OP_WORDS[target.op] ?? "about"} ${target.grams}g`;
 }
 
-function renderMacroToday(today, { standalone = false } = {}) {
+/**
+ * The macro bars, which live under the ring rather than in a card of their
+ * own. They were a second "Against target" panel repeating the calorie bar the
+ * ring already draws — one card, one answer to "where is today".
+ */
+function renderMacroToday(today) {
   const targets = currentUser?.macroTargets ?? null;
   if (!targets || !today) {
     macroToday.hidden = true;
     return;
   }
   macroToday.hidden = false;
-  // With no calorie bar above it the macro block is the whole card, so it
-  // needs the "Today" heading and loses the divider that separated the two.
-  macroToday.classList.toggle("macro-today--standalone", standalone);
-  macroTodayHeading.hidden = !standalone;
 
   const eaten = today.macros ?? { protein: 0, carbs: 0, fat: 0, unknownEntries: 0 };
 
@@ -7611,12 +7892,13 @@ function renderToday(data) {
 
   // The target bar and macro rows are the same component the week summary
   // used to carry; they live here now, where today's numbers belong.
-  renderTargetToday({ kcal: eaten, macros: data.macros.eaten });
+  renderMacroToday({ kcal: eaten, macros: data.macros.eaten });
 
   renderTodayBody(data.whoop);
   renderTodayInsights(data.insights);
   renderTodayEntries(data.entries);
   renderWater(data.waterMl ?? 0);
+  renderTodayNote(data.note);
 }
 
 let currentTodayDate = null;
@@ -7797,10 +8079,10 @@ function renderWhatNow(data) {
  * number came from is what stops it looking arbitrary.
  */
 const BURN_SOURCE_WORDS = {
-  "measured-average": "your measured daily average",
-  adaptive: "your learned daily burn",
-  formula: "your estimated daily burn",
-  target: "your daily calorie target",
+  "measured-average": "your measured average",
+  adaptive: "your learned burn",
+  formula: "estimated",
+  target: "your target",
 };
 
 function renderWhatNowBasis(data) {
@@ -7809,14 +8091,13 @@ function renderWhatNowBasis(data) {
     whatNowBasis.hidden = true;
     return;
   }
-  const source = BURN_SOURCE_WORDS[burn.baseSource] ?? "your daily burn";
-  const parts = [`${burn.base.toLocaleString()} kcal from ${source}`];
-  if (burn.exerciseKcal > 0) parts.push(`${burn.exerciseKcal.toLocaleString()} kcal of exercise logged today`);
+  const source = BURN_SOURCE_WORDS[burn.baseSource] ?? "daily burn";
+  const exercise = burn.exerciseKcal > 0 ? ` + ${burn.exerciseKcal.toLocaleString()} exercise` : "";
 
   whatNowBasis.hidden = false;
   whatNowBasis.textContent =
-    `Against ${burn.kcal.toLocaleString()} kcal expected to burn today — ${listToSentence(parts)}. ` +
-    `You've eaten ${data.eatenKcal.toLocaleString()}.`;
+    `${data.eatenKcal.toLocaleString()} eaten of ${burn.kcal.toLocaleString()} expected to burn today ` +
+    `(${source}${exercise}).`;
 }
 
 function whatNowEmptyText(data) {
@@ -7838,6 +8119,15 @@ function whatNowEmptyText(data) {
   }
 }
 
+/**
+ * One suggestion, two lines.
+ *
+ * It was three: name, a full macro breakdown, then a sentence. Six of those
+ * stacked is a wall of text on a card whose whole job is to be glanced at, and
+ * the breakdown is a line nobody reads here — it's in the sheet the Log button
+ * opens, where it matters. So the calories move up beside the name, and what's
+ * left underneath is the one clause that answers "why this one".
+ */
 function whatNowRow(suggestion) {
   const row = document.createElement("li");
   row.className = "what-now-row";
@@ -7845,21 +8135,26 @@ function whatNowRow(suggestion) {
   const main = document.createElement("div");
   main.className = "what-now-main";
 
+  const top = document.createElement("span");
+  top.className = "what-now-top";
+
   const label = document.createElement("span");
   label.className = "what-now-label";
   label.textContent = suggestion.label;
-  main.appendChild(label);
 
-  const figures = document.createElement("span");
-  figures.className = "what-now-figures";
-  figures.textContent = hasMacros(suggestion)
-    ? `${suggestion.kcal.toLocaleString()} kcal · ${macroLine(suggestion)}`
-    : `${suggestion.kcal.toLocaleString()} kcal`;
-  main.appendChild(figures);
+  const kcal = document.createElement("span");
+  kcal.className = "what-now-kcal";
+  kcal.textContent = `${suggestion.kcal.toLocaleString()} kcal`;
+
+  top.append(label, kcal);
+  main.appendChild(top);
 
   const why = document.createElement("span");
   why.className = "what-now-why";
   why.textContent = suggestion.why;
+  // The full breakdown is one long-press away for anyone who wants it, without
+  // taking a line on every row for everyone who doesn't.
+  if (hasMacros(suggestion)) why.title = macroLine(suggestion);
   main.appendChild(why);
 
   row.appendChild(main);
@@ -7917,6 +8212,57 @@ async function logSuggestion(suggestion, button) {
   await refreshCurrentView();
 }
 
+// ── The day's note ──────────────────────────────────────────────────────────
+// The same note the diary has always carried per day, on the day it is about.
+// Context like "away with work" or "first week back running" is written on the
+// day it happens, not hunted down in a list afterwards.
+const todayNoteCard = document.getElementById("today-note-card");
+const todayNoteInput = document.getElementById("today-note-input");
+const todayNoteSave = document.getElementById("today-note-save");
+const todayNoteStatus = document.getElementById("today-note-status");
+
+// What the server has, so the Save button only appears once there is something
+// to save — a button that does nothing is worse than no button.
+let savedNote = "";
+
+function renderTodayNote(note) {
+  savedNote = note ?? "";
+  // Never overwrite something half-typed with the value from a background
+  // refresh.
+  if (document.activeElement !== todayNoteInput) todayNoteInput.value = savedNote;
+  todayNoteSave.hidden = todayNoteInput.value.trim() === savedNote;
+  todayNoteStatus.hidden = !savedNote;
+  todayNoteStatus.textContent = savedNote ? "Saved" : "";
+}
+
+todayNoteInput.addEventListener("input", () => {
+  todayNoteSave.hidden = todayNoteInput.value.trim() === savedNote;
+  todayNoteStatus.hidden = true;
+});
+
+todayNoteSave.addEventListener("click", async () => {
+  const note = todayNoteInput.value.trim();
+  todayNoteSave.disabled = true;
+  try {
+    const res = await fetch("/api/days/notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date: currentTodayDate, note }),
+    });
+    if (!res.ok) throw new Error();
+    savedNote = note;
+    flashSaved(todayNoteSave);
+    haptic();
+    // The diary screen shows the same notes, so its copy has to move too.
+    if (note) dayNotes.set(currentTodayDate, note);
+    else dayNotes.delete(currentTodayDate);
+    setTimeout(() => renderTodayNote(note), 1100);
+  } catch {
+    showToast("Couldn't save that note — please try again.");
+  }
+  todayNoteSave.disabled = false;
+});
+
 function renderTodayInsights(insights) {
   todayInsightsList.innerHTML = "";
   if (!insights || insights.length === 0) {
@@ -7948,3 +8294,9 @@ function renderTodayEntries(entries) {
   // photo thumbnail all behave identically in both places.
   for (const entry of entries) todayEntryList.appendChild(renderEntryRow(entry));
 }
+
+
+// Startup. These run last because the constants they reach for are declared
+// throughout this file, and a const is not usable before its own declaration
+// has been evaluated.
+initSettingsSections();

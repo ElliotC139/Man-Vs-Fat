@@ -81,7 +81,7 @@
           <span id="today-offline-text"></span>
         </div>
 
-        <section class="card today-hero">
+        <section class="card today-hero" data-module="today:hero" data-module-name="Calories and macros">
           <div class="today-hero-row">
             <div class="today-ring-wrap">
               <svg class="today-ring" viewBox="0 0 120 120" aria-hidden="true">
@@ -108,54 +108,37 @@
               </div>
             </div>
           </div>
+          <div id="macro-today" class="macro-today" hidden>
+            <div class="macro-row" data-macro="protein">
+              <span class="macro-name">Protein</span>
+              <div class="macro-track"><div class="macro-fill"></div></div>
+              <span class="macro-figures">
+                <span class="macro-total"></span>
+                <span class="macro-delta"></span>
+              </span>
+            </div>
+            <div class="macro-row" data-macro="carbs">
+              <span class="macro-name">Carbs</span>
+              <div class="macro-track"><div class="macro-fill"></div></div>
+              <span class="macro-figures">
+                <span class="macro-total"></span>
+                <span class="macro-delta"></span>
+              </span>
+            </div>
+            <div class="macro-row" data-macro="fat">
+              <span class="macro-name">Fat</span>
+              <div class="macro-track"><div class="macro-fill"></div></div>
+              <span class="macro-figures">
+                <span class="macro-total"></span>
+                <span class="macro-delta"></span>
+              </span>
+            </div>
+            <p id="macro-today-note" class="macro-today-note" hidden></p>
+          </div>
           <p id="today-pending" class="error" hidden></p>
         </section>
 
-        <section id="target-card" class="card">
-          <div id="target-today" class="target-today" hidden>
-          <div id="target-calories" class="target-calories">
-          <div class="target-today-head">
-          <span class="target-today-label">Against target</span>
-          <span id="target-today-figures" class="target-today-figures"></span>
-          </div>
-          <div class="target-track"><div id="target-fill" class="target-fill"></div></div>
-          <span id="target-today-note" class="target-today-note"></span>
-          </div>
-
-          <div id="macro-today" class="macro-today" hidden>
-          <div id="macro-today-heading" class="target-today-head" hidden>
-          <span class="target-today-label">Against target</span>
-          </div>
-          <div class="macro-row" data-macro="protein">
-          <span class="macro-name">Protein</span>
-          <div class="macro-track"><div class="macro-fill"></div></div>
-          <span class="macro-figures">
-          <span class="macro-total"></span>
-          <span class="macro-delta"></span>
-          </span>
-          </div>
-          <div class="macro-row" data-macro="carbs">
-          <span class="macro-name">Carbs</span>
-          <div class="macro-track"><div class="macro-fill"></div></div>
-          <span class="macro-figures">
-          <span class="macro-total"></span>
-          <span class="macro-delta"></span>
-          </span>
-          </div>
-          <div class="macro-row" data-macro="fat">
-          <span class="macro-name">Fat</span>
-          <div class="macro-track"><div class="macro-fill"></div></div>
-          <span class="macro-figures">
-          <span class="macro-total"></span>
-          <span class="macro-delta"></span>
-          </span>
-          </div>
-          <p id="macro-today-note" class="macro-today-note" hidden></p>
-          </div>
-          </div>
-        </section>
-
-        <section id="what-now-card" class="card what-now-card" hidden>
+        <section id="what-now-card" class="card what-now-card" data-module="today:what-now" data-module-name="What still fits" hidden>
           <button
           type="button"
           id="what-now-toggle"
@@ -177,12 +160,12 @@
           </div>
         </section>
 
-        <section id="today-insights-card" class="card" hidden>
+        <section id="today-insights-card" class="card" data-module="today:insights" data-module-name="Today so far" hidden>
           <div class="section-header"><h2>Today so far</h2></div>
           <ul id="today-insights" class="insights-list"></ul>
         </section>
 
-        <section id="today-body-card" class="card" hidden>
+        <section id="today-body-card" class="card" data-module="today:body" data-module-name="Recovery and sleep" hidden>
           <div class="section-header"><h2>Body</h2></div>
           <div class="balance-grid">
             <div class="balance-cell" id="today-recovery-cell" hidden>
@@ -201,7 +184,7 @@
           <button type="button" id="day-back-to-today" class="ghost-sm">Back to today</button>
         </section>
 
-        <form id="entry-form" class="card">
+        <form id="entry-form" class="card" data-module="today:log" data-module-name="Log something">
         <div class="entry-form-header">
         <label for="text">What did you eat?</label>
         <button type="button" id="quick-add-toggle" class="ghost-sm" aria-expanded="false" aria-controls="quick-add" hidden>
@@ -265,13 +248,6 @@
         <button type="button" id="food-search-close" class="ghost-sm">Close</button>
         </div>
         <input type="search" id="food-search-query" placeholder="e.g. hobnobs, chicken breast, big mac…" autocomplete="off" />
-        <div id="food-search-filters" class="food-search-filters">
-        <button type="button" class="food-filter food-filter--on" data-kind="">Everything</button>
-        <button type="button" class="food-filter" data-kind="yours">Yours</button>
-        <button type="button" class="food-filter" data-kind="restaurant" hidden>Menus</button>
-        <button type="button" class="food-filter" data-kind="branded">Packets</button>
-        <button type="button" class="food-filter" data-kind="generic" hidden>Ingredients</button>
-        </div>
         <p id="food-search-status" class="muted" hidden></p>
         <div id="food-search-results" class="food-search-results"></div>
         <button type="button" id="food-search-estimate" class="ghost-sm food-search-estimate" hidden>
@@ -279,7 +255,7 @@
         </button>
         </section>
 
-        <section id="water-card" class="card water-card">
+        <section id="water-card" class="card water-card" data-module="today:water" data-module-name="Water">
         <div class="water-head">
         <span class="water-title">Water today</span>
         <span id="water-total" class="water-total">0 ml</span>
@@ -291,7 +267,21 @@
         </div>
         </section>
 
-        <section id="today-entries-section">
+        <section id="today-note-card" class="card today-note-card" data-module="today:note" data-module-name="Note">
+          <div class="section-header">
+            <h2>Note</h2>
+            <span id="today-note-status" class="muted today-note-status" hidden></span>
+          </div>
+          <textarea
+            id="today-note-input"
+            rows="2"
+            maxlength="500"
+            placeholder="Anything worth remembering about today — away with work, first week back running, feeling rough"
+          ></textarea>
+          <button type="button" id="today-note-save" class="ghost-sm today-note-save" hidden>Save note</button>
+        </section>
+
+        <section id="today-entries-section" data-module="today:entries" data-module-name="What you logged">
           <div class="section-header">
             <h2 id="today-entries-heading">Logged today</h2>
             <span id="today-entry-count" class="muted"></span>
@@ -319,7 +309,7 @@
 
         <p id="week-note" class="muted" hidden>Viewing a past week — go to the current week to log new entries.</p>
 
-        <section class="summary card">
+        <section class="summary card" data-module="week:summary" data-module-name="This week">
           <div id="form-guide" class="form-guide" hidden>
             <div class="form-guide-head">
               <span class="form-guide-title">This week</span>
@@ -341,7 +331,7 @@
           </div>
         </section>
 
-        <section id="budget-widget" class="card budget-widget" hidden>
+        <section id="budget-widget" class="card budget-widget" data-module="week:budget" data-module-name="Calorie budget" hidden>
           <div class="budget-header">
             <span class="budget-title">Calorie balance</span>
             <span id="budget-source-label" class="muted"></span>
@@ -366,7 +356,7 @@
           </div>
         </section>
 
-        <section id="exercise-section">
+        <section id="exercise-section" data-module="week:exercise" data-module-name="Exercise">
           <div class="section-header">
             <h2>Exercise</h2>
             <button id="exercise-toggle" type="button" class="ghost-sm">+ Log exercise</button>
@@ -580,8 +570,13 @@
         <section id="settings-card" class="card">
           <p class="muted">Signed in as <strong id="settings-username"></strong></p>
 
-          <fieldset class="settings-fieldset">
-            <legend>Week rollover</legend>
+          <h2 class="settings-group">Your week</h2>
+          <section class="settings-section" data-settings-section>
+            <button type="button" class="settings-section-head" aria-expanded="false">
+              <span class="settings-section-title">Week rollover</span>
+              <span class="settings-section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="settings-section-body" hidden>
             <label for="settings-weekday">Starts on</label>
             <select id="settings-weekday">
               <option value="0">Monday</option>
@@ -605,18 +600,29 @@
             </div>
 
             <p id="week-style-note" class="muted"></p>
-          </fieldset>
+          </div>
+          </section>
 
-          <fieldset class="settings-fieldset">
-            <legend>Units</legend>
+          <section class="settings-section" data-settings-section>
+            <button type="button" class="settings-section-head" aria-expanded="false">
+              <span class="settings-section-title">Units</span>
+              <span class="settings-section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="settings-section-body" hidden>
             <div class="units-toggle">
               <button type="button" id="units-metric" class="units-btn units-btn--active">Metric (kg, cm)</button>
               <button type="button" id="units-imperial" class="units-btn">Imperial (lbs, ft/in)</button>
             </div>
-          </fieldset>
+          </div>
+          </section>
 
-          <fieldset class="settings-fieldset" id="body-stats-fieldset">
-            <legend>Body stats &amp; goal</legend>
+          <h2 class="settings-group">You and your targets</h2>
+          <section class="settings-section" id="body-stats-fieldset" data-settings-section>
+            <button type="button" class="settings-section-head" aria-expanded="false">
+              <span class="settings-section-title">Body stats &amp; goal</span>
+              <span class="settings-section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="settings-section-body" hidden>
             <p id="body-stats-note" class="muted body-stats-note">
               Your goal weight drives the projection on the Stats screen. Height, age and
               activity are only used to estimate what you burn on days a tracker can't
@@ -693,10 +699,15 @@
               <button type="button" id="suggest-target-btn" class="link-btn">Suggest one from my data</button>
             </p>
             <p id="suggest-target-note" class="muted" hidden></p>
-          </fieldset>
+          </div>
+          </section>
 
-          <fieldset class="settings-fieldset">
-            <legend>Macros</legend>
+          <section class="settings-section" data-settings-section>
+            <button type="button" class="settings-section-head" aria-expanded="false">
+              <span class="settings-section-title">Macros</span>
+              <span class="settings-section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="settings-section-body" hidden>
             <p class="muted">
               Off by default. Turn them on and every new entry gets a protein, carb and fat
               estimate alongside its calories, and today's card shows what's left of each.
@@ -775,10 +786,15 @@
 
             <p id="macro-summary" class="muted" hidden></p>
             <p id="macro-warning" class="error" hidden></p>
-          </fieldset>
+          </div>
+          </section>
 
-          <fieldset class="settings-fieldset">
-            <legend>Fitness tracker</legend>
+          <section class="settings-section" data-settings-section>
+            <button type="button" class="settings-section-head" aria-expanded="false">
+              <span class="settings-section-title">Fitness tracker</span>
+              <span class="settings-section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="settings-section-body" hidden>
             <div id="whoop-status-row" class="whoop-status-row">
               <span id="whoop-status-text" class="muted">Checking WHOOP connection…</span>
             </div>
@@ -788,20 +804,31 @@
             <p id="whoop-unconfigured-note" class="muted" hidden>
               WHOOP isn't set up on this server yet.
             </p>
-          </fieldset>
+          </div>
+          </section>
 
-          <fieldset class="settings-fieldset">
-            <legend>Appearance</legend>
+          <h2 class="settings-group">The app</h2>
+          <section class="settings-section" data-settings-section>
+            <button type="button" class="settings-section-head" aria-expanded="false">
+              <span class="settings-section-title">Appearance</span>
+              <span class="settings-section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="settings-section-body" hidden>
             <span class="field-label">Theme</span>
             <div class="meal-kind-btns">
               <button type="button" id="theme-system" class="meal-kind-btn meal-kind-btn--active">System</button>
               <button type="button" id="theme-light" class="meal-kind-btn">Light</button>
               <button type="button" id="theme-dark" class="meal-kind-btn">Dark</button>
             </div>
-          </fieldset>
+          </div>
+          </section>
 
-          <fieldset class="settings-fieldset">
-            <legend>Reminders</legend>
+          <section class="settings-section" data-settings-section>
+            <button type="button" class="settings-section-head" aria-expanded="false">
+              <span class="settings-section-title">Reminders</span>
+              <span class="settings-section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="settings-section-body" hidden>
             <p id="push-unsupported" class="muted" hidden>
               This browser can't do notifications. On an iPhone they only work once the app is
               added to the home screen.
@@ -822,10 +849,34 @@
               </div>
               <p id="push-error" class="error" hidden></p>
             </div>
-          </fieldset>
+          </div>
+          </section>
 
-          <fieldset class="settings-fieldset">
-            <legend>Your data</legend>
+          <section class="settings-section" data-settings-section>
+            <button type="button" class="settings-section-head" aria-expanded="false">
+              <span class="settings-section-title">Layout</span>
+              <span class="settings-section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="settings-section-body" hidden>
+              <p class="muted">Choose what each screen shows, and in what order. Nothing is deleted — a card you turn off is just not on the screen.</p>
+              <div class="layout-screens" id="layout-screens"></div>
+              <button type="button" id="layout-reset" class="ghost-sm">Reset to the default layout</button>
+            </div>
+          </section>
+
+          <h2 class="settings-group">Your data</h2>
+          <section class="settings-section" data-settings-section>
+            <button type="button" class="settings-section-head" aria-expanded="false">
+              <span class="settings-section-title">Your data</span>
+              <span class="settings-section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="settings-section-body" hidden>
+              <div class="macro-backfill">
+                <p class="field-label">Missing macros</p>
+                <p id="backfill-status" class="muted">Checking…</p>
+                <button type="button" id="backfill-run" class="ghost-sm" hidden>Fill them in</button>
+              </div>
+
             <p class="muted">Everything you've logged, in a file you own.</p>
             <div class="export-row">
               <a id="export-json-btn" class="button-link" href="/api/data/export.json">Export all (JSON)</a>
@@ -835,10 +886,15 @@
             <label for="import-file" class="import-label">Restore from a JSON export</label>
             <input type="file" id="import-file" accept="application/json,.json" />
             <p id="import-status" class="muted" hidden></p>
-          </fieldset>
+          </div>
+          </section>
 
-          <fieldset class="settings-fieldset">
-            <legend>Weight from your phone</legend>
+          <section class="settings-section" data-settings-section>
+            <button type="button" class="settings-section-head" aria-expanded="false">
+              <span class="settings-section-title">Weight from your phone</span>
+              <span class="settings-section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="settings-section-body" hidden>
             <p class="muted">
               Apple Health and Android's Health Connect are native apps — no website can read
               them directly, whatever it promises. What does work is the export file they
@@ -859,10 +915,16 @@
             <label for="health-file" class="import-label">Import weight history</label>
             <input type="file" id="health-file" accept=".zip,.xml,.csv,application/zip,text/csv,text/xml" />
             <p id="health-status" class="muted" hidden></p>
-          </fieldset>
+          </div>
+          </section>
 
-          <fieldset class="settings-fieldset">
-            <legend>Sign-in &amp; security</legend>
+          <h2 class="settings-group">Account</h2>
+          <section class="settings-section" data-settings-section>
+            <button type="button" class="settings-section-head" aria-expanded="false">
+              <span class="settings-section-title">Sign-in &amp; security</span>
+              <span class="settings-section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="settings-section-body" hidden>
 
             <div class="settings-row">
               <div class="settings-field">
@@ -898,10 +960,15 @@
             </div>
             <p id="security-status" class="muted" hidden></p>
             <p id="security-error" class="error" hidden></p>
-          </fieldset>
+          </div>
+          </section>
 
-          <fieldset class="settings-fieldset">
-            <legend>Camera &amp; microphone</legend>
+          <section class="settings-section" data-settings-section>
+            <button type="button" class="settings-section-head" aria-expanded="false">
+              <span class="settings-section-title">Camera &amp; microphone</span>
+              <span class="settings-section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="settings-section-body" hidden>
             <p class="muted">
               Scanning holds the camera open for a couple of minutes so a run of scans only
               asks once. If your phone asks again every time you open the app, that's the
@@ -909,10 +976,15 @@
               Microphone) and set them to Allow. Adding this to your home screen also helps:
               an installed app keeps its permissions between launches.
             </p>
-          </fieldset>
+          </div>
+          </section>
 
-          <fieldset class="settings-fieldset">
-            <legend>Diagnostics</legend>
+          <section class="settings-section" data-settings-section>
+            <button type="button" class="settings-section-head" aria-expanded="false">
+              <span class="settings-section-title">Diagnostics</span>
+              <span class="settings-section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="settings-section-body" hidden>
             <p id="diagnostics-backup" class="muted">Checking backups…</p>
             <div class="export-row">
               <button type="button" id="diagnostics-backup-btn" class="ghost-sm">Back up now</button>
@@ -920,14 +992,19 @@
             </div>
             <div id="diagnostics-errors" class="diagnostics-errors"></div>
             <p id="diagnostics-error" class="error" hidden></p>
-          </fieldset>
+          </div>
+          </section>
 
           <button id="settings-save" type="button">Save</button>
           <p id="settings-error" class="error" hidden></p>
           <button id="logout-btn" type="button" class="ghost">Log out</button>
 
-          <fieldset class="settings-fieldset settings-fieldset--danger">
-            <legend>Delete account</legend>
+          <section class="settings-section settings-section--danger" data-settings-section>
+            <button type="button" class="settings-section-head" aria-expanded="false">
+              <span class="settings-section-title">Delete account</span>
+              <span class="settings-section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="settings-section-body" hidden>
             <p class="muted">
               Deletes your entries, weigh-ins, measurements, photos and tracker data for good.
               There is no undo — export your data first if you want to keep a copy.
@@ -942,7 +1019,8 @@
             </div>
             <button type="button" id="delete-account-btn" class="danger-btn">Delete my account</button>
             <p id="delete-error" class="error" hidden></p>
-          </fieldset>
+          </div>
+          </section>
 
           <p class="muted settings-legal"><a href="/privacy.html">Privacy policy</a></p>
         </section>

@@ -30,6 +30,12 @@ model User {
   // men and -161 for women, a 166 kcal/day difference. Optional — nobody is
   // forced to answer; see estimateTdee for what an unset value falls back to.
   sex                String?
+  // Which cards each screen shows and in what order, as JSON:
+  // { "today": { "order": ["today:hero", ...], "hidden": [...] } }. Stored as
+  // a string because SQLite has no JSON column, and shaped as order-plus-hidden
+  // rather than a list of what's on so a card added in a later version still
+  // appears for someone who arranged their layout before it existed.
+  layout             String?
   activityLevel      String?
   weeklyGoalKg       Float?
   // Target weight. weeklyGoalKg is the desired *rate*; this is the
