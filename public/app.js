@@ -93,6 +93,8 @@ const foodLibraryBack = document.getElementById("food-library-back");
 const foodSearchInput = document.getElementById("food-search");
 const foodFavoritesSection = document.getElementById("food-favorites-section");
 const foodFavoritesList = document.getElementById("food-favorites-list");
+const foodFavoritesToggle = document.getElementById("food-favorites-toggle");
+const foodAllCount = document.getElementById("food-all-count");
 const foodAllList = document.getElementById("food-all-list");
 const foodLibraryError = document.getElementById("food-library-error");
 
@@ -2443,23 +2445,45 @@ async function loadFoods(query) {
   }
 }
 
+// Favourites are listed first, and someone who stars twenty things pushes
+// "All foods" off the bottom of the screen. Only the first few are shown, with
+// the rest a tap away — the list is still complete, it just isn't in the way of
+// the list underneath it.
+const FAVOURITES_SHOWN = 5;
+let favouritesExpanded = false;
+
 function renderFoodLibrary(foods) {
   const favorites = foods.filter((f) => f.favorite);
   foodFavoritesSection.hidden = favorites.length === 0;
   foodFavoritesList.innerHTML = "";
-  for (const food of favorites) {
+
+  const hidden = Math.max(0, favorites.length - FAVOURITES_SHOWN);
+  const shown = favouritesExpanded ? favorites : favorites.slice(0, FAVOURITES_SHOWN);
+  for (const food of shown) {
     foodFavoritesList.appendChild(renderFoodRow(food));
   }
 
+  foodFavoritesToggle.hidden = hidden === 0;
+  foodFavoritesToggle.textContent = favouritesExpanded ? "Show fewer" : `Show all ${favorites.length}`;
+
   foodAllList.innerHTML = "";
+  foodAllCount.textContent = foods.length === 0 ? "" : `${foods.length}`;
   if (foods.length === 0) {
     foodAllList.innerHTML = '<p class="empty-state">No foods found.</p>';
     return;
   }
+  // Ordered by the server: most-often eaten first, most-recent breaking the
+  // ties. See GET /api/foods.
   for (const food of foods) {
     foodAllList.appendChild(renderFoodRow(food));
   }
 }
+
+foodFavoritesToggle.addEventListener("click", () => {
+  favouritesExpanded = !favouritesExpanded;
+  haptic();
+  loadFoods(foodSearchInput.value);
+});
 
 function renderFoodRow(food) {
   const row = document.createElement("div");
@@ -5263,6 +5287,12 @@ function initSettingsSections() {
 const LAYOUT_SCREENS = [
   { key: "today", label: "Today" },
   { key: "week", label: "My Week" },
+  // Stats is three tabs, and a card can only be moved within the tab it lives
+  // in — so each tab is its own list rather than one list whose arrows would
+  // do nothing across a boundary.
+  { key: "stats-weight", label: "Stats · Weight" },
+  { key: "stats-calories", label: "Stats · Calories" },
+  { key: "stats-recovery", label: "Stats · Recovery" },
 ];
 
 /** screen → [{ key, name }], in the order the markup declares them. */

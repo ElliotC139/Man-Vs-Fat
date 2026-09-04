@@ -192,6 +192,39 @@ describe("GET /api/foods", () => {
   });
 });
 
+describe("how the food library is ordered", () => {
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
+
+  it("leads with what you eat most often", async () => {
+    const cookie = await signUp();
+    for (let i = 0; i < 5; i += 1) seedEntry({ label: "Porridge", kcal: 380, timestamp: daysAgo(10) });
+    seedEntry({ label: "Sushi", kcal: 500, timestamp: daysAgo(0) });
+
+    const foods = (await (await fetch(`${baseUrl}/api/foods`, { headers: { Cookie: cookie } })).json()) as any[];
+    // Recency alone put the one-off sushi above five weeks of porridge.
+    expect(foods.map((f) => f.label)).toEqual(["Porridge", "Sushi"]);
+  });
+
+  it("breaks a tie on how recently you had it", async () => {
+    const cookie = await signUp();
+    // Both had ten times; the one from yesterday is the one being looked for.
+    for (let i = 0; i < 10; i += 1) seedEntry({ label: "Chicken salad", kcal: 400, timestamp: daysAgo(7) });
+    for (let i = 0; i < 10; i += 1) seedEntry({ label: "Jacket potato", kcal: 400, timestamp: daysAgo(1) });
+
+    const foods = (await (await fetch(`${baseUrl}/api/foods`, { headers: { Cookie: cookie } })).json()) as any[];
+    expect(foods.map((f) => f.label)).toEqual(["Jacket potato", "Chicken salad"]);
+  });
+
+  it("still counts often-eaten above recent when both differ", async () => {
+    const cookie = await signUp();
+    for (let i = 0; i < 3; i += 1) seedEntry({ label: "Toast", kcal: 180, timestamp: daysAgo(30) });
+    for (let i = 0; i < 2; i += 1) seedEntry({ label: "Bagel", kcal: 250, timestamp: daysAgo(1) });
+
+    const foods = (await (await fetch(`${baseUrl}/api/foods`, { headers: { Cookie: cookie } })).json()) as any[];
+    expect(foods.map((f) => f.label)).toEqual(["Toast", "Bagel"]);
+  });
+});
+
 describe("PUT /api/foods/edit", () => {
   it("rejects an unauthenticated request", async () => {
     expect((await json("", "/api/foods/edit", { labelKey: "x", label: "x", kcal: 1 }, "PUT")).status).toBe(401);
