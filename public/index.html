@@ -155,14 +155,26 @@
           </div>
         </section>
 
-        <section id="what-now-card" class="card" hidden>
-          <div class="section-header">
-            <h2>What still fits</h2>
-            <span id="what-now-room" class="muted what-now-room"></span>
-          </div>
+        <section id="what-now-card" class="card what-now-card" hidden>
+          <button
+          type="button"
+          id="what-now-toggle"
+          class="what-now-toggle"
+          aria-expanded="false"
+          aria-controls="what-now-body"
+          >
+          <span class="what-now-toggle-text">
+          <span class="what-now-title">What still fits</span>
+          <span id="what-now-room" class="what-now-room">Tap to see what's left of today</span>
+          </span>
+          <span id="what-now-chevron" class="what-now-chevron" aria-hidden="true"></span>
+          </button>
+          <div id="what-now-body" class="what-now-body" hidden>
+          <p id="what-now-basis" class="muted what-now-basis" hidden></p>
           <p id="what-now-note" class="muted what-now-note" hidden></p>
           <ul id="what-now-list" class="what-now-list"></ul>
           <p id="what-now-skipped" class="muted what-now-skipped" hidden></p>
+          </div>
         </section>
 
         <section id="today-insights-card" class="card" hidden>
@@ -1434,7 +1446,20 @@
         <video id="scan-video" autoplay playsinline muted></video>
         <div class="scan-reticle"></div>
       </div>
-      <p id="scan-status-el" class="scan-status">Searching for barcode…</p>
+      <p id="scan-status-el" class="scan-status">Starting the camera…</p>
+      <div id="scan-manual-row" class="scan-manual-row" hidden>
+        <form id="scan-manual-form" class="scan-manual-form">
+          <label class="visually-hidden" for="scan-manual-input">Barcode number</label>
+          <input
+            type="text"
+            id="scan-manual-input"
+            inputmode="numeric"
+            autocomplete="off"
+            placeholder="Type the barcode number"
+          />
+          <button type="submit" class="scan-manual-submit">Look up</button>
+        </form>
+      </div>
     </div>
 
     <script>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { macroRoom, whatCanIStillEat, type WhatNowFood, type WhatNowMeal } from "../src/whatNow";
+import { expectedBurnToday, macroRoom, whatCanIStillEat, type WhatNowFood, type WhatNowMeal } from "../src/whatNow";
 import { resolveMacroTargets } from "../src/macros";
 
 function food(partial: Partial<WhatNowFood> & { label: string }): WhatNowFood {
@@ -15,6 +15,40 @@ function food(partial: Partial<WhatNowFood> & { label: string }): WhatNowFood {
 }
 
 const noMacros = { remainingKcal: 500, rooms: [], meals: [] as WhatNowMeal[] };
+
+describe("expectedBurnToday", () => {
+  const none = {
+    measuredDailyAverage: null,
+    adaptiveKcalPerDay: null,
+    formulaKcalPerDay: null,
+    calorieTarget: null,
+    exerciseKcal: 0,
+  };
+
+  it("prefers what was measured, then what was learned, then what was predicted", () => {
+    const all = { ...none, measuredDailyAverage: 3000, adaptiveKcalPerDay: 2800, formulaKcalPerDay: 2400, calorieTarget: 1900 };
+    expect(expectedBurnToday(all)).toMatchObject({ base: 3000, baseSource: "measured-average" });
+    expect(expectedBurnToday({ ...all, measuredDailyAverage: null })).toMatchObject({ base: 2800, baseSource: "adaptive" });
+    expect(expectedBurnToday({ ...all, measuredDailyAverage: null, adaptiveKcalPerDay: null }))
+      .toMatchObject({ base: 2400, baseSource: "formula" });
+  });
+
+  it("falls back to the target last, since a target isn't a burn", () => {
+    expect(expectedBurnToday({ ...none, calorieTarget: 1900 })).toMatchObject({ base: 1900, baseSource: "target" });
+  });
+
+  it("adds today's logged exercise on top of a normal day", () => {
+    // The question is about the whole day, so the run counts even though it
+    // has already happened.
+    expect(expectedBurnToday({ ...none, measuredDailyAverage: 2500, exerciseKcal: 420 }))
+      .toMatchObject({ base: 2500, exerciseKcal: 420, kcal: 2920 });
+  });
+
+  it("has no answer when there is nothing at all to go on", () => {
+    expect(expectedBurnToday(none)).toBeNull();
+    expect(expectedBurnToday({ ...none, formulaKcalPerDay: 0 })).toBeNull();
+  });
+});
 
 describe("macroRoom", () => {
   it("reads a floor as a gap with no upper edge", () => {

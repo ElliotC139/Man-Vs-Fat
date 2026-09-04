@@ -194,6 +194,68 @@ export function macroRoom(
   return rooms;
 }
 
+/**
+ * What the day is expected to burn in total, by midnight — not what has been
+ * measured so far.
+ *
+ * "What can I still eat?" is a question about the whole day, and a part-day
+ * burn figure answers a different one. Someone asking at 3pm will go on
+ * burning until they go to bed, so the room left has to be measured against
+ * the day's expected total or it reads hundreds of calories too tight.
+ */
+export type BurnBaseSource = "measured-average" | "adaptive" | "formula" | "target";
+
+export interface ExpectedBurn {
+  /** The full day's expected burn: the base plus anything logged on top. */
+  kcal: number;
+  /** What a normal day burns for this person. */
+  base: number;
+  baseSource: BurnBaseSource;
+  /**
+   * Exercise logged by hand today. Workouts pulled in from a tracker are left
+   * out: those are already inside the measured daily figure, and adding them
+   * again would count the same run twice.
+   */
+  exerciseKcal: number;
+}
+
+export interface ExpectedBurnInput {
+  /** Mean measured burn over recent complete days, when a tracker supplies it. */
+  measuredDailyAverage: number | null;
+  /** The learned figure from intake and weight change, when it's trustworthy. */
+  adaptiveKcalPerDay: number | null;
+  /** Mifflin-St Jeor, the cold-start fallback. */
+  formulaKcalPerDay: number | null;
+  /** The user's own calorie target — a last resort, since it isn't a burn. */
+  calorieTarget: number | null;
+  exerciseKcal: number;
+}
+
+/**
+ * Picks the most direct answer available. Measured beats learned beats
+ * predicted: a tracker's own figure for this body needs no assumptions, the
+ * adaptive estimate needs weeks of logging, and the formula only knows height,
+ * weight, age and a self-reported activity level.
+ */
+export function expectedBurnToday(input: ExpectedBurnInput): ExpectedBurn | null {
+  const candidates: [number | null, BurnBaseSource][] = [
+    [input.measuredDailyAverage, "measured-average"],
+    [input.adaptiveKcalPerDay, "adaptive"],
+    [input.formulaKcalPerDay, "formula"],
+    // A target is a decision about what to eat, not a measurement of what gets
+    // burnt. It's here only so a user who set one and nothing else still gets
+    // an answer rather than a blank card.
+    [input.calorieTarget, "target"],
+  ];
+
+  const found = candidates.find(([value]) => value !== null && value > 0);
+  if (!found) return null;
+
+  const base = Math.round(found[0]!);
+  const exerciseKcal = Math.max(0, Math.round(input.exerciseKcal));
+  return { kcal: base + exerciseKcal, base, baseSource: found[1], exerciseKcal };
+}
+
 export interface WhatNowInput {
   /** Calories left today: the reference figure minus what's been eaten. */
   remainingKcal: number | null;
