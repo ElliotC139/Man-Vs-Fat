@@ -26,6 +26,10 @@ model User {
   weightKg           Float?
   heightCm           Float?
   ageYears           Int?
+  // "male" | "female" | null. Mifflin-St Jeor needs it: the constant is +5 for
+  // men and -161 for women, a 166 kcal/day difference. Optional — nobody is
+  // forced to answer; see estimateTdee for what an unset value falls back to.
+  sex                String?
   activityLevel      String?
   weeklyGoalKg       Float?
   // Target weight. weeklyGoalKg is the desired *rate*; this is the

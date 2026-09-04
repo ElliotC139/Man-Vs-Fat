@@ -57,6 +57,7 @@ const heightFtWrap = document.getElementById("height-ft-wrap");
 const weightLabel = document.getElementById("weight-label");
 const goalLabel = document.getElementById("goal-label");
 const settingsAge = document.getElementById("settings-age");
+const settingsSex = document.getElementById("settings-sex");
 const settingsActivity = document.getElementById("settings-activity");
 const settingsGoal = document.getElementById("settings-goal");
 const settingsGoalWeight = document.getElementById("settings-goal-weight");
@@ -1012,6 +1013,8 @@ settingsSave.addEventListener("click", async () => {
       heightVal = settingsHeight.value ? Number(settingsHeight.value) : null;
     }
     const ageVal = settingsAge.value ? Number(settingsAge.value) : null;
+    // Blank is a real answer, not a missing one — it means "prefer not to say".
+    const sexVal = settingsSex.value || null;
     const activityVal = settingsActivity.value || null;
     const rawGoal = settingsGoal.value ? Number(settingsGoal.value) : null;
     const goalVal = rawGoal === null ? null : useImperial ? +(rawGoal / 2.20462).toFixed(3) : rawGoal;
@@ -1026,6 +1029,7 @@ settingsSave.addEventListener("click", async () => {
         weightKg: weightVal,
         heightCm: heightVal,
         ageYears: ageVal,
+        sex: sexVal,
         activityLevel: activityVal,
         weeklyGoalKg: goalVal,
         goalWeightKg: goalWeightVal,
@@ -1083,6 +1087,7 @@ function populateSettings(user) {
     settingsHeightIn.value = "";
   }
   if (user.ageYears) settingsAge.value = user.ageYears;
+  settingsSex.value = user.sex ?? "";
   settingsActivity.value = user.activityLevel ?? "";
   if (user.weeklyGoalKg) {
     settingsGoal.value = useImperial ? +(user.weeklyGoalKg * 2.20462).toFixed(2) : user.weeklyGoalKg;
@@ -1375,10 +1380,21 @@ function dailyReference() {
   return null;
 }
 
+// Mifflin-St Jeor's final term depends on sex: +5 for men, -161 for women.
+// Kept in step with sexConstant() in src/routes/stats.ts, which is the source
+// of truth — an unset value takes the midpoint, wrong by 83 for everyone
+// rather than wrong by 166 for half of them.
+const SEX_CONSTANTS = { male: 5, female: -161 };
+const SEX_CONSTANT_UNKNOWN = (SEX_CONSTANTS.male + SEX_CONSTANTS.female) / 2;
+
+function sexConstant(sex) {
+  return sex && sex in SEX_CONSTANTS ? SEX_CONSTANTS[sex] : SEX_CONSTANT_UNKNOWN;
+}
+
 function calculateTdee(user) {
-  const { weightKg, heightCm, ageYears, activityLevel } = user ?? {};
+  const { weightKg, heightCm, ageYears, activityLevel, sex } = user ?? {};
   if (!weightKg || !heightCm || !ageYears || !activityLevel) return null;
-  const bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageYears + 5;
+  const bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageYears + sexConstant(sex);
   const multipliers = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725 };
   return bmr * (multipliers[activityLevel] ?? 1.2);
 }
@@ -4973,6 +4989,7 @@ const onboardingWeight = document.getElementById("onboarding-weight");
 const onboardingGoalWeight = document.getElementById("onboarding-goal-weight");
 const onboardingHeight = document.getElementById("onboarding-height");
 const onboardingAge = document.getElementById("onboarding-age");
+const onboardingSex = document.getElementById("onboarding-sex");
 const onboardingUnitsMetric = document.getElementById("onboarding-units-metric");
 const onboardingUnitsImperial = document.getElementById("onboarding-units-imperial");
 const onboardingWeightLabel = document.getElementById("onboarding-weight-label");
@@ -5042,6 +5059,7 @@ async function saveOnboarding() {
   if (height) payload.heightCm = height;
   const age = onboardingAge.value ? Number(onboardingAge.value) : null;
   if (age) payload.ageYears = age;
+  if (onboardingSex.value) payload.sex = onboardingSex.value;
 
   const res = await fetch("/api/auth/me", {
     method: "PATCH",

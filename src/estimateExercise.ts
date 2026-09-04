@@ -12,7 +12,8 @@ Rules:
 - If the input is a screenshot from a fitness app that already shows calories burned, read \
   that number directly — do not re-estimate.
 - For text descriptions, estimate kcal burned based on the activity, duration, and any \
-  intensity cues given. Use sensible averages for an adult male.
+  intensity cues given. Where body stats are supplied below, use them; otherwise use \
+  sensible averages for an adult of unspecified sex rather than assuming one.
 - description: 6 words max, plain English (e.g. "30 min run", "45 min cycling", "1 hr gym")
 - kcalBurned: whole number best estimate; null only if it genuinely cannot be estimated at all
 - Respond with ONLY a JSON object, no markdown fences, no commentary: \

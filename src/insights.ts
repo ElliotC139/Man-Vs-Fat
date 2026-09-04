@@ -5,10 +5,11 @@ import { recordError } from "./errorLog";
 
 const client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
 
-const SYSTEM_PROMPT = `You are a supportive coach writing a short end-of-week review of one \
-member's food diary for a MAN v FAT weight-loss group. Ground everything in \
-the specific foods, times and patterns actually logged — never generic advice \
-that could apply to anyone.
+const SYSTEM_PROMPT = `You are a supportive coach writing a short end-of-week review of \
+someone's food diary. Ground everything in the specific foods, times and \
+patterns actually logged — never generic advice that could apply to anyone. \
+Do not assume the reader's sex, age or body: write to the person whose diary \
+this is, from what is in it.
 
 Write four short sections:
 - wentWell: what they did well this week
