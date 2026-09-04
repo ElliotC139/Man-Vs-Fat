@@ -4313,7 +4313,10 @@ body.sheet-open { overflow: hidden; }
 .today-note-card textarea {
   width: 100%;
   resize: vertical;
-  min-height: 60px;
+  /* Room for two lines of the placeholder at the size it actually renders,
+     so the hint doesn't have to be scrolled to be read. */
+  min-height: 76px;
+  line-height: 1.45;
 }
 .today-note-status {
   font-size: 0.78rem;

@@ -276,7 +276,7 @@
             id="today-note-input"
             rows="2"
             maxlength="500"
-            placeholder="Anything worth remembering about today — away with work, first week back running, feeling rough"
+            placeholder="Anything worth remembering — away with work, feeling rough"
           ></textarea>
           <button type="button" id="today-note-save" class="ghost-sm today-note-save" hidden>Save note</button>
         </section>
@@ -1089,12 +1089,18 @@
         </section>
 
         <section id="food-favorites-section" hidden>
-          <h2><svg class="icon" viewBox="0 0 24 24" style="vertical-align:-2px"><path d="M12 3.5 14.9 9.4l6.5.95-4.7 4.6 1.1 6.45L12 18.3 6.2 21.4l1.1-6.45-4.7-4.6 6.5-.95Z" fill="currentColor"/></svg> Favourites</h2>
+          <div class="section-header">
+            <h2><svg class="icon" viewBox="0 0 24 24" style="vertical-align:-2px"><path d="M12 3.5 14.9 9.4l6.5.95-4.7 4.6 1.1 6.45L12 18.3 6.2 21.4l1.1-6.45-4.7-4.6 6.5-.95Z" fill="currentColor"/></svg> Favourites</h2>
+            <button type="button" id="food-favorites-toggle" class="ghost-sm" hidden></button>
+          </div>
           <div id="food-favorites-list"></div>
         </section>
 
         <section>
-          <h2>All foods</h2>
+          <div class="section-header">
+            <h2>All foods</h2>
+            <span id="food-all-count" class="muted"></span>
+          </div>
           <div id="food-all-list"></div>
         </section>
       </main>
@@ -1121,7 +1127,7 @@
         </nav>
 
         <div id="stats-tab-weight" class="stats-tab-panel">
-          <div class="stats-top-row">
+          <div class="stats-top-row" data-module="stats-weight:summary" data-module-name="Weight now and trend">
             <section id="weighin-summary" class="card" hidden>
               <div id="weight-hero" class="weight-hero" hidden>
                 <span id="weight-hero-value" class="weight-hero-number">—</span>
@@ -1166,7 +1172,7 @@
             </section>
           </div>
 
-          <section id="breakdown-weight-card" class="card" hidden>
+          <section id="breakdown-weight-card" class="card" data-module="stats-weight:breakdown" data-module-name="Weekly weight table" hidden>
             <div class="card-header-row"><h2>Weekly Weight</h2><button type="button" class="info-btn" data-info="weekly-weight" aria-label="What this means"></button></div>
             <div class="table-scroll">
               <table class="breakdown-table">
@@ -1182,7 +1188,7 @@
             </div>
           </section>
 
-          <form id="weighin-form" class="card">
+          <form id="weighin-form" class="card" data-module="stats-weight:log" data-module-name="Log a weight">
             <h2>Log a weight</h2>
             <div class="settings-row">
               <div class="settings-field">
@@ -1198,12 +1204,12 @@
             <p id="weighin-error" class="error" hidden></p>
           </form>
 
-          <section>
+          <section data-module="stats-weight:history" data-module-name="Weigh-in history">
             <h2>History</h2>
             <div id="weighin-list"></div>
           </section>
 
-          <section id="measurements-card" class="card">
+          <section id="measurements-card" class="card" data-module="stats-weight:measurements" data-module-name="Measurements">
             <div class="section-header">
               <h2>Measurements</h2>
               <button type="button" id="measurement-toggle" class="ghost-sm">+ Add</button>
@@ -1258,7 +1264,7 @@
             <div id="measurement-list"></div>
           </section>
 
-          <section id="progress-photos-card" class="card">
+          <section id="progress-photos-card" class="card" data-module="stats-weight:photos" data-module-name="Progress photos">
             <div class="section-header">
               <h2>Progress photos</h2>
             </div>
@@ -1274,7 +1280,7 @@
         </div>
 
         <div id="stats-tab-calories" class="stats-tab-panel" hidden>
-          <section id="balance-trend-card" class="card" hidden>
+          <section id="balance-trend-card" class="card" data-module="stats-calories:balance" data-module-name="Calorie balance" hidden>
             <div class="card-heading-row">
               <h2>Calorie Balance</h2>
               <div class="balance-trend-controls">
@@ -1292,7 +1298,7 @@
             <p id="balance-trend-caption" class="muted"></p>
           </section>
 
-          <section id="tdee-card" class="card" hidden>
+          <section id="tdee-card" class="card" data-module="stats-calories:tdee" data-module-name="What you actually burn" hidden>
             <div class="card-heading-row">
               <h2>Your Metabolism</h2>
               <button type="button" class="info-btn" data-info="tdee" aria-label="What this means"></button>
@@ -1308,12 +1314,12 @@
             <p id="tdee-underlogging" class="tdee-warning" hidden></p>
           </section>
 
-          <section id="tdee-pending-card" class="card" hidden>
+          <section id="tdee-pending-card" class="card" data-module="stats-calories:tdee-pending" data-module-name="Burn — before there is enough data" hidden>
             <h2>Your Metabolism</h2>
             <p id="tdee-pending-text" class="muted"></p>
           </section>
 
-          <section id="streak-card" class="card" hidden>
+          <section id="streak-card" class="card" data-module="stats-calories:streak" data-module-name="Deficit streak" hidden>
             <div class="card-header-row">
               <h2>Deficit streak</h2>
               <button type="button" class="info-btn" data-info="streak" aria-label="What this means"></button>
@@ -1331,7 +1337,7 @@
             <p id="streak-note" class="muted streak-note" hidden></p>
           </section>
 
-          <section id="averages-card" class="card">
+          <section id="averages-card" class="card" data-module="stats-calories:averages" data-module-name="Averages">
             <div class="card-header-row">
               <h2>Averages</h2>
               <button type="button" class="info-btn" data-info="averages" aria-label="What this means"></button>
@@ -1375,7 +1381,7 @@
             </div>
           </section>
 
-          <section id="macro-stats-card" class="card" hidden>
+          <section id="macro-stats-card" class="card" data-module="stats-calories:macros" data-module-name="Macros" hidden>
             <div class="section-header">
               <h2>Macros</h2>
               <span id="macro-stats-window" class="muted averages-window"></span>
@@ -1397,7 +1403,7 @@
             <p id="macro-stats-note" class="muted"></p>
           </section>
 
-          <section id="eating-window-card" class="card" hidden>
+          <section id="eating-window-card" class="card" data-module="stats-calories:window" data-module-name="Eating window" hidden>
             <div class="section-header">
               <h2>Eating window</h2>
             </div>
@@ -1418,7 +1424,7 @@
             <p id="window-note" class="muted"></p>
           </section>
 
-          <section id="breakdown-calories-card" class="card" hidden>
+          <section id="breakdown-calories-card" class="card" data-module="stats-calories:breakdown" data-module-name="Weekly calories table" hidden>
             <div class="card-header-row"><h2>Weekly Calories</h2><button type="button" class="info-btn" data-info="weekly-calories" aria-label="What this means"></button></div>
             <div class="table-scroll">
               <table class="breakdown-table">
@@ -1437,7 +1443,7 @@
         </div>
 
         <div id="stats-tab-recovery" class="stats-tab-panel" hidden>
-          <section id="whoop-stats-card" class="card" hidden>
+          <section id="whoop-stats-card" class="card" data-module="stats-recovery:whoop" data-module-name="Recovery and sleep" hidden>
             <div class="card-header-row"><h2>Recovery &amp; Sleep</h2><button type="button" class="info-btn" data-info="recovery" aria-label="What this means"></button></div>
             <div class="hero-row">
               <div id="stat-recovery-hero" class="stat-hero">
@@ -1452,11 +1458,11 @@
             <p id="whoop-stats-avg" class="muted"></p>
           </section>
 
-          <section id="whoop-stats-prompt" class="card" hidden>
+          <section id="whoop-stats-prompt" class="card" data-module="stats-recovery:prompt" data-module-name="Connect a tracker" hidden>
             <p class="muted">Connect WHOOP in Settings to see recovery &amp; sleep here.</p>
           </section>
 
-          <section id="breakdown-recovery-card" class="card" hidden>
+          <section id="breakdown-recovery-card" class="card" data-module="stats-recovery:breakdown" data-module-name="Weekly recovery table" hidden>
             <div class="card-header-row"><h2>Weekly Recovery</h2><button type="button" class="info-btn" data-info="weekly-recovery" aria-label="What this means"></button></div>
             <div class="table-scroll">
               <table class="breakdown-table">

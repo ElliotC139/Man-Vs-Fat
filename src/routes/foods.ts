@@ -120,7 +120,11 @@ foodsRouter.get("/", async (req, res) => {
     foods = foods.filter((f) => f.label.toLowerCase().includes(q) || f.tags.some((t) => t.toLowerCase().includes(q)));
   }
 
-  foods.sort((a, b) => b.lastLoggedAt.getTime() - a.lastLoggedAt.getTime());
+  // How often you eat something is what makes it worth finding again, so that
+  // leads. Recency breaks the ties: between two foods you have both had ten
+  // times, the one you had yesterday is the one you are looking for, not the
+  // one from last week.
+  foods.sort((a, b) => b.count - a.count || b.lastLoggedAt.getTime() - a.lastLoggedAt.getTime());
 
   res.json(foods);
 });
