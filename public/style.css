@@ -954,7 +954,8 @@ h2 {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 6px;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 .section-header h2 { margin: 0; }
 .ghost-sm {
@@ -1433,25 +1434,24 @@ tr.has-tooltip:active {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
 }
+/* Separated by a rule rather than by a filled box each. Two short
+   observations in tinted panels with bullet dots read as a to-do list; they
+   are sentences, and they should look like sentences. */
 .insights-list li {
-  position: relative;
-  padding: 10px 12px 10px 30px;
-  background: var(--bg);
-  border-radius: var(--radius-sm);
-  font-size: 0.92rem;
-  line-height: 1.4;
+  padding: 10px 0;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--ink);
 }
-.insights-list li::before {
-  content: "";
-  position: absolute;
-  left: 12px;
-  top: 13px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--amber);
+.insights-list li + li {
+  border-top: 1px solid var(--hairline);
+}
+.insights-list li:first-child {
+  padding-top: 0;
+}
+.insights-list li:last-child {
+  padding-bottom: 0;
 }
 
 /* ── Weekly breakdown ── */
@@ -2869,62 +2869,6 @@ tr.has-tooltip:active {
   line-height: 1.45;
 }
 
-/* ── Today's target ────────────────────────────────────────────────────────
-   A single bar rather than a ring: it sits inside the week summary card, and
-   a ring there would compete with the form guide directly above it. */
-.target-today {
-  padding: 0 0 14px;
-  margin-bottom: 14px;
-  border-bottom: 1px solid var(--hairline);
-}
-.target-today-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-.target-today-label {
-  font-family: var(--font-heading);
-  font-size: 0.82rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--muted);
-}
-.target-today-figures {
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.target-track {
-  height: 8px;
-  border-radius: 999px;
-  background: var(--hairline);
-  overflow: hidden;
-}
-.target-fill {
-  height: 100%;
-  width: 0;
-  border-radius: 999px;
-  background: linear-gradient(90deg, var(--pitch), var(--pitch-light));
-  transition: width 400ms var(--ease);
-}
-/* Over the target is the floodlight, matching what "over" already means on
-   the form guide — not the danger red, which this app doesn't use to judge
-   a day's eating. */
-.target-fill--over {
-  background: linear-gradient(90deg, var(--amber), var(--floodlight));
-}
-.target-today-note {
-  display: block;
-  margin-top: 6px;
-  font-size: 0.82rem;
-  color: var(--muted);
-}
-@media (prefers-reduced-motion: reduce) {
-  .target-fill { transition: none; }
-}
-
 /* ── Water ── */
 .water-card {
   display: flex;
@@ -3260,27 +3204,22 @@ tr.has-tooltip:active {
 }
 
 /* ── Macros ────────────────────────────────────────────────────────────────
-   The three rows sit under the calorie bar in the same card, not in a tab of
-   their own: they answer a question asked while deciding what to eat.
+   The three rows sit directly under the ring, in the same card. They used to
+   have a card of their own headed "Against target", which repeated the
+   calorie bar the ring already draws — one card, one answer to "where is
+   today".
 
    Each macro gets its own hue so the rows are distinguishable at a glance
    without reading the labels, but all three stay inside the app's existing
    palette rather than introducing a fourth accent — protein takes the pitch
    green, carbs the floodlight amber, fat a muted slate. */
 .macro-today {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px dashed var(--hairline);
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-/* With no calorie bar above it there's nothing to divide from, so the rule
-   and the spacing that separated the two both go. */
-.macro-today--standalone {
-  margin-top: 0;
-  padding-top: 0;
-  border-top: none;
+  gap: 12px;
 }
 .macro-row {
   display: grid;
@@ -4099,8 +4038,14 @@ body.sheet-open { overflow: hidden; }
   display: grid;
   place-items: center;
   flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
   color: var(--pitch);
   transition: transform 0.2s var(--ease);
+}
+.what-now-chevron .icon {
+  width: 20px;
+  height: 20px;
 }
 .what-now-card--open .what-now-chevron {
   transform: rotate(180deg);
@@ -4110,7 +4055,7 @@ body.sheet-open { overflow: hidden; }
 }
 .what-now-basis {
   margin: 0 0 12px;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   line-height: 1.45;
 }
 .what-now-room {
@@ -4135,29 +4080,40 @@ body.sheet-open { overflow: hidden; }
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
+  padding: 12px;
   background: var(--bg);
   border-radius: var(--radius-sm);
 }
 .what-now-main {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
   flex: 1;
+}
+/* Name and calories share a line, with the figure hard right so a column of
+   them reads down the card. */
+.what-now-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
 }
 .what-now-label {
   font-weight: 600;
   font-size: 0.95rem;
   line-height: 1.3;
+  min-width: 0;
 }
-.what-now-figures {
-  font-size: 0.8rem;
-  color: var(--muted);
+.what-now-kcal {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
+  color: var(--ink);
 }
 .what-now-why {
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   color: var(--muted);
   line-height: 1.4;
 }
@@ -4238,42 +4194,17 @@ body.sheet-open { overflow: hidden; }
 }
 
 /* ── Food search ── */
-/* Filter chips above the results. Each one narrows to a kind of answer, and
-   the ones whose source this deployment can't reach stay hidden rather than
-   offering a filter that could only ever come back empty. */
-.food-search-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 10px 0 4px;
-}
-/* Undoing the global button rule again: these are chips, not slabs. */
-.food-filter {
-  width: auto;
-  min-height: 32px;
-  padding: 4px 12px;
-  font-size: 0.82rem;
-  font-weight: 600;
-  background: var(--bg);
-  color: var(--muted);
-  border: 1px solid transparent;
-  border-radius: 999px;
-  box-shadow: none;
-}
-.food-filter--on {
-  background: var(--pitch);
-  color: #fff;
-}
-/* Says at a glance which of the four kinds of answer a row is: something they
-   have eaten before, a menu item, a packet, or a plain ingredient. */
+/* Two labels only, on the rows where provenance is worth knowing: something
+   they have eaten before, and something off a menu. A packet needs no label —
+   nobody searching for hobnobs wants to be told which database they came from. */
 .food-badge {
   flex: 0 0 auto;
   align-self: flex-start;
   margin-top: 2px;
   padding: 2px 7px;
-  /* One width for all four, so the names line up down the list instead of
-     stepping in and out with the length of the label. */
-  min-width: 72px;
+  /* One width for both, so the names line up down the list instead of stepping
+     in and out with the length of the label. */
+  min-width: 54px;
   text-align: center;
   font-size: 0.66rem;
   font-weight: 700;
@@ -4289,14 +4220,6 @@ body.sheet-open { overflow: hidden; }
 .food-badge--menu {
   background: var(--amber);
   color: #fff;
-}
-.food-badge--packet {
-  background: rgba(31, 157, 82, 0.12);
-  color: var(--pitch-deep);
-}
-.food-badge--generic {
-  background: rgba(15, 20, 23, 0.08);
-  color: var(--muted);
 }
 .food-search-estimate {
   margin-top: 10px;
@@ -4372,4 +4295,256 @@ body.sheet-open { overflow: hidden; }
 }
 .share-actions .ghost-sm {
   flex: 0 0 auto;
+}
+
+/* ── The day's note ── */
+.today-note-card textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 60px;
+}
+.today-note-status {
+  font-size: 0.78rem;
+}
+.today-note-save {
+  /* Appears only once there is an unsaved change, so it sits under the box
+     rather than beside it — no reserved gap when there is nothing to save. */
+  margin-top: 10px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Settings sections ── */
+/* Five headings over thirteen closed panels, instead of thirteen open ones in
+   a single scroll. */
+.settings-group {
+  margin: 22px 0 10px;
+  font-family: var(--font-heading);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.settings-group:first-of-type {
+  margin-top: 14px;
+}
+.settings-section {
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  margin: 0 0 10px;
+  overflow: hidden;
+}
+/* The whole header row is the target, not a chevron the size of a fingernail.
+   Every declaration here is undoing the global button rule. */
+.settings-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 14px;
+  background: none;
+  box-shadow: none;
+  color: var(--ink);
+  text-align: left;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-radius: 0;
+}
+.settings-section-chevron {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  color: var(--muted);
+  transition: transform 0.2s var(--ease);
+}
+.settings-section-chevron .icon {
+  width: 18px;
+  height: 18px;
+}
+.settings-section--open .settings-section-chevron {
+  transform: rotate(180deg);
+  color: var(--pitch);
+}
+.settings-section-body {
+  padding: 0 14px 14px;
+  animation: section-open 0.22s var(--ease);
+}
+@keyframes section-open {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.settings-section--danger {
+  border-color: var(--danger);
+}
+.settings-section--danger .settings-section-head {
+  color: var(--danger);
+}
+
+/* ── Layout editor ── */
+.layout-screen + .layout-screen {
+  margin-top: 18px;
+}
+.layout-screen-title {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.layout-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.layout-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+}
+.layout-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.layout-toggle input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  accent-color: var(--pitch);
+}
+.layout-moves {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+.layout-move {
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: var(--card);
+  color: var(--pitch);
+  border: 1px solid var(--hairline);
+  box-shadow: none;
+  border-radius: 8px;
+}
+.layout-move:disabled {
+  opacity: 0.35;
+}
+.layout-move .icon {
+  width: 18px;
+  height: 18px;
+}
+
+/* A card the user turned off. Off the screen, not deleted — what it was
+   showing is exactly where it was. */
+.module--off {
+  display: none !important;
+}
+
+/* ── Motion ─────────────────────────────────────────────────────────────────
+   Two things, both tied to something actually happening rather than added for
+   their own sake: cards arriving on a screen that has just been opened, and
+   rows arriving in a list that has just been filled.
+
+   Everything here is a one-shot entrance, never a loop. A card that keeps
+   moving is a card you can't read, and this is an app people open twenty times
+   a day — an animation that is charming the first time is an obstacle the
+   twentieth. */
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Staggered by position, so a screen resolves top-down the way it is read
+   rather than every card appearing at once. Capped at six: past that the last
+   card would be waiting on half a second of choreography. */
+#today-screen main > .card,
+#today-screen main > section,
+#today-screen main > form,
+#stats-screen main > .card {
+  animation: card-in 0.32s var(--ease) both;
+}
+#today-screen main > *:nth-child(1) { animation-delay: 0ms; }
+#today-screen main > *:nth-child(2) { animation-delay: 40ms; }
+#today-screen main > *:nth-child(3) { animation-delay: 80ms; }
+#today-screen main > *:nth-child(4) { animation-delay: 120ms; }
+#today-screen main > *:nth-child(5) { animation-delay: 160ms; }
+#today-screen main > *:nth-child(n + 6) { animation-delay: 200ms; }
+
+.what-now-row,
+.food-search-result,
+.insights-list li {
+  animation: row-in 0.26s var(--ease) both;
+}
+.what-now-row:nth-child(2) { animation-delay: 40ms; }
+.what-now-row:nth-child(3) { animation-delay: 80ms; }
+.what-now-row:nth-child(4) { animation-delay: 120ms; }
+.what-now-row:nth-child(n + 5) { animation-delay: 160ms; }
+
+/* The macro bars fill from empty rather than snapping to their width, so the
+   day's progress is something you watch arrive. */
+.macro-fill {
+  transition: width 520ms var(--ease), background 200ms var(--ease);
+}
+
+/* Pressing something should feel like pressing something. */
+.what-now-log:active,
+.layout-move:active,
+.settings-section-head:active {
+  transform: scale(0.96);
+}
+
+/* Anyone who has asked their device to stop moving things gets a still app —
+   the entrances become instant rather than merely faster, because "less
+   motion" is not what that setting asks for. */
+@media (prefers-reduced-motion: reduce) {
+  #today-screen main > .card,
+  #today-screen main > section,
+  #today-screen main > form,
+  #stats-screen main > .card,
+  .what-now-row,
+  .food-search-result,
+  .insights-list li,
+  .settings-section-body {
+    animation: none;
+  }
+  .macro-fill {
+    transition: none;
+  }
+  .what-now-log:active,
+  .layout-move:active,
+  .settings-section-head:active {
+    transform: none;
+  }
+}
+
+/* ── Spacing ────────────────────────────────────────────────────────────────
+   One scale, applied consistently: 16px between cards, 18px inside them, and
+   16px down the sides. The gaps that had drifted were mostly inside cards
+   whose contents were added at different times. */
+.card > .section-header:first-child {
+  margin-top: 0;
+}
+.card > *:last-child {
+  margin-bottom: 0;
 }

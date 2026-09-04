@@ -152,7 +152,23 @@ describe("what can I still eat", () => {
       rooms,
       foods: [food({ label: "Greek yoghurt", kcal: 200, proteinG: 20 })],
     });
-    expect(result.suggestions[0]!.why).toBe("Covers 20g of the 40g of protein still to go, and leaves 300 kcal.");
+    // Two clauses, not a sentence: six of these are stacked on a card that is
+    // meant to be glanced at.
+    expect(result.suggestions[0]!.why).toBe("20g of 40g protein · 300 kcal left");
+  });
+
+  it("says a cleared target as a fact, not a count past it", () => {
+    const rooms = macroRoom(
+      resolveMacroTargets({ macroMode: "grams", proteinTargetG: 150, proteinOp: "min" }),
+      { protein: 120, carbs: 0, fat: 0 },
+    );
+    const result = whatCanIStillEat({
+      ...noMacros,
+      remainingKcal: 600,
+      rooms,
+      foods: [food({ label: "Chicken breast", kcal: 240, proteinG: 46 })],
+    });
+    expect(result.suggestions[0]!.why).toBe("Clears your protein · 360 kcal left");
   });
 
   it("groups thousands the way the rest of the screen does", () => {
@@ -161,7 +177,7 @@ describe("what can I still eat", () => {
       remainingKcal: 1800,
       foods: [food({ label: "Apple", kcal: 95 })],
     });
-    expect(result.suggestions[0]!.why).toBe("Leaves 1,705 kcal of today's allowance.");
+    expect(result.suggestions[0]!.why).toBe("1,705 kcal left");
   });
 
   it("leaves out foods with no macro figures when macros are being tracked", () => {

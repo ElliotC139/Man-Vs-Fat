@@ -11,6 +11,7 @@ import { MEAL_TYPES, MEAL_TYPE_DEFAULT_HOUR, inferMealType, type MealType } from
 import { saveUploadedImage, deleteUploadedImage, uploadFilename } from "../lib/storage";
 import { normalizeUploadedImage } from "../lib/imageProcessing";
 import { consumeAll, AI_BURST, AI_DAILY } from "../rateLimit";
+import { macroBackfillStatus, runMacroBackfill } from "../macroBackfill";
 
 export const entriesRouter = Router();
 entriesRouter.use(requireAuth);
@@ -365,6 +366,30 @@ entriesRouter.patch("/:id", async (req, res) => {
   } catch {
     res.status(404).json({ error: "Entry not found" });
   }
+});
+
+// ── Filling in missing macros ──────────────────────────────────────────────
+// A one-off over the diary's history, run from Settings. See macroBackfill.ts
+// for what it does and does not touch — in short, it never changes a calorie
+// figure, only works out the macros that were never worked out.
+
+entriesRouter.get("/macro-backfill", async (req, res) => {
+  res.json(await macroBackfillStatus(req.userId!));
+});
+
+entriesRouter.post("/macro-backfill", async (req, res) => {
+  // A batch is several model calls, so it is metered by the same ceiling as
+  // the estimator itself. The client asks again for the next batch, which
+  // means a long backfill is paced by the limiter rather than around it.
+  const verdict = consumeAll(`ai:${req.userId!}`, [AI_BURST, AI_DAILY]);
+  if (!verdict.allowed) {
+    res.status(429)
+      .set("Retry-After", String(verdict.retryAfterSec))
+      .json({ error: "Filling these in takes a moment — give it a minute and carry on." });
+    return;
+  }
+
+  res.json(await runMacroBackfill(req.userId!));
 });
 
 entriesRouter.post("/:id/repeat", async (req, res) => {
