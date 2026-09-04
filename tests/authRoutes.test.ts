@@ -196,6 +196,7 @@ describe("POST /api/auth/signup", () => {
       // the diary shows calories only.
       macroTargets: null,
       reminderHour: null,
+      sex: null,
       email: null,
       // Signed up with a password and no Google account, so the settings
       // screen knows a password change is possible and a Google unlink isn't.

@@ -4040,3 +4040,16 @@ body.sheet-open { overflow: hidden; }
   gap: 8px;
 }
 .food-editor-actions button { width: auto; flex: 1 1 auto; }
+
+/* Explains why a field is being asked for, under the field itself. */
+.settings-hint {
+  margin: 4px 0 0;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.onboarding-hint {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}

@@ -38,6 +38,9 @@ const settingsSchema = z.object({
   heightCm: z.number().positive().nullable().optional(),
   ageYears: z.number().int().min(10).max(120).nullable().optional(),
   activityLevel: z.enum(["sedentary", "light", "moderate", "active"]).nullable().optional(),
+  // Only ever used for the Mifflin-St Jeor constant. Null means not answered,
+  // which is a supported state rather than a gap to nag about.
+  sex: z.enum(["male", "female"]).nullable().optional(),
   weeklyGoalKg: z.number().min(0.1).max(1.5).nullable().optional(),
   goalWeightKg: z.number().min(30).max(700).nullable().optional(),
   dailyCalorieTarget: z.number().int().min(800).max(8000).nullable().optional(),
@@ -78,6 +81,7 @@ function toPublicUser(user: {
   weeklyGoalKg?: number | null;
   goalWeightKg?: number | null;
   dailyCalorieTarget?: number | null;
+  sex?: string | null;
   macroMode?: string | null;
   proteinTargetG?: number | null;
   carbsTargetG?: number | null;
@@ -106,6 +110,7 @@ function toPublicUser(user: {
     weeklyGoalKg: user.weeklyGoalKg ?? null,
     goalWeightKg: user.goalWeightKg ?? null,
     dailyCalorieTarget: user.dailyCalorieTarget ?? null,
+    sex: user.sex ?? null,
     macroMode: user.macroMode ?? null,
     proteinTargetG: user.proteinTargetG ?? null,
     carbsTargetG: user.carbsTargetG ?? null,

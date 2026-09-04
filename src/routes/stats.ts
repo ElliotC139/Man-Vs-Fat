@@ -206,18 +206,35 @@ statsRouter.get("/tdee", async (req, res) => {
 
 // ── Calorie balance trend ───────────────────────────────────────────────────
 
-// Mirrors the Mifflin-St Jeor estimate used client-side for the current
-// week's budget widget (public/app.js: calculateTdee) — used here as the
-// "calories out" fallback for historical days with no scored WHOOP cycle.
+// Mifflin-St Jeor's final term depends on sex: +5 for men, -161 for women, a
+// 166 kcal/day gap. The app hardcoded +5, so every woman's burn came out 166
+// too high — a generous target, verdicts that read better than the week
+// really went, and slower loss than the projection promised.
+//
+// An unset value takes the midpoint rather than either constant. It is wrong
+// by 83 for everyone instead of wrong by 166 for half of them, and nobody
+// should have to answer this to use a food diary.
+const SEX_CONSTANTS = { male: 5, female: -161 } as const;
+const SEX_CONSTANT_UNKNOWN = (SEX_CONSTANTS.male + SEX_CONSTANTS.female) / 2;
+
+export function sexConstant(sex: string | null | undefined): number {
+  if (sex === "male" || sex === "female") return SEX_CONSTANTS[sex];
+  return SEX_CONSTANT_UNKNOWN;
+}
+
+// Mirrors the estimate used client-side for the current week's budget widget
+// (public/app.js: calculateTdee) — used here as the "calories out" fallback
+// for historical days with no scored WHOOP cycle.
 function estimateTdee(user: {
   weightKg: number | null;
   heightCm: number | null;
   ageYears: number | null;
   activityLevel: string | null;
+  sex?: string | null;
 }): number | null {
   const { weightKg, heightCm, ageYears, activityLevel } = user;
   if (!weightKg || !heightCm || !ageYears || !activityLevel) return null;
-  const bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageYears + 5;
+  const bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageYears + sexConstant(user.sex);
   const multipliers: Record<string, number> = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725 };
   return bmr * (multipliers[activityLevel] ?? 1.2);
 }
@@ -292,7 +309,7 @@ statsRouter.get("/balance", async (req, res) => {
     const split = splitCycleAcrossDays(c.start, c.end ?? new Date(), c.kcalBurned ?? 0, config.TIMEZONE);
     for (const [key, kcal] of split) kcalOutByDay.set(key, (kcalOutByDay.get(key) ?? 0) + kcal);
   }
-  const tdee = estimateTdee(user ?? { weightKg: null, heightCm: null, ageYears: null, activityLevel: null });
+  const tdee = estimateTdee(user ?? { weightKg: null, heightCm: null, ageYears: null, activityLevel: null, sex: null });
 
   const result: {
     date: string;
@@ -614,7 +631,7 @@ statsRouter.get("/deficit-streak", async (req, res) => {
     for (const [key, kcal] of split) kcalOutByDay.set(key, (kcalOutByDay.get(key) ?? 0) + kcal);
   }
 
-  const estimated = estimateTdee(user ?? { weightKg: null, heightCm: null, ageYears: null, activityLevel: null });
+  const estimated = estimateTdee(user ?? { weightKg: null, heightCm: null, ageYears: null, activityLevel: null, sex: null });
 
   // Today is still running, so it can't be called yet — a day that's in
   // deficit at lunchtime often isn't by bedtime. It joins the streak once
@@ -723,7 +740,7 @@ statsRouter.get("/today", async (req, res) => {
   // Same order of authority the diary uses: measured, then the user's own
   // target, then a formula. See dailyReference() in public/app.js.
   const target = user?.dailyCalorieTarget ?? null;
-  const estimated = estimateTdee(user ?? { weightKg: null, heightCm: null, ageYears: null, activityLevel: null });
+  const estimated = estimateTdee(user ?? { weightKg: null, heightCm: null, ageYears: null, activityLevel: null, sex: null });
   const reference = target !== null
     ? { kcal: target, source: "target" as const }
     : estimated !== null
