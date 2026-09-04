@@ -12,13 +12,13 @@ import {
   localDayLabel,
   zonedTimeToUtc,
 } from "../matchWeek";
-import { estimateAdaptiveTdee } from "../adaptiveTdee";
+import { estimateAdaptiveTdee, isAdaptiveTdeeAvailable } from "../adaptiveTdee";
 import { foodRecoveryFindings } from "../foodRecovery";
 import { latestWeightKg, weightRate } from "../weightStats";
 import { computeDeficitStreak, type DayVerdict } from "../deficitStreak";
 import { recordError } from "../errorLog";
 import { MACRO_KEYS, resolveMacroTargets, sumMacros, type MacroKey } from "../macros";
-import { macroRoom, whatCanIStillEat, type WhatNowFood, type WhatNowMeal } from "../whatNow";
+import { expectedBurnToday, macroRoom, whatCanIStillEat, type WhatNowFood, type WhatNowMeal } from "../whatNow";
 import { normalizeLabel } from "./foods";
 import { getRecentSleepRecovery } from "../whoop/sync";
 
@@ -34,6 +34,10 @@ const BREAKDOWN_MIN_WEEKS = 4;
 const BREAKDOWN_MAX_WEEKS = 26;
 const BREAKDOWN_DEFAULT_WEEKS = 12;
 const INSIGHT_WINDOW_DAYS = 42;
+// How far back "what does a normal day burn" looks, and the fewest whole days
+// it will average before it stops claiming to know.
+const BURN_AVERAGE_WINDOW_DAYS = 14;
+const MIN_BURN_AVERAGE_DAYS = 3;
 const MIN_SAMPLE_DAYS = 3;
 
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
@@ -836,29 +840,55 @@ statsRouter.get("/what-now", async (req, res) => {
   const dayStart = zonedTimeToUtc(y, m, d, 0, 0, config.TIMEZONE);
   const dayEnd = zonedTimeToUtc(ny, nm, nd, 0, 0, config.TIMEZONE);
 
-  const [user, entriesToday, libraryEntries, overrides, meals] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId } }),
-    prisma.entry.findMany({
-      where: { matchWeek: { userId }, timestamp: { gte: dayStart, lt: dayEnd } },
-      select: { kcal: true, proteinG: true, carbsG: true, fatG: true },
-    }),
-    prisma.entry.findMany({
-      where: { matchWeek: { userId } },
-      orderBy: { timestamp: "desc" },
-      select: { label: true, kcal: true, proteinG: true, carbsG: true, fatG: true },
-    }),
-    prisma.foodOverride.findMany({ where: { userId } }),
-    prisma.savedMeal.findMany({ where: { userId }, include: { items: true } }),
-  ]);
+  const burnSince = new Date(Date.now() - BURN_AVERAGE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
-  // Same order of authority as the Today card: the user's own target first,
-  // then a formula. Without either there's no "remaining" to report.
+  const [user, entriesToday, libraryEntries, overrides, meals, exercisesToday, burnCycles, adaptive] =
+    await Promise.all([
+      prisma.user.findUnique({ where: { id: userId } }),
+      prisma.entry.findMany({
+        where: { matchWeek: { userId }, timestamp: { gte: dayStart, lt: dayEnd } },
+        select: { kcal: true, proteinG: true, carbsG: true, fatG: true },
+      }),
+      prisma.entry.findMany({
+        where: { matchWeek: { userId } },
+        orderBy: { timestamp: "desc" },
+        select: { label: true, kcal: true, proteinG: true, carbsG: true, fatG: true },
+      }),
+      prisma.foodOverride.findMany({ where: { userId } }),
+      prisma.savedMeal.findMany({ where: { userId }, include: { items: true } }),
+      prisma.exercise.findMany({
+        where: { matchWeek: { userId }, timestamp: { gte: dayStart, lt: dayEnd } },
+        select: { kcalBurned: true, whoopWorkoutId: true },
+      }),
+      prisma.whoopCycle.findMany({
+        where: { userId, scoreState: "SCORED", kcalBurned: { not: null }, start: { gte: burnSince } },
+        select: { start: true, end: true, kcalBurned: true },
+      }),
+      estimateAdaptiveTdee(userId).catch(() => null),
+    ]);
+
+  // Only exercise entered by hand. Anything synced from a tracker is already
+  // inside the measured daily burn, so adding it would count the same run
+  // twice.
+  const exerciseKcal = exercisesToday
+    .filter((exercise) => exercise.whoopWorkoutId === null)
+    .reduce((sum, exercise) => sum + (exercise.kcalBurned ?? 0), 0);
+
   const target = user?.dailyCalorieTarget ?? null;
   const estimated = estimateTdee(user ?? { weightKg: null, heightCm: null, ageYears: null, activityLevel: null, sex: null });
-  const reference = target ?? (estimated === null ? null : Math.round(estimated));
+  const expected = expectedBurnToday({
+    measuredDailyAverage: measuredDailyAverageBurn(burnCycles, dayKey),
+    // A low-confidence adaptive figure is a guess dressed as a measurement;
+    // the formula below is at least honest about being one.
+    adaptiveKcalPerDay:
+      adaptive && isAdaptiveTdeeAvailable(adaptive) && adaptive.confidence !== "low" ? adaptive.kcalPerDay : null,
+    formulaKcalPerDay: estimated,
+    calorieTarget: target,
+    exerciseKcal,
+  });
 
   const eatenKcal = entriesToday.reduce((sum, entry) => sum + (entry.kcal ?? 0), 0);
-  const remainingKcal = reference === null ? null : reference - eatenKcal;
+  const remainingKcal = expected === null ? null : expected.kcal - eatenKcal;
 
   const macroTargets = user ? resolveMacroTargets(user) : null;
   const eatenMacros = sumMacros(entriesToday);
@@ -928,12 +958,40 @@ statsRouter.get("/what-now", async (req, res) => {
 
   res.json({
     date: dayKey,
-    referenceKcal: reference,
-    referenceSource: target !== null ? "target" : reference === null ? null : "estimate",
+    expectedBurn: expected,
+    calorieTarget: target,
     eatenKcal,
     ...result,
   });
 });
+
+/**
+ * Mean measured burn over recent whole days.
+ *
+ * Today is excluded because it is only part-finished, and so is the earliest
+ * day in the window, which the query itself cut in half. What is left is days
+ * the tracker covered end to end — the only ones that describe what a normal
+ * day costs this person.
+ */
+function measuredDailyAverageBurn(
+  cycles: { start: Date; end: Date | null; kcalBurned: number | null }[],
+  todayKey: string,
+): number | null {
+  if (cycles.length === 0) return null;
+
+  const byDay = new Map<string, number>();
+  const now = new Date();
+  for (const cycle of cycles) {
+    const split = splitCycleAcrossDays(cycle.start, cycle.end ?? now, cycle.kcalBurned ?? 0, config.TIMEZONE);
+    for (const [key, kcal] of split) byDay.set(key, (byDay.get(key) ?? 0) + kcal);
+  }
+
+  const days = [...byDay.keys()].sort();
+  const whole = days.filter((key) => key !== todayKey && key !== days[0]);
+  if (whole.length < MIN_BURN_AVERAGE_DAYS) return null;
+
+  return whole.reduce((sum, key) => sum + (byDay.get(key) ?? 0), 0) / whole.length;
+}
 
 /**
  * A short read on the day so far.

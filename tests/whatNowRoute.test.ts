@@ -13,6 +13,9 @@ const state = vi.hoisted(() => ({
   entries: [] as any[],
   overrides: [] as any[],
   meals: [] as any[],
+  exercises: [] as any[],
+  cycles: [] as any[],
+  adaptive: null as any,
   nextId: 1,
 }));
 
@@ -21,6 +24,14 @@ vi.mock("../src/config", () => ({
 }));
 
 vi.mock("../src/whoop/sync", () => ({ getRecentSleepRecovery: vi.fn(async () => []) }));
+
+// The adaptive estimate does its own querying and has its own tests; here it is
+// just one more candidate for the day's expected burn, so the tests set what it
+// says rather than building up weeks of weigh-ins to make it say it.
+vi.mock("../src/adaptiveTdee", () => ({
+  estimateAdaptiveTdee: vi.fn(async () => state.adaptive ?? { kcalPerDay: null, reason: "no-weigh-ins" }),
+  isAdaptiveTdeeAvailable: (result: any) => result?.kcalPerDay !== null,
+}));
 
 vi.mock("../src/db", () => {
   const prisma: any = {
@@ -69,6 +80,8 @@ vi.mock("../src/db", () => {
       }),
     },
     foodOverride: { findMany: vi.fn(async () => state.overrides) },
+    exercise: { findMany: vi.fn(async () => state.exercises) },
+    whoopCycle: { findMany: vi.fn(async () => state.cycles) },
     savedMeal: { findMany: vi.fn(async () => state.meals) },
     $transaction: vi.fn(async (arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma))),
   };
@@ -82,7 +95,8 @@ let server: http.Server;
 let baseUrl: string;
 
 beforeEach(async () => {
-  for (const key of ["users", "entries", "overrides", "meals"] as const) state[key].length = 0;
+  for (const key of ["users", "entries", "overrides", "meals", "exercises", "cycles"] as const) state[key].length = 0;
+  state.adaptive = null;
   state.nextId = 1;
   vi.clearAllMocks();
 
@@ -137,25 +151,68 @@ describe("GET /api/stats/what-now", () => {
     expect((await whatNow("")).status).toBe(401);
   });
 
-  it("reports the calories left against the user's own target", async () => {
-    const cookie = await signUp({ dailyCalorieTarget: 2000 });
+  it("measures the room against the whole day's expected burn", async () => {
+    const cookie = await signUp({ weightKg: 80, heightCm: 180, ageYears: 40, activityLevel: "light", sex: "male" });
     log(0, { label: "Porridge", kcal: 400 });
 
     const body = (await (await whatNow(cookie)).json()) as any;
-    expect(body).toMatchObject({ referenceKcal: 2000, referenceSource: "target", eatenKcal: 400, remainingKcal: 1600 });
+    expect(body.expectedBurn.baseSource).toBe("formula");
+    expect(body.expectedBurn.kcal).toBeGreaterThan(1500);
+    expect(body.eatenKcal).toBe(400);
+    expect(body.remainingKcal).toBe(body.expectedBurn.kcal - 400);
   });
 
-  it("falls back to the estimate when no target is set", async () => {
-    const cookie = await signUp({ weightKg: 80, heightCm: 180, ageYears: 40, activityLevel: "light", sex: "male" });
+  it("prefers a tracker's measured daily average over any estimate", async () => {
+    const cookie = await signUp({
+      dailyCalorieTarget: 2000,
+      weightKg: 80,
+      heightCm: 180,
+      ageYears: 40,
+      activityLevel: "light",
+      sex: "male",
+    });
+    // Five whole days at 3,000, plus today's part-day. The earliest day is the
+    // one the 14-day window cut in half, so it is dropped along with today.
+    for (let day = 0; day <= 6; day += 1) {
+      const start = new Date(Date.now() - day * 86_400_000);
+      start.setUTCHours(1, 0, 0, 0);
+      state.cycles.push({ start, end: new Date(start.getTime() + 22 * 3_600_000), kcalBurned: 3000 });
+    }
+
     const body = (await (await whatNow(cookie)).json()) as any;
-    expect(body.referenceSource).toBe("estimate");
-    expect(body.referenceKcal).toBeGreaterThan(1500);
+    expect(body.expectedBurn.baseSource).toBe("measured-average");
+    expect(body.expectedBurn.base).toBe(3000);
   });
 
-  it("has nothing to offer with neither a target nor the figures to estimate one", async () => {
+  it("uses the learned figure over the formula, but not a low-confidence one", async () => {
+    const fields = { weightKg: 80, heightCm: 180, ageYears: 40, activityLevel: "light", sex: "male" };
+    state.adaptive = { kcalPerDay: 2750, confidence: "high" };
+    const cookie = await signUp(fields);
+
+    const body = (await (await whatNow(cookie)).json()) as any;
+    expect(body.expectedBurn).toMatchObject({ baseSource: "adaptive", base: 2750 });
+
+    state.adaptive = { kcalPerDay: 2750, confidence: "low" };
+    const second = (await (await whatNow(cookie)).json()) as any;
+    expect(second.expectedBurn.baseSource).toBe("formula");
+  });
+
+  it("adds exercise logged by hand today, but not what a tracker already counted", async () => {
+    const cookie = await signUp({ dailyCalorieTarget: 2000 });
+    state.exercises.push({ kcalBurned: 320, whoopWorkoutId: null });
+    // Already inside the measured burn — counting it here would be the same
+    // run twice.
+    state.exercises.push({ kcalBurned: 500, whoopWorkoutId: "abc" });
+
+    const body = (await (await whatNow(cookie)).json()) as any;
+    expect(body.expectedBurn).toMatchObject({ base: 2000, exerciseKcal: 320, kcal: 2320 });
+    expect(body.remainingKcal).toBe(2320);
+  });
+
+  it("has nothing to offer with nothing at all to measure against", async () => {
     const cookie = await signUp();
     const body = (await (await whatNow(cookie)).json()) as any;
-    expect(body).toMatchObject({ referenceKcal: null, remainingKcal: null, available: false, reason: "no-reference" });
+    expect(body).toMatchObject({ expectedBurn: null, remainingKcal: null, available: false, reason: "no-reference" });
   });
 
   it("draws suggestions from every day of the diary, not just today", async () => {
@@ -241,7 +298,7 @@ describe("GET /api/stats/what-now", () => {
     ]);
   });
 
-  it("says nothing is left rather than suggesting food once the target is spent", async () => {
+  it("says nothing is left rather than suggesting food once the day is spent", async () => {
     const cookie = await signUp({ dailyCalorieTarget: 2000 });
     log(0, { label: "Big day", kcal: 2100 });
 

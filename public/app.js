@@ -23,6 +23,7 @@ const ICONS = {
   pencil: icon('<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>'),
   droplet: icon('<path d="M12 2.7 6.9 8.1a7.2 7.2 0 1 0 10.2 0Z"/>'),
   note: icon('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z"/><path d="M14 3v6h6"/>'),
+  chevronDown: icon('<polyline points="6 9 12 15 18 9"/>'),
 };
 
 const authScreen = document.getElementById("auth-screen");
@@ -202,6 +203,9 @@ const scanModal = document.getElementById("scan-modal");
 const scanCloseBtn = document.getElementById("scan-close-btn");
 const scanVideo = document.getElementById("scan-video");
 const scanStatusEl = document.getElementById("scan-status-el");
+const scanManualRow = document.getElementById("scan-manual-row");
+const scanManualForm = document.getElementById("scan-manual-form");
+const scanManualInput = document.getElementById("scan-manual-input");
 
 
 
@@ -1569,9 +1573,15 @@ let cameraReleaseTimer = null;
 // permission on every getUserMedia call, so a stream that dies between scans
 // means a fresh prompt for every single scan. Holding it across a scanning
 // burst turns that into one prompt. It is still released afterwards — and
-// immediately if the app is backgrounded — so the camera indicator never
-// stays lit on an idle app.
+// shortly after the app is backgrounded — so the camera indicator never stays
+// lit on an idle app.
 const CAMERA_HOLD_MS = 300_000;
+// Grace before a backgrounded app gives the camera up. Glancing at a message
+// between two scans used to end the stream the moment the app lost focus, and
+// the next scan had to ask for permission all over again — which is most of
+// what "it asks every time" actually was. The tracks are disabled throughout,
+// so no frames are captured while the app is away.
+const CAMERA_BACKGROUND_GRACE_MS = 90_000;
 
 async function acquireCameraStream() {
   clearTimeout(cameraReleaseTimer);
@@ -1582,7 +1592,19 @@ async function acquireCameraStream() {
     return scanStream;
   }
   releaseCameraStream();
-  scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+  scanStream = await navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: "environment",
+      // Asked for, not demanded — every one of these is a hint the browser is
+      // free to ignore. A barcode needs resolution to survive being scaled
+      // down for the decoder, and continuous focus is what lets someone move
+      // the phone towards the packet until it locks rather than having one go
+      // at whatever the camera happened to be focused on when it opened.
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      focusMode: "continuous",
+    },
+  });
   // iOS can end a track on its own — a phone call, another app taking the
   // camera. Forgetting it here means the next open asks for a fresh one
   // instead of handing the detector a dead stream.
@@ -1602,10 +1624,49 @@ function releaseCameraStream() {
   scanVideo.srcObject = null;
 }
 
+// What the status line says, and when. Scanning a barcode is a physical skill
+// — distance, steadiness, light — and the difference between "this is broken"
+// and "move a bit closer" is usually one sentence at the right moment.
+const SCAN_HINTS = [
+  { after: 0, text: "Line the barcode up inside the box." },
+  { after: 6000, text: "Still looking — hold steady, about 15cm away, and keep the barcode flat." },
+  { after: 15000, text: "No luck yet. More light usually does it, or type the numbers under the barcode in below." },
+];
+let scanHintTimers = [];
+let scanStartedAt = 0;
+
+function startScanHints() {
+  stopScanHints();
+  scanStartedAt = Date.now();
+  scanManualRow.hidden = true;
+  for (const hint of SCAN_HINTS) {
+    if (hint.after === 0) {
+      scanStatusEl.textContent = hint.text;
+      continue;
+    }
+    scanHintTimers.push(
+      setTimeout(() => {
+        if (!scannerActive) return;
+        scanStatusEl.textContent = hint.text;
+        // The typed fallback appears with the hint that mentions it, rather
+        // than sitting there from the start suggesting the scan won't work.
+        if (hint.after >= 15000) scanManualRow.hidden = false;
+      }, hint.after),
+    );
+  }
+}
+
+function stopScanHints() {
+  for (const timer of scanHintTimers) clearTimeout(timer);
+  scanHintTimers = [];
+}
+
 function openScanner() {
   scanModal.hidden = false;
   scannerActive = true;
-  scanStatusEl.textContent = "Searching for barcode…";
+  scanStatusEl.textContent = "Starting the camera…";
+  scanManualRow.hidden = true;
+  scanManualInput.value = "";
 
   acquireCameraStream()
     .then((stream) => {
@@ -1617,6 +1678,7 @@ function openScanner() {
       // still starting up. Nothing has gone wrong when that happens, so it is
       // swallowed rather than left as an unhandled rejection.
       scanVideo.play().catch(() => {});
+      startScanHints();
       if (typeof BarcodeDetector !== "undefined") {
         runBarcodeDetectorLoop();
       } else {
@@ -1624,23 +1686,29 @@ function openScanner() {
         // a CDN. If that fetch fails the scanner would otherwise sit on
         // "Searching for barcode…" for ever with nothing running behind it.
         loadQuagga2().then(runQuaggaLoop).catch(() => {
+          stopScanHints();
           scanStatusEl.textContent =
-            "Couldn't load the barcode reader — check your connection, or type the food in instead.";
+            "Couldn't load the barcode reader — check your connection, or type the numbers in below.";
+          scanManualRow.hidden = false;
         });
       }
     })
     .catch(() => {
+      stopScanHints();
       scanStatusEl.textContent =
-        "Camera access denied — allow camera use for this site and try again.";
+        "Camera access denied — allow camera use for this site and try again, or type the numbers in below.";
+      scanManualRow.hidden = false;
     });
 }
 
 function stopScanner() {
   scannerActive = false;
+  stopScanHints();
   if (scanRafId) {
     cancelAnimationFrame(scanRafId);
     scanRafId = null;
   }
+  clearTimeout(scanTickTimer);
   quaggaLoopActive = false;
 
   // The stream stays attached to the video element. Detaching it (srcObject =
@@ -1656,11 +1724,31 @@ function stopScanner() {
   cameraReleaseTimer = setTimeout(releaseCameraStream, CAMERA_HOLD_MS);
 }
 
-// Leaving the app drops the camera straight away rather than waiting out the
-// hold — a held stream is a convenience while scanning, not a reason to keep
-// the camera open in the background.
+// Backgrounding the app stops the frames immediately but keeps the capture
+// session for a short while, so a quick switch to another app doesn't cost a
+// permission prompt on the way back. Coming back puts the normal hold back.
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden && !scannerActive) releaseCameraStream();
+  if (scannerActive || !scanStream) return;
+  clearTimeout(cameraReleaseTimer);
+  if (document.hidden) {
+    scanStream.getVideoTracks().forEach((t) => { t.enabled = false; });
+    cameraReleaseTimer = setTimeout(releaseCameraStream, CAMERA_BACKGROUND_GRACE_MS);
+  } else {
+    cameraReleaseTimer = setTimeout(releaseCameraStream, CAMERA_HOLD_MS);
+  }
+});
+
+// Typing the numbers under the barcode. Not every packet scans — a crumpled
+// wrapper, a curved tin, a dark kitchen — and the numbers are printed right
+// there.
+scanManualForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const code = scanManualInput.value.replace(/\D/g, "");
+  if (code.length < 6) {
+    scanStatusEl.textContent = "That doesn't look like a barcode — it's usually 8 or 13 digits.";
+    return;
+  }
+  handleBarcode(code);
 });
 
 // Native BarcodeDetector (Chrome, Edge, Android WebView)
@@ -1701,41 +1789,75 @@ function loadQuagga2() {
   return quagga2Promise;
 }
 
+// Quagga has to be handed a still image, and producing one costs real time on
+// a phone. Two things made this feel like it took a single shot the moment the
+// camera opened and then gave up: a full-resolution PNG encoded for every
+// animation frame, which pinned the main thread so the preview stopped
+// updating and there was no way to aim; and no gap between attempts, so each
+// encode started before the last had been decoded.
+//
+// So: a fixed cadence rather than every frame, a downscaled JPEG rather than a
+// full-size PNG, and attempts that alternate between the area inside the
+// reticle and the whole frame — the crop is faster and ignores the clutter
+// around the packet, the full frame catches someone aiming slightly off.
+const SCAN_INTERVAL_MS = 120;
+const SCAN_FRAME_WIDTH = 720;
+// Matches .scan-reticle's inset of 25% top/bottom and 10% left/right.
+const RETICLE = { x: 0.1, y: 0.25, w: 0.8, h: 0.5 };
+let scanTickTimer = null;
+
 function runQuaggaLoop() {
   quaggaLoopActive = true;
   const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  let useReticle = true;
+
+  function schedule() {
+    clearTimeout(scanTickTimer);
+    scanTickTimer = setTimeout(tick, SCAN_INTERVAL_MS);
+  }
 
   function tick() {
     if (!quaggaLoopActive || !scannerActive) return;
-    if (scanVideo.readyState < 2) { requestAnimationFrame(tick); return; }
-    canvas.width = scanVideo.videoWidth;
-    canvas.height = scanVideo.videoHeight;
-    ctx.drawImage(scanVideo, 0, 0);
-    const dataUrl = canvas.toDataURL("image/png");
+    if (scanVideo.readyState < 2 || !scanVideo.videoWidth) { schedule(); return; }
+
+    const vw = scanVideo.videoWidth;
+    const vh = scanVideo.videoHeight;
+    const crop = useReticle
+      ? { sx: vw * RETICLE.x, sy: vh * RETICLE.y, sw: vw * RETICLE.w, sh: vh * RETICLE.h }
+      : { sx: 0, sy: 0, sw: vw, sh: vh };
+    useReticle = !useReticle;
+
+    const scale = Math.min(1, SCAN_FRAME_WIDTH / crop.sw);
+    canvas.width = Math.round(crop.sw * scale);
+    canvas.height = Math.round(crop.sh * scale);
+    ctx.drawImage(scanVideo, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
 
     window.Quagga.decodeSingle(
       {
         src: dataUrl,
         numOfWorkers: 0,
-        inputStream: { size: 640 },
+        locate: true,
+        inputStream: { size: SCAN_FRAME_WIDTH },
+        // halfSample trades a little sensitivity for a lot of speed, which is
+        // the right way round when there are eight attempts a second.
+        locator: { patchSize: "medium", halfSample: true },
         decoder: { readers: ["ean_reader", "ean_8_reader", "upc_reader", "upc_e_reader", "code_128_reader"] },
       },
       (result) => {
-        if (!quaggaLoopActive) return;
-        if (result?.codeResult?.code) {
-          handleBarcode(result.codeResult.code);
-        } else {
-          requestAnimationFrame(tick);
-        }
+        if (!quaggaLoopActive || !scannerActive) return;
+        if (result?.codeResult?.code) handleBarcode(result.codeResult.code);
+        else schedule();
       },
     );
   }
 
-  requestAnimationFrame(tick);
+  schedule();
 }
 
 async function handleBarcode(code) {
+  stopScanHints();
   scanStatusEl.textContent = "Looking up product…";
   const product = await lookupOpenFoodFacts(code);
   stopScanner();
@@ -7163,16 +7285,45 @@ function renderTodayBody(whoop) {
 // mean anything, so the card comes off the screen entirely.
 
 const whatNowCard = document.getElementById("what-now-card");
+const whatNowToggle = document.getElementById("what-now-toggle");
+const whatNowChevron = document.getElementById("what-now-chevron");
+const whatNowBody = document.getElementById("what-now-body");
 const whatNowRoom = document.getElementById("what-now-room");
+const whatNowBasis = document.getElementById("what-now-basis");
 const whatNowNote = document.getElementById("what-now-note");
 const whatNowList = document.getElementById("what-now-list");
 const whatNowSkipped = document.getElementById("what-now-skipped");
+
+whatNowChevron.innerHTML = ICONS.chevronDown;
+
+// Shut on arrival, opened on a tap — the Today screen has enough on it, and
+// this is a question you ask rather than an answer you always want in the way.
+// Answering it reads the whole diary and every saved meal, so nothing is
+// fetched until it's actually asked for; once open it refreshes with the rest
+// of the screen.
+let whatNowOpen = false;
+
+function setWhatNowOpen(open) {
+  whatNowOpen = open;
+  whatNowBody.hidden = !open;
+  whatNowToggle.setAttribute("aria-expanded", String(open));
+  whatNowCard.classList.toggle("what-now-card--open", open);
+  if (open) loadWhatNow();
+  else whatNowRoom.textContent = "Tap to see what's left of today";
+}
+
+whatNowToggle.addEventListener("click", () => {
+  haptic();
+  setWhatNowOpen(!whatNowOpen);
+});
 
 async function loadWhatNow() {
   if (todayViewDate) {
     whatNowCard.hidden = true;
     return;
   }
+  whatNowCard.hidden = false;
+  if (!whatNowOpen) return;
   try {
     const res = await fetch("/api/stats/what-now");
     if (!res.ok) throw new Error();
@@ -7187,19 +7338,15 @@ function renderWhatNow(data) {
   whatNowList.innerHTML = "";
   whatNowSkipped.hidden = true;
 
-  // Without a calorie reference there's no "remaining" for anything to fit
-  // inside, so there's no card either.
-  if (data.reason === "no-reference") {
-    whatNowCard.hidden = true;
-    return;
-  }
   whatNowCard.hidden = false;
 
   whatNowRoom.textContent = data.remainingKcal === null
-    ? ""
+    ? "Nothing to measure against yet"
     : data.remainingKcal > 0
       ? `${data.remainingKcal.toLocaleString()} kcal left`
       : `${Math.abs(data.remainingKcal).toLocaleString()} kcal over`;
+
+  renderWhatNowBasis(data);
 
   if (!data.available) {
     whatNowNote.hidden = false;
@@ -7229,10 +7376,44 @@ function renderWhatNow(data) {
   }
 }
 
+/**
+ * Shows the working. The room left is measured against what the whole day is
+ * expected to burn, not against what a tracker has recorded so far — you go on
+ * burning calories until you go to bed, and a part-day figure would make the
+ * evening look hundreds of calories tighter than it is. Saying where the
+ * number came from is what stops it looking arbitrary.
+ */
+const BURN_SOURCE_WORDS = {
+  "measured-average": "your measured daily average",
+  adaptive: "your learned daily burn",
+  formula: "your estimated daily burn",
+  target: "your daily calorie target",
+};
+
+function renderWhatNowBasis(data) {
+  const burn = data.expectedBurn;
+  if (!burn) {
+    whatNowBasis.hidden = true;
+    return;
+  }
+  const source = BURN_SOURCE_WORDS[burn.baseSource] ?? "your daily burn";
+  const parts = [`${burn.base.toLocaleString()} kcal from ${source}`];
+  if (burn.exerciseKcal > 0) parts.push(`${burn.exerciseKcal.toLocaleString()} kcal of exercise logged today`);
+
+  whatNowBasis.hidden = false;
+  whatNowBasis.textContent =
+    `Against ${burn.kcal.toLocaleString()} kcal expected to burn today — ${listToSentence(parts)}. ` +
+    `You've eaten ${data.eatenKcal.toLocaleString()}.`;
+}
+
 function whatNowEmptyText(data) {
   switch (data.reason) {
+    case "no-reference":
+      // Vanishing would leave someone tapping a card that disappears. Saying
+      // what is missing is a thing they can act on.
+      return "Add your height, weight and age — or a daily calorie target — in Settings, and this can work out what still fits.";
     case "no-room":
-      return "There's nothing left of today's calories to fit anything into.";
+      return "You've already eaten what today is expected to burn, so there's nothing left to fit anything into.";
     case "empty-library":
       return "Nothing to suggest yet — log a few meals and they'll start showing up here.";
     case "macros-unknown":
