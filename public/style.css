@@ -4577,13 +4577,14 @@ body.sheet-open { overflow: hidden; }
 }
 
 /* ── What the day is measured against ── */
-/* The (i) sits in the hero card's corner rather than in a header row: the card
+/* The cog sits in the hero card's corner rather than in a header row: the card
    has no heading to hang it off, and the corner is out of the way of the ring
-   and the figures beside it. */
+   and the figures beside it. A cog rather than an (i) because the panel behind
+   it is a setting to change, not a paragraph to read. */
 .today-hero--anchored {
   position: relative;
 }
-.burn-info-btn {
+.burn-settings-btn {
   position: absolute;
   top: 8px;
   right: 8px;
@@ -4597,11 +4598,11 @@ body.sheet-open { overflow: hidden; }
   color: var(--muted);
   border-radius: 999px;
 }
-.burn-info-btn .icon {
+.burn-settings-btn .icon {
   width: 18px;
   height: 18px;
 }
-.burn-info-btn:hover {
+.burn-settings-btn:hover {
   color: var(--pitch);
 }
 .burn-choices {
@@ -4611,13 +4612,14 @@ body.sheet-open { overflow: hidden; }
   margin: 10px 0 4px;
 }
 /* Each option carries its own one-line explanation, because "measured" and
-   "estimate" mean nothing on their own to someone deciding between them. */
+   "estimate" mean nothing on their own to someone deciding between them, and
+   a tick on the right so the chosen one reads at a glance. */
 .burn-choice {
   width: 100%;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
   min-height: 0;
   padding: 11px 13px;
   text-align: left;
@@ -4628,6 +4630,24 @@ body.sheet-open { overflow: hidden; }
   border-radius: var(--radius-sm);
   box-shadow: none;
   font-weight: 500;
+}
+.burn-choice-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.burn-choice-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  color: var(--pitch);
+}
+.burn-choice-mark .icon {
+  width: 18px;
+  height: 18px;
 }
 .burn-choice--on {
   border-color: var(--pitch);

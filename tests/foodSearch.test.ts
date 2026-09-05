@@ -28,6 +28,7 @@ function result(partial: Partial<FoodSearchResult>): FoodSearchResult {
     kind: partial.kind ?? "branded",
     name: partial.name ?? "Thing",
     brand: partial.brand ?? null,
+    servingLabel: partial.servingLabel ?? null,
     barcode: partial.barcode ?? null,
     per100g: partial.per100g ?? null,
     servingGrams: partial.servingGrams ?? null,
@@ -45,6 +46,7 @@ describe("Open Food Facts", () => {
         product_name: "Hobnobs",
         brands: "McVitie's",
         serving_quantity: "15",
+        serving_size: "2 biscuits (15 g)",
         nutriments: { "energy-kcal_100g": 471, proteins_100g: 6.9, carbohydrates_100g: 63, fat_100g: 20 },
       },
     ],
@@ -59,7 +61,17 @@ describe("Open Food Facts", () => {
       barcode: "5000168001678",
       per100g: { kcal: 471, protein: 6.9, carbs: 63, fat: 20 },
       servingGrams: 15,
+      // How many units make a serving is the fact that turns a stated count
+      // into a figure, and the gram number alone cannot carry it.
+      servingLabel: "2 biscuits (15 g)",
     });
+  });
+
+  it("leaves the serving text null when the packet doesn't state one", () => {
+    const [result] = parseOffProducts({ products: [
+      { code: "9", product_name: "Plain flour", nutriments: { "energy-kcal_100g": 341 } },
+    ] });
+    expect(result).toMatchObject({ servingLabel: null, servingGrams: null });
   });
 
   it("drops rows that couldn't be logged anyway", () => {

@@ -7,16 +7,9 @@ import {
   cacheSet,
   rankResults,
   searchLibrary,
-  type FoodSearchResult,
   type LibraryRow,
 } from "../foodSearch";
-import {
-  configuredSources,
-  lookupBarcode,
-  searchNutritionix,
-  searchOpenFoodFacts,
-  searchUsda,
-} from "../foodSearchProviders";
+import { configuredSources, lookupBarcode, searchAllProviders } from "../foodSearchProviders";
 
 export const foodSearchRouter = Router();
 foodSearchRouter.use(requireAuth);
@@ -50,7 +43,7 @@ foodSearchRouter.get("/", async (req, res) => {
 
   const [libraryRows, remote] = await Promise.all([
     loadLibrary(req.userId!),
-    cached ?? searchRemote(query),
+    cached ?? searchAllProviders(query),
   ]);
   if (!cached) cacheSet(cacheKey, remote);
 
@@ -63,18 +56,6 @@ foodSearchRouter.get("/", async (req, res) => {
     sources: configuredSources(),
   });
 });
-
-async function searchRemote(query: string): Promise<FoodSearchResult[]> {
-  // allSettled, not all: each provider already swallows its own failures, but
-  // the search must not depend on every one of them continuing to. One source
-  // throwing is one source missing from the answer, never a failed search.
-  const groups = await Promise.allSettled([
-    searchOpenFoodFacts(query),
-    searchNutritionix(query),
-    searchUsda(query),
-  ]);
-  return groups.flatMap((group) => (group.status === "fulfilled" ? group.value : []));
-}
 
 /**
  * The user's own foods, aggregated the same way GET /api/foods does it — one

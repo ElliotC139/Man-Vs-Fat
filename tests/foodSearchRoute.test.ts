@@ -26,22 +26,39 @@ vi.mock("../src/config", () => ({
   config: { TIMEZONE: "Europe/London", GOOGLE_SIGNIN_CLIENT_ID: undefined },
 }));
 
-vi.mock("../src/foodSearchProviders", () => ({
-  configuredSources: () => ({ menus: true, ingredients: true }),
-  searchOpenFoodFacts: vi.fn(async () => {
+// The fan-out across sources lives in the providers module now, because the
+// search box is no longer its only caller — estimating a typed meal grounds
+// itself in the same rows. The mock reproduces its one guarantee, that a
+// source which throws drops out and the rest still answer, so the route tests
+// below still exercise what the route itself does: cache, filter and rank.
+vi.mock("../src/foodSearchProviders", () => {
+  const searchOpenFoodFacts = vi.fn(async () => {
     state.offCalls += 1;
-    // The real provider swallows its own failures; this proves the route does
-    // not depend on that being true.
     if (state.offThrows) throw new Error("Open Food Facts is down");
     return state.off;
-  }),
-  searchNutritionix: vi.fn(async () => state.nutritionix),
-  searchUsda: vi.fn(async () => state.usda),
-  lookupBarcode: vi.fn(async () => {
-    state.barcodeCalls += 1;
-    return state.barcodeProduct;
-  }),
-}));
+  });
+  const searchNutritionix = vi.fn(async () => state.nutritionix);
+  const searchUsda = vi.fn(async () => state.usda);
+
+  return {
+    configuredSources: () => ({ menus: true, ingredients: true }),
+    searchOpenFoodFacts,
+    searchNutritionix,
+    searchUsda,
+    searchAllProviders: vi.fn(async () => {
+      const groups = await Promise.allSettled([
+        searchOpenFoodFacts(),
+        searchNutritionix(),
+        searchUsda(),
+      ]);
+      return groups.flatMap((group) => (group.status === "fulfilled" ? group.value : []));
+    }),
+    lookupBarcode: vi.fn(async () => {
+      state.barcodeCalls += 1;
+      return state.barcodeProduct;
+    }),
+  };
+});
 
 vi.mock("../src/db", () => {
   const prisma: any = {

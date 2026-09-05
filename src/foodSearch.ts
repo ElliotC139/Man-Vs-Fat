@@ -25,7 +25,7 @@
  * results and the rest of the search still answers.
  */
 
-import { normalizeLabel } from "./routes/foods";
+import { normalizeLabel } from "./labelKey";
 
 export type FoodSource = "library" | "off" | "nutritionix" | "usda";
 
@@ -58,6 +58,15 @@ export interface FoodSearchResult {
   per100g: (FoodMacros & { kcal: number }) | null;
   /** A sensible default serving in grams, where the source states one. */
   servingGrams: number | null;
+  /**
+   * One serving in the source's own words — "15 pieces (30 g)", "2 biscuits".
+   *
+   * Kept as text rather than reduced to grams because for anything sold in
+   * countable units the packet's own "N pieces = 1 serving" is the fact that
+   * makes a stated count computable: 10 of 15 pieces is two thirds of a
+   * serving, no unit weight guessed anywhere.
+   */
+  servingLabel: string | null;
   /** One portion as the source describes it, when that's the honest unit. */
   portion: (FoodMacros & { kcal: number; label: string }) | null;
   /** Set for the user's own foods — what POST /api/foods/log wants. */
@@ -198,6 +207,7 @@ export function parseOffProducts(payload: unknown): FoodSearchResult[] {
         fat: num(nutriments["fat_100g"]),
       },
       servingGrams: num(p.serving_quantity) === null ? null : Math.round(num(p.serving_quantity)!),
+      servingLabel: text(p.serving_size),
       portion: null,
       labelKey: null,
       timesLogged: 0,
@@ -256,6 +266,7 @@ export function parseNutritionixInstant(payload: unknown): FoodSearchResult[] {
           }
         : null,
       servingGrams: grams === null ? null : Math.round(grams),
+      servingLabel: servingLabel(item),
       portion: {
         label: servingLabel(item) ?? "1 serving",
         kcal: Math.round(kcal),
@@ -294,6 +305,7 @@ export function parseNutritionixInstant(payload: unknown): FoodSearchResult[] {
           }
         : null,
       servingGrams: grams === null ? null : Math.round(grams),
+      servingLabel: servingLabel(item),
       portion: {
         label: servingLabel(item) ?? "1 serving",
         kcal: Math.round(kcal),
@@ -373,6 +385,7 @@ export function parseUsdaSearch(payload: unknown): FoodSearchResult[] {
         fat: byNumber.get(USDA_NUTRIENTS.fat) ?? null,
       },
       servingGrams: null,
+      servingLabel: null,
       portion: null,
       labelKey: null,
       timesLogged: 0,
@@ -426,6 +439,7 @@ export function searchLibrary(rows: LibraryRow[], query: string, limit: number):
       barcode: null,
       per100g: null,
       servingGrams: null,
+      servingLabel: null,
       portion: {
         label: "as you logged it",
         kcal: row.kcal!,

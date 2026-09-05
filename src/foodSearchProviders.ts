@@ -61,7 +61,10 @@ async function safely(name: string, run: () => Promise<FoodSearchResult[]>): Pro
 
 // ── Open Food Facts ────────────────────────────────────────────────────────
 
-const OFF_FIELDS = "code,product_name,brands,nutriments,serving_quantity";
+// serving_size is the text one ("15 pieces (30 g)"), not the gram number:
+// for anything sold in countable units it is the only field that says how
+// many units make a serving, which is what turns "10 pieces" into a figure.
+const OFF_FIELDS = "code,product_name,brands,nutriments,serving_quantity,serving_size";
 
 function offUrl(query: string, ukOnly: boolean): string {
   const params = new URLSearchParams({
@@ -159,6 +162,26 @@ export function searchUsda(query: string): Promise<FoodSearchResult[]> {
     })}`;
     return parseUsdaSearch(await getJson(url, { headers: { Accept: "application/json" } }));
   });
+}
+
+/**
+ * Every remote source at once, merged.
+ *
+ * allSettled, not all: each provider already swallows its own failures, but
+ * the search must not depend on every one of them continuing to. One source
+ * throwing is one source missing from the answer, never a failed search.
+ *
+ * Lives here rather than in the search route because food search is no longer
+ * its only caller — estimating a typed meal grounds itself in the same rows
+ * (see src/estimateGrounding.ts).
+ */
+export async function searchAllProviders(query: string): Promise<FoodSearchResult[]> {
+  const groups = await Promise.allSettled([
+    searchOpenFoodFacts(query),
+    searchNutritionix(query),
+    searchUsda(query),
+  ]);
+  return groups.flatMap((group) => (group.status === "fulfilled" ? group.value : []));
 }
 
 /** Which remote sources this deployment can actually reach, for the UI to say so. */
