@@ -61,7 +61,10 @@ async function safely(name: string, run: () => Promise<FoodSearchResult[]>): Pro
 
 // ── Open Food Facts ────────────────────────────────────────────────────────
 
-const OFF_FIELDS = "code,product_name,brands,nutriments,serving_quantity";
+// serving_size is the text one ("15 pieces (30 g)"), not the gram number:
+// for anything sold in countable units it is the only field that says how
+// many units make a serving, which is what turns "10 pieces" into a figure.
+const OFF_FIELDS = "code,product_name,brands,nutriments,serving_quantity,serving_size";
 
 function offUrl(query: string, ukOnly: boolean): string {
   const params = new URLSearchParams({

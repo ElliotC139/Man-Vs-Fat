@@ -134,7 +134,7 @@ describe("estimateMeal", () => {
   it("passes database figures to the model as reference, when there are any", async () => {
     createMock.mockResolvedValueOnce(
       textResponse({
-        items: [{ label: "Milkybar buttons", kcal: 122, protein: 2, carbs: 13, fat: 7, quantified: true }],
+        items: [{ label: "Milkybar buttons", kcal: 109, protein: 2, carbs: 12, fat: 6, quantified: true }],
       }),
     );
 
@@ -144,9 +144,12 @@ describe("estimateMeal", () => {
         {
           name: "Milkybar Giant Buttons",
           brand: "Nestlé",
-          per100g: { kcal: 553, protein: 7.7, carbs: 57.6, fat: 32.2 },
+          per100g: { kcal: 543, protein: 7.7, carbs: 57.6, fat: 31.3 },
           portion: null,
           servingGrams: 30,
+          // Straight off the packet, and the line that makes the sum exact:
+          // 10 of 15 pieces is two thirds of a 163 kcal serving = 109 kcal.
+          servingLabel: "15 pieces (30 g)",
         },
       ],
     });
@@ -155,7 +158,9 @@ describe("estimateMeal", () => {
     const sent = content.map((block: { text?: string }) => block.text ?? "").join("\n");
     expect(sent).toContain("REFERENCE FIGURES");
     expect(sent).toContain("Nestlé — Milkybar Giant Buttons");
-    expect(sent).toContain("per 100g: 553 kcal, protein 7.7g, carbs 57.6g, fat 32.2g");
+    expect(sent).toContain("per 100g: 543 kcal, protein 7.7g, carbs 57.6g, fat 31.3g");
+    // The count-per-serving has to reach the model, not just the gram figure.
+    expect(sent).toContain("stated serving: 15 pieces (30 g)");
   });
 
   it("sends no reference block when nothing matched", async () => {

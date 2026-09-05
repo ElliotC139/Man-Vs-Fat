@@ -20,6 +20,7 @@ function product(overrides: Partial<FoodSearchResult> = {}): FoodSearchResult {
     barcode: "1",
     per100g: { kcal: 553, protein: 7.7, carbs: 57.6, fat: 32.2 },
     servingGrams: 30,
+    servingLabel: "15 pieces (30 g)",
     portion: null,
     labelKey: null,
     timesLogged: 0,
@@ -58,6 +59,9 @@ describe("findReferences", () => {
         per100g: { kcal: 553, protein: 7.7, carbs: 57.6, fat: 32.2 },
         portion: null,
         servingGrams: 30,
+        // The packet's own "15 pieces = 1 serving" has to survive into the
+        // reference; it is what makes a stated count exact rather than guessed.
+        servingLabel: "15 pieces (30 g)",
       },
     ]);
   });

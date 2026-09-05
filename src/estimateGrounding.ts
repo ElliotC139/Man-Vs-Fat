@@ -29,6 +29,14 @@ export interface EstimateReference {
   /** One portion as the source describes it, for menu items sold by the plate. */
   portion: { label: string; kcal: number } | null;
   servingGrams: number | null;
+  /**
+   * One serving in the packet's own words — "15 pieces (30 g)".
+   *
+   * The most valuable line on the whole reference for anything countable: it
+   * turns "10 pieces" into ten fifteenths of a stated serving, with no unit
+   * weight guessed at any point.
+   */
+  servingLabel: string | null;
 }
 
 /**
@@ -82,6 +90,7 @@ function condense(result: FoodSearchResult): EstimateReference {
       : null,
     portion: result.portion ? { label: result.portion.label, kcal: Math.round(result.portion.kcal) } : null,
     servingGrams: result.servingGrams,
+    servingLabel: result.servingLabel,
   };
 }
 

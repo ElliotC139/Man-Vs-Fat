@@ -45,11 +45,11 @@ vi.mock("../src/foodSearchProviders", () => {
     searchOpenFoodFacts,
     searchNutritionix,
     searchUsda,
-    searchAllProviders: vi.fn(async (query: string) => {
+    searchAllProviders: vi.fn(async () => {
       const groups = await Promise.allSettled([
-        searchOpenFoodFacts(query),
-        searchNutritionix(query),
-        searchUsda(query),
+        searchOpenFoodFacts(),
+        searchNutritionix(),
+        searchUsda(),
       ]);
       return groups.flatMap((group) => (group.status === "fulfilled" ? group.value : []));
     }),

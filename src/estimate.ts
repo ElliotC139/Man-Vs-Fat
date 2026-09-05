@@ -33,9 +33,11 @@ Rules:
   ("10 pieces", "3 slices", "2 eggs") — that is the amount eaten. Never \
   substitute a typical portion, a standard serving, a whole packet or a whole \
   bag for an amount you were given.
-- For a stated count, get to a weight first: the weight of ONE unit multiplied \
-  by the number of units, then apply the food's per-100g figures to that \
-  weight. Small confectionery and snack units are only a few grams each — a \
+- For a stated count, work from the packet's own serving where the reference \
+  figures give one: "15 pieces (30 g)" means ten pieces is ten fifteenths of \
+  that serving, with no unit weight guessed at all. Failing that, get to a \
+  weight first — the weight of ONE unit multiplied by the number of units — \
+  then apply the food's per-100g figures to that weight. Small confectionery and snack units are only a few grams each — a \
   chocolate button, a square of chocolate, a crisp, a sweet, a cracker — so a \
   stated count of them is tens of grams, not a sharing bag. Ten small units of \
   something is almost never a whole pack.
@@ -137,7 +139,10 @@ function referenceBlock(references: EstimateReference[]): string {
       ].filter(Boolean);
       parts.push(`per 100g: ${kcal} kcal${macros.length ? `, ${macros.join(", ")}` : ""}`);
     }
-    if (reference.servingGrams) parts.push(`stated serving: ${reference.servingGrams}g`);
+    // The packet's own words first — "15 pieces (30 g)" says how many units
+    // make a serving, which the gram figure alone cannot.
+    if (reference.servingLabel) parts.push(`stated serving: ${reference.servingLabel}`);
+    else if (reference.servingGrams) parts.push(`stated serving: ${reference.servingGrams}g`);
     if (reference.portion) parts.push(`one ${reference.portion.label}: ${reference.portion.kcal} kcal`);
     return `- ${name} (${parts.join("; ")})`;
   });
