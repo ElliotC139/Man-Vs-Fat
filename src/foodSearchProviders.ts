@@ -161,6 +161,26 @@ export function searchUsda(query: string): Promise<FoodSearchResult[]> {
   });
 }
 
+/**
+ * Every remote source at once, merged.
+ *
+ * allSettled, not all: each provider already swallows its own failures, but
+ * the search must not depend on every one of them continuing to. One source
+ * throwing is one source missing from the answer, never a failed search.
+ *
+ * Lives here rather than in the search route because food search is no longer
+ * its only caller — estimating a typed meal grounds itself in the same rows
+ * (see src/estimateGrounding.ts).
+ */
+export async function searchAllProviders(query: string): Promise<FoodSearchResult[]> {
+  const groups = await Promise.allSettled([
+    searchOpenFoodFacts(query),
+    searchNutritionix(query),
+    searchUsda(query),
+  ]);
+  return groups.flatMap((group) => (group.status === "fulfilled" ? group.value : []));
+}
+
 /** Which remote sources this deployment can actually reach, for the UI to say so. */
 export function configuredSources(): { menus: boolean; ingredients: boolean } {
   return { menus: nutritionixConfigured, ingredients: usdaConfigured };

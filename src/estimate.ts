@@ -2,6 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config";
 import { recordError } from "./errorLog";
 import { clampMacrosToKcal } from "./macros";
+import { statesExplicitQuantity } from "./quantity";
+import type { EstimateReference } from "./estimateGrounding";
 
 function round1(value: number | null): number | null {
   return value === null ? null : Math.round(value * 10) / 10;
@@ -26,6 +28,27 @@ Rules:
   newlines, or just listed one after another. Most entries are a single item.
 - Always give exactly one whole-number kcal guess per item, even for vague \
   input ("just a sandwich", "some crisps").
+- WORK OUT THE AMOUNT BEFORE THE CALORIES. When the description states how \
+  much — a weight or volume ("200g", "330ml"), or a count of countable units \
+  ("10 pieces", "3 slices", "2 eggs") — that is the amount eaten. Never \
+  substitute a typical portion, a standard serving, a whole packet or a whole \
+  bag for an amount you were given.
+- For a stated count, get to a weight first: the weight of ONE unit multiplied \
+  by the number of units, then apply the food's per-100g figures to that \
+  weight. Small confectionery and snack units are only a few grams each — a \
+  chocolate button, a square of chocolate, a crisp, a sweet, a cracker — so a \
+  stated count of them is tens of grams, not a sharing bag. Ten small units of \
+  something is almost never a whole pack.
+- Set "quantified" to true on an item whose amount the description states that \
+  way, and false when you had to assume a typical portion. Judge each item \
+  separately: in "200g chicken and some chips" the chicken is quantified and \
+  the chips are not.
+- Some entries carry REFERENCE FIGURES: real published nutrition for products \
+  whose names matched the description, from a food database. Where one of them \
+  is the food being described, compute from ITS figures rather than from \
+  memory — work out the weight eaten, then scale its per-100g figures to that \
+  weight. Rows that are a different food, or a different product, are there to \
+  be ignored; do not average across them and do not force a match.
 - Give protein, carbs and fat in grams for every item, to the nearest gram. \
   Guess them for vague input the same way you guess the calories — a typical \
   example of that food is the right basis. Use 0 where a macro genuinely \
@@ -39,12 +62,20 @@ Rules:
 - Each label should be short (max 6 words), plain, and human-readable, e.g. \
   "Chicken stir fry with rice" or "Small handful of crisps".
 - Respond with ONLY a JSON object, no markdown fences, no commentary: \
-  {"items": [{"label": "...", "kcal": 000, "protein": 00, "carbs": 00, "fat": 00}]}`;
+  {"items": [{"label": "...", "kcal": 000, "protein": 00, "carbs": 00, \
+  "fat": 00, "quantified": true}]}`;
 
 export interface EstimateInput {
   text?: string;
   imageBase64?: string;
   imageMediaType?: string;
+  /**
+   * Published figures for products whose names matched the text, from the same
+   * databases food search uses. Optional in every sense: absent, empty, or
+   * matching nothing all behave the way the estimate did before grounding
+   * existed (see src/estimateGrounding.ts).
+   */
+  references?: EstimateReference[];
 }
 
 export interface EstimateItem {
@@ -77,7 +108,47 @@ function buildUserContent(input: EstimateInput): Anthropic.MessageParam["content
     text: text ? `Meal description: ${text}` : "No text was given, only the photo. Estimate from the photo.",
   });
 
+  const references = input.references ?? [];
+  if (references.length > 0) {
+    content.push({ type: "text", text: referenceBlock(references) });
+  }
+
   return content;
+}
+
+/**
+ * The database rows, as lines the model can do arithmetic against.
+ *
+ * Written as plain text rather than JSON because the figures are the point and
+ * the shape is not, and headed with what they are and are not: candidates that
+ * matched on name, one of which may be the food, none of which has been
+ * verified as the food.
+ */
+function referenceBlock(references: EstimateReference[]): string {
+  const lines = references.map((reference) => {
+    const name = [reference.brand, reference.name].filter(Boolean).join(" — ");
+    const parts: string[] = [];
+    if (reference.per100g) {
+      const { kcal, protein, carbs, fat } = reference.per100g;
+      const macros = [
+        protein === null ? null : `protein ${protein}g`,
+        carbs === null ? null : `carbs ${carbs}g`,
+        fat === null ? null : `fat ${fat}g`,
+      ].filter(Boolean);
+      parts.push(`per 100g: ${kcal} kcal${macros.length ? `, ${macros.join(", ")}` : ""}`);
+    }
+    if (reference.servingGrams) parts.push(`stated serving: ${reference.servingGrams}g`);
+    if (reference.portion) parts.push(`one ${reference.portion.label}: ${reference.portion.kcal} kcal`);
+    return `- ${name} (${parts.join("; ")})`;
+  });
+
+  return [
+    "REFERENCE FIGURES — real published nutrition for products whose names",
+    "matched the description. One of these may be the food described, or none",
+    "of them may be. Use the figures of the one that IS the food, scaled to the",
+    "amount actually eaten; ignore the rest.",
+    ...lines,
+  ].join("\n");
 }
 
 // Self-reported, casual food descriptions tend to skew low (portions rounded
@@ -91,7 +162,28 @@ function buildUserContent(input: EstimateInput): Anthropic.MessageParam["content
 // with its own calorie figure by 12%.
 const KCAL_BUFFER_MULTIPLIER = 1.12;
 
-function parseEstimateResponse(raw: string): EstimateResult {
+// ...but only where there is under-reporting to correct. "10 pieces" and
+// "200g" are not portions rounded down, they are the amount, stated. Inflating
+// those by 12% isn't a correction for vagueness — it's a 12% error on the one
+// kind of entry the diary has no excuse for getting wrong, and it compounds
+// with any over-estimate the model has already made.
+const NO_BUFFER = 1;
+
+/**
+ * The multiplier for one item.
+ *
+ * Two things have to agree before the buffer comes off: the model says this
+ * item's amount was stated, and the text contains an amount that could have
+ * been stated. Either alone is too weak — the model flag is a judgement made
+ * inside a black box, and the text check can't tell which item of several the
+ * amount belonged to. Together they mean an entry only escapes the buffer when
+ * a real quantity was written down and the model attached it to this item.
+ */
+function bufferFor(quantified: unknown, textHasQuantity: boolean): number {
+  return quantified === true && textHasQuantity ? NO_BUFFER : KCAL_BUFFER_MULTIPLIER;
+}
+
+function parseEstimateResponse(raw: string, textHasQuantity: boolean): EstimateResult {
   const cleaned = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   const parsed = JSON.parse(cleaned) as { items?: unknown };
 
@@ -103,10 +195,12 @@ function parseEstimateResponse(raw: string): EstimateResult {
       protein?: unknown;
       carbs?: unknown;
       fat?: unknown;
+      quantified?: unknown;
     };
     const label = typeof candidate.label === "string" && candidate.label.trim() ? candidate.label.trim() : "Unlabelled meal";
+    const buffer = bufferFor(candidate.quantified, textHasQuantity);
     const kcalNumber = typeof candidate.kcal === "number" ? candidate.kcal : Number(candidate.kcal);
-    const kcal = Number.isFinite(kcalNumber) ? Math.round(kcalNumber * KCAL_BUFFER_MULTIPLIER) : null;
+    const kcal = Number.isFinite(kcalNumber) ? Math.round(kcalNumber * buffer) : null;
 
     // A missing or unparsable macro stays null rather than becoming 0: the
     // diary distinguishes "no protein in it" from "nobody worked it out",
@@ -114,7 +208,7 @@ function parseEstimateResponse(raw: string): EstimateResult {
     const macro = (value: unknown): number | null => {
       const n = typeof value === "number" ? value : Number(value);
       if (!Number.isFinite(n) || n < 0) return null;
-      return Math.round(n * KCAL_BUFFER_MULTIPLIER * 10) / 10;
+      return Math.round(n * buffer * 10) / 10;
     };
 
     const clamped = clampMacrosToKcal(
@@ -152,13 +246,16 @@ export async function estimateMeal(input: EstimateInput): Promise<EstimateResult
   }
 
   const attempts = ESTIMATE_RETRY_DELAYS_MS.length + 1;
+  const textHasQuantity = statesExplicitQuantity(input.text);
   let lastError: unknown;
 
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
       const message = await client.messages.create({
         model: config.ANTHROPIC_MODEL,
-        max_tokens: 300,
+        // Room for the extra per-item field and for the handful of items a
+        // grounded entry can legitimately split into.
+        max_tokens: 500,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: buildUserContent(input) }],
       });
@@ -167,7 +264,7 @@ export async function estimateMeal(input: EstimateInput): Promise<EstimateResult
       if (!textBlock || textBlock.type !== "text") {
         throw new Error("No text in model response");
       }
-      return parseEstimateResponse(textBlock.text);
+      return parseEstimateResponse(textBlock.text, textHasQuantity);
     } catch (error) {
       lastError = error;
       console.error(`Estimate attempt ${attempt + 1}/${attempts} failed:`, error);

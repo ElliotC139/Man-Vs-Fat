@@ -25,7 +25,7 @@
  * results and the rest of the search still answers.
  */
 
-import { normalizeLabel } from "./routes/foods";
+import { normalizeLabel } from "./labelKey";
 
 export type FoodSource = "library" | "off" | "nutritionix" | "usda";
 

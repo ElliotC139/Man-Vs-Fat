@@ -5,6 +5,7 @@ import { prisma } from "../db";
 import { config } from "../config";
 import { requireAuth } from "../auth";
 import { estimateMeal, type EstimateItem } from "../estimate";
+import { findReferences } from "../estimateGrounding";
 import { scaleMacros } from "../macros";
 import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart, localDayKey, zonedTimeToUtc } from "../matchWeek";
 import { MEAL_TYPES, MEAL_TYPE_DEFAULT_HOUR, inferMealType, type MealType } from "../mealType";
@@ -110,6 +111,7 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
         text,
         imageBase64: photo?.buffer.toString("base64"),
         imageMediaType: photo?.mimeType,
+        references: await findReferences(text),
       });
 
   const imageUrl = photo ? saveUploadedImage(photo.buffer) : null;
@@ -182,6 +184,7 @@ entriesRouter.post("/preview", upload.single("photo"), async (req, res) => {
     text,
     imageBase64: photo?.buffer.toString("base64"),
     imageMediaType: photo?.mimeType,
+    references: await findReferences(text),
   });
 
   // The photo is stored now rather than on confirm, so the browser doesn't
