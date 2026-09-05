@@ -140,9 +140,9 @@
           </div>
           <button
           type="button"
-          id="burn-info-btn"
-          class="burn-info-btn"
-          aria-label="What these figures mean"
+          id="burn-settings-btn"
+          class="burn-settings-btn"
+          aria-label="Change what today is measured against"
           ></button>
           <p id="today-pending" class="error" hidden></p>
         </section>
@@ -1556,18 +1556,14 @@
     <div id="burn-modal" class="share-modal" hidden>
       <div class="share-panel">
         <div class="share-panel-head">
-          <span>How today is measured</span>
+          <span>Measure today against</span>
           <button type="button" id="burn-close-btn" class="share-close-btn" aria-label="Close">
             <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
-        <p class="muted">
-          The middle figure is what you have logged. The one above it is what the day is being
-          measured against, and the one below is the difference. Choose which figure that is —
-          the caption on the card always says which one you picked.
-        </p>
+        <p class="muted">Pick the top figure on the card. What you log is counted against it.</p>
         <div id="burn-choices" class="burn-choices"></div>
-        <p class="muted burn-modal-note">This is in Settings too, under “You and your targets”.</p>
+        <p class="muted burn-modal-note">Also in Settings, under “Body stats &amp; goal”.</p>
       </div>
     </div>
 

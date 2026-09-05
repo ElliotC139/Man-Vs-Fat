@@ -5,6 +5,9 @@ const ICONS = {
   plus: icon('<path d="M5 12h14M12 5v14"/>'),
   minus: icon('<path d="M5 12h14"/>'),
   info: icon('<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>'),
+  cog: icon(
+    '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>',
+  ),
   x: icon('<path d="M18 6 6 18M6 6l12 12"/>'),
   flame: icon(
     '<path d="M8.5 14.5a2.5 2.5 0 0 0 5 0c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7.5 7.5 0 1 1-15 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 1 2.5Z"/>',
@@ -8268,37 +8271,40 @@ async function logSuggestion(suggestion, button) {
 // target, or the height-and-weight estimate. The choice lives on the account
 // (see src/burnSource.ts, which also decides what each is honestly called).
 //
-// Offered in two places on purpose — an (i) beside the figures, for the moment
+// Offered in two places on purpose — a cog beside the figures, for the moment
 // you are looking at them and wondering, and in Settings, where someone who
 // remembers the option exists will go looking for it.
+//
+// Each label is a noun phrase naming the figure itself, so the three read as
+// three versions of the same slot rather than three sentences to compare.
 const BURN_CHOICES = [
   {
     key: "measured",
-    label: "What my tracker measured",
-    note: "Grows through the day as your watch records it. Needs a tracker connected.",
+    label: "My tracker's burn",
+    note: "Live from your watch, building up through the day. Needs a tracker connected.",
   },
   {
     key: "target",
-    label: "My daily calorie target",
-    note: "The number you set in Settings. Not a burn — the figure you're aiming at.",
+    label: "My calorie target",
+    note: "The number you set in Settings. The same every day.",
   },
   {
     key: "estimate",
-    label: "Worked out from my body stats",
-    note: "A whole day's burn from your height, weight, age and activity level.",
+    label: "My estimated burn",
+    note: "A full day's burn from your height, weight, age and activity.",
   },
 ];
 
 let currentBurnChoice = "measured";
 
-const burnInfoBtn = document.getElementById("burn-info-btn");
+const burnSettingsBtn = document.getElementById("burn-settings-btn");
 const burnModal = document.getElementById("burn-modal");
 const burnCloseBtn = document.getElementById("burn-close-btn");
 const burnChoicesEl = document.getElementById("burn-choices");
 const settingsBurnChoicesEl = document.getElementById("settings-burn-choices");
 
-burnInfoBtn.innerHTML = ICONS.info;
-burnInfoBtn.addEventListener("click", () => {
+burnSettingsBtn.innerHTML = ICONS.cog;
+burnSettingsBtn.addEventListener("click", () => {
   renderBurnChoices();
   burnModal.hidden = false;
 });
@@ -8318,11 +8324,16 @@ function renderBurnChoices() {
 }
 
 function burnChoiceRow(choice, closeAfter) {
+  const on = choice.key === currentBurnChoice;
+
   const row = document.createElement("button");
   row.type = "button";
   row.className = "burn-choice";
-  row.classList.toggle("burn-choice--on", choice.key === currentBurnChoice);
-  row.setAttribute("aria-pressed", String(choice.key === currentBurnChoice));
+  row.classList.toggle("burn-choice--on", on);
+  row.setAttribute("aria-pressed", String(on));
+
+  const text = document.createElement("span");
+  text.className = "burn-choice-text";
 
   const label = document.createElement("span");
   label.className = "burn-choice-label";
@@ -8332,7 +8343,16 @@ function burnChoiceRow(choice, closeAfter) {
   note.className = "burn-choice-note";
   note.textContent = choice.note;
 
-  row.append(label, note);
+  text.append(label, note);
+
+  // A tick, not just a tinted border: which one is on has to survive being read
+  // quickly, on a phone, in daylight.
+  const mark = document.createElement("span");
+  mark.className = "burn-choice-mark";
+  mark.setAttribute("aria-hidden", "true");
+  if (on) mark.innerHTML = ICONS.check;
+
+  row.append(text, mark);
   row.addEventListener("click", () => chooseBurnSource(choice.key, closeAfter));
   return row;
 }
