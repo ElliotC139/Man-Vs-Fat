@@ -36,6 +36,13 @@ model User {
   // rather than a list of what's on so a card added in a later version still
   // appears for someone who arranged their layout before it existed.
   layout             String?
+  // Which figure the Today card treats as the day's burn: "measured" from a
+  // connected tracker, "target" the daily calorie target below, or "estimate"
+  // the Mifflin-St Jeor figure from height, weight, age and activity. Null
+  // means measured, which is what the card did before this was a choice — and
+  // whichever is picked, the caption on the card says which one it is rather
+  // than calling a whole-day figure "burned so far".
+  burnSource         String?
   activityLevel      String?
   weeklyGoalKg       Float?
   // Target weight. weeklyGoalKg is the desired *rate*; this is the

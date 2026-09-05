@@ -3777,8 +3777,12 @@ tr.has-tooltip:active {
   max-width: min(92vw, 460px);
   padding: 11px 14px;
   border-radius: var(--radius-md);
-  background: var(--ink);
-  color: #fff;
+  /* The pair that inverts against the page in both themes. It used to be
+     var(--ink) with white text, which is fine in light mode and white-on-white
+     in dark, where --ink IS the near-white text colour — so every "Logged"
+     confirmation was invisible. */
+  background: var(--tooltip-bg);
+  color: var(--tooltip-ink);
   box-shadow: var(--shadow-lg);
   font-size: 0.9rem;
 }
@@ -3797,16 +3801,17 @@ tr.has-tooltip:active {
   min-height: 0;
   margin: 0;
   padding: 5px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.32);
+  border: 1px solid currentColor;
   border-radius: 999px;
   background: transparent;
   box-shadow: none;
-  color: #fff;
+  color: var(--tooltip-ink);
+  opacity: 0.86;
   font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer;
 }
-.toast-action:hover { background: rgba(255, 255, 255, 0.14); }
+.toast-action:hover { opacity: 1; }
 
 /* Stops the page behind the sheet scrolling under it on iOS. */
 body.sheet-open { overflow: hidden; }
@@ -3833,6 +3838,12 @@ body.sheet-open { overflow: hidden; }
   display: grid;
   place-items: center;
   border-radius: inherit;
+  /* Its own solid ground, so the white check is never briefly white-on-white
+     over a button that happens to be pale — which is what the sweep growing
+     out from a dot used to leave it as, at both ends of the animation.
+     A fixed green rather than --pitch, which lightens in dark mode to the
+     point where a white tick on it measures 2.5:1. This is 5:1 in both. */
+  background: #15803d;
   color: #fff;
   opacity: 0;
   pointer-events: none;
@@ -3850,26 +3861,9 @@ body.sheet-open { overflow: hidden; }
 .is-saved .saved-tick {
   animation: saved-tick-in 1.1s var(--ease) forwards;
 }
-.is-saved .saved-tick::before {
-  content: "";
-  position: absolute;
-  left: 12%;
-  top: 42%;
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--pitch);
-  animation: saved-fill 1.1s var(--ease) forwards;
-}
 .is-saved .saved-tick .icon {
   position: relative;
   animation: saved-check-in 1.1s var(--spring) forwards;
-}
-@keyframes saved-fill {
-  0% { left: 12%; top: 42%; width: 8px; height: 8px; border-radius: 999px; }
-  45% { left: 0; top: 0; width: 100%; height: 100%; border-radius: inherit; }
-  80% { left: 0; top: 0; width: 100%; height: 100%; border-radius: inherit; opacity: 1; }
-  100% { left: 0; top: 0; width: 100%; height: 100%; border-radius: inherit; opacity: 0; }
 }
 @keyframes saved-tick-in {
   0% { opacity: 0; }
@@ -3886,13 +3880,12 @@ body.sheet-open { overflow: hidden; }
 /* Reduced motion still gets the confirmation, just without the sweep. */
 @media (prefers-reduced-motion: reduce) {
   .is-saved .saved-tick,
-  .is-saved .saved-tick::before,
   .is-saved .saved-tick .icon {
     animation: none;
   }
   .is-saved .saved-tick {
     opacity: 1;
-    background: var(--pitch);
+    background: #15803d;
   }
   .is-saved .saved-tick .icon { transform: scale(1); }
 }
@@ -4581,4 +4574,79 @@ body.sheet-open { overflow: hidden; }
 }
 #settings-error:not([hidden]) {
   margin: 10px 0 0;
+}
+
+/* ── What the day is measured against ── */
+/* The (i) sits in the hero card's corner rather than in a header row: the card
+   has no heading to hang it off, and the corner is out of the way of the ring
+   and the figures beside it. */
+.today-hero--anchored {
+  position: relative;
+}
+.burn-info-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: none;
+  box-shadow: none;
+  color: var(--muted);
+  border-radius: 999px;
+}
+.burn-info-btn .icon {
+  width: 18px;
+  height: 18px;
+}
+.burn-info-btn:hover {
+  color: var(--pitch);
+}
+.burn-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+/* Each option carries its own one-line explanation, because "measured" and
+   "estimate" mean nothing on their own to someone deciding between them. */
+.burn-choice {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-height: 0;
+  padding: 11px 13px;
+  text-align: left;
+  background: var(--bg);
+  background-image: none;
+  color: var(--ink);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  font-weight: 500;
+}
+.burn-choice--on {
+  border-color: var(--pitch);
+  background: rgba(31, 157, 82, 0.08);
+}
+.burn-choice-label {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.burn-choice--on .burn-choice-label {
+  color: var(--pitch-dark);
+}
+.burn-choice-note {
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.4;
+  font-weight: 400;
+}
+.burn-modal-note {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
 }

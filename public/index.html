@@ -81,7 +81,7 @@
           <span id="today-offline-text"></span>
         </div>
 
-        <section class="card today-hero" data-module="today:hero" data-module-name="Calories and macros">
+        <section class="card today-hero today-hero--anchored" data-module="today:hero" data-module-name="Calories and macros">
           <div class="today-hero-row">
             <div class="today-ring-wrap">
               <svg class="today-ring" viewBox="0 0 120 120" aria-hidden="true">
@@ -94,15 +94,18 @@
               </div>
             </div>
             <div class="today-hero-side">
-              <div class="today-stat">
-                <span id="today-remaining" class="today-stat-value">—</span>
-                <span id="today-remaining-caption" class="today-stat-caption">logged today</span>
-              </div>
+              <!-- Burn, then eaten, then net: the three read down the card in
+                   the order the sum is done, so the last line is visibly the
+                   result of the two above it. -->
               <div class="today-stat">
                 <span id="today-burn" class="today-stat-value">—</span>
                 <span id="today-burn-caption" class="today-stat-caption">burned</span>
               </div>
               <div class="today-stat">
+                <span id="today-remaining" class="today-stat-value">—</span>
+                <span id="today-remaining-caption" class="today-stat-caption">logged today</span>
+              </div>
+              <div class="today-stat today-stat--net">
                 <span id="today-net" class="today-stat-value">—</span>
                 <span id="today-net-caption" class="today-stat-caption">net</span>
               </div>
@@ -135,6 +138,12 @@
             </div>
             <p id="macro-today-note" class="macro-today-note" hidden></p>
           </div>
+          <button
+          type="button"
+          id="burn-info-btn"
+          class="burn-info-btn"
+          aria-label="What these figures mean"
+          ></button>
           <p id="today-pending" class="error" hidden></p>
         </section>
 
@@ -623,6 +632,9 @@
               <span class="settings-section-chevron" aria-hidden="true"></span>
             </button>
             <div class="settings-section-body" hidden>
+              <span class="field-label">Measure the day against</span>
+              <div id="settings-burn-choices" class="burn-choices"></div>
+
             <p id="body-stats-note" class="muted body-stats-note">
               Your goal weight drives the projection on the Stats screen. Height, age and
               activity are only used to estimate what you burn on days a tracker can't
@@ -1539,6 +1551,24 @@
       </button>
       <img id="photo-modal-img" alt="" />
       <p id="photo-modal-caption" class="photo-modal-caption"></p>
+    </div>
+
+    <div id="burn-modal" class="share-modal" hidden>
+      <div class="share-panel">
+        <div class="share-panel-head">
+          <span>How today is measured</span>
+          <button type="button" id="burn-close-btn" class="share-close-btn" aria-label="Close">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <p class="muted">
+          The middle figure is what you have logged. The one above it is what the day is being
+          measured against, and the one below is the difference. Choose which figure that is —
+          the caption on the card always says which one you picked.
+        </p>
+        <div id="burn-choices" class="burn-choices"></div>
+        <p class="muted burn-modal-note">This is in Settings too, under “You and your targets”.</p>
+      </div>
     </div>
 
     <div id="share-modal" class="share-modal" hidden>

@@ -13,6 +13,7 @@ import {
   zonedTimeToUtc,
 } from "../matchWeek";
 import { estimateAdaptiveTdee, isAdaptiveTdeeAvailable } from "../adaptiveTdee";
+import { burnCaption, netCaption, readBurnSource, resolveBurn } from "../burnSource";
 import { foodRecoveryFindings } from "../foodRecovery";
 import { latestWeightKg, weightRate } from "../weightStats";
 import { computeDeficitStreak, type DayVerdict } from "../deficitStreak";
@@ -753,6 +754,15 @@ statsRouter.get("/today", async (req, res) => {
       ? { kcal: estimated, source: "estimate" as const }
       : null;
 
+  // Which figure the card calls the day's burn, and what it is honestly called.
+  // The user picks; anything they picked that can't be produced falls through
+  // to one that can, and the caption follows what was actually used.
+  const burn = resolveBurn(readBurnSource(user?.burnSource), {
+    measured: measuredBurn,
+    target,
+    estimate: estimated,
+  });
+
   const macroTargets = user ? resolveMacroTargets(user) : null;
   const macrosEaten = sumMacros(entriesToday);
 
@@ -794,6 +804,15 @@ statsRouter.get("/today", async (req, res) => {
       target,
       remaining: target === null ? null : target - eaten,
       measuredBurn: measuredBurn === null ? null : Math.round(measuredBurn),
+      // What the card should show in the burn slot, and what to call it.
+      burn: {
+        kcal: burn.kcal,
+        source: burn.source,
+        chosen: readBurnSource(user?.burnSource),
+        fellBack: burn.fellBack,
+        caption: burnCaption(burn.source),
+        netCaption: netCaption(burn.source),
+      },
       reference: reference?.kcal ?? null,
       referenceSource: reference?.source ?? null,
       exerciseKcal: exercisesToday.reduce((sum, exercise) => sum + (exercise.kcalBurned ?? 0), 0),

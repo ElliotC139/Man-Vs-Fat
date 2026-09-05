@@ -12,6 +12,7 @@ import {
   requireAuth,
   revokeAllSessions,
 } from "../auth";
+import { BURN_SOURCES, readBurnSource } from "../burnSource";
 import { deleteAccount } from "../deleteAccount";
 import { canSendMail, sendMail } from "../mailer";
 import { consume, reset as resetRateLimit, LOGIN_BURST, RESET_BURST } from "../rateLimit";
@@ -58,6 +59,8 @@ const settingsSchema = z.object({
   fatPct: z.number().int().min(0).max(100).nullable().optional(),
   // Null turns the daily reminder off entirely.
   reminderHour: z.number().int().min(0).max(23).nullable().optional(),
+  // Which figure the Today card calls the day's burn. Null means measured.
+  burnSource: z.enum(BURN_SOURCES).nullable().optional(),
   // Which cards each screen shows and in what order. Validated by shape rather
   // than against a list of card names on purpose: the cards live in the page's
   // markup, and a server that had to be redeployed to know about a new one
@@ -126,6 +129,7 @@ function toPublicUser(user: {
   fatPct?: number | null;
   reminderHour?: number | null;
   layout?: string | null;
+  burnSource?: string | null;
   email?: string | null;
   googleId?: string | null;
   passwordHash?: string | null;
@@ -162,6 +166,7 @@ function toPublicUser(user: {
     // holds unparseable text reads as no layout at all rather than breaking
     // every screen it touches.
     layout: parseLayout(user.layout),
+    burnSource: readBurnSource(user.burnSource),
     email: user.email ?? null,
     // The settings screen needs to know which recovery routes exist for this
     // account without being told the secrets behind them.
