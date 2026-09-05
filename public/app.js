@@ -651,10 +651,27 @@ function renderEntryRow(entry) {
   return row;
 }
 
+/**
+ * One labelled field for an edit form.
+ *
+ * The edit row used to be bare boxes in a line: a name, then 168, then 1, then
+ * a date, with no way to tell from looking which number was the calories and
+ * which was how many of them. Every box carries its caption now.
+ */
+function editField(labelText, control, span = "half") {
+  const field = document.createElement("label");
+  field.className = `entry-edit-field entry-edit-field--${span}`;
+  const caption = document.createElement("span");
+  caption.className = "entry-edit-caption";
+  caption.textContent = labelText;
+  field.append(caption, control);
+  return field;
+}
+
 function enterEditMode(row, entry) {
   row.innerHTML = "";
   const editRow = document.createElement("div");
-  editRow.className = "entry-edit-row";
+  editRow.className = "entry-edit-grid";
 
   const labelInput = document.createElement("input");
   labelInput.type = "text";
@@ -669,10 +686,7 @@ function enterEditMode(row, entry) {
   qtyInput.type = "number";
   qtyInput.min = "0.25";
   qtyInput.step = "0.25";
-  qtyInput.className = "entry-qty-input";
   qtyInput.value = entry.quantity ?? 1;
-  qtyInput.title = "How many";
-  qtyInput.setAttribute("aria-label", "Quantity");
 
   /**
    * Changing "how many" multiplies the figures, in the box, as you type.
@@ -699,25 +713,15 @@ function enterEditMode(row, entry) {
   // Only offered when macros are on. Adding three more fields to every edit
   // row for someone tracking calories alone would be pure clutter.
   const macroInputs = {};
-  let macroRow = null;
   if (currentUser?.macroTargets) {
-    macroRow = document.createElement("div");
-    macroRow.className = "entry-macro-edit";
     for (const key of ["protein", "carbs", "fat"]) {
-      const field = document.createElement("label");
-      field.className = "entry-macro-field";
-      const caption = document.createElement("span");
-      caption.textContent = MACRO_LABELS[key];
       const input = document.createElement("input");
       input.type = "number";
       input.min = "0";
       input.step = "1";
       input.placeholder = "g";
       input.value = entry[`${key}G`] ?? "";
-      input.setAttribute("aria-label", `${MACRO_LABELS[key]} in grams`);
       macroInputs[key] = input;
-      field.append(caption, input);
-      macroRow.appendChild(field);
     }
   }
 
@@ -780,7 +784,6 @@ function enterEditMode(row, entry) {
   const saveBtn = document.createElement("button");
   saveBtn.type = "button";
   saveBtn.textContent = "Save";
-  saveBtn.style.width = "auto";
   saveBtn.addEventListener("click", async () => {
     // Everything in the boxes is already the total for the whole entry, scaled
     // as the quantity was changed, so it all goes as it stands. Nothing is
@@ -809,9 +812,42 @@ function enterEditMode(row, entry) {
     refreshCurrentView();
   });
 
-  editRow.append(labelInput, kcalInput, qtyInput, dateInput, weekSelect, saveBtn);
-  row.appendChild(editRow);
-  if (macroRow) row.appendChild(macroRow);
+  // Cancel, because until now the only ways out of an edit were saving it or
+  // reloading the page.
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "ghost-sm";
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.addEventListener("click", () => refreshCurrentView());
+
+  // The macro boxes are part of the same grid rather than a separate row
+  // alongside it — as siblings of a flex parent they were being laid out
+  // beside the other fields instead of under them, which is what made the
+  // form look like two unrelated halves.
+  editRow.append(
+    editField("Item", labelInput, "full"),
+    editField("Calories", kcalInput),
+    editField("How many", qtyInput),
+  );
+  for (const key of ["protein", "carbs", "fat"]) {
+    if (macroInputs[key]) editRow.appendChild(editField(`${MACRO_LABELS[key]} (g)`, macroInputs[key], "third"));
+  }
+  editRow.appendChild(editField("Date", dateInput, "full"));
+  // Only on a rollover day, when an entry genuinely could belong to either
+  // week and the date alone can't say which.
+  const weekField = editField("Counts toward", weekSelect, "full");
+  weekField.hidden = weekSelect.hidden;
+  dateInput.addEventListener("input", () => { weekField.hidden = weekSelect.hidden; });
+  editRow.appendChild(weekField);
+
+  const actions = document.createElement("div");
+  actions.className = "entry-edit-actions";
+  actions.append(cancelBtn, saveBtn);
+
+  const wrap = document.createElement("div");
+  wrap.className = "entry-edit";
+  wrap.append(editRow, actions);
+  row.appendChild(wrap);
 }
 
 async function deleteEntry(id) {
@@ -6729,19 +6765,17 @@ function formatQuantity(quantity) {
 function enterExerciseEditMode(row, exercise) {
   row.innerHTML = "";
   const editRow = document.createElement("div");
-  editRow.className = "entry-edit-row";
+  editRow.className = "entry-edit-grid";
 
   const descInput = document.createElement("input");
   descInput.type = "text";
   descInput.value = exercise.description;
-  descInput.setAttribute("aria-label", "What you did");
 
   const kcalInput = document.createElement("input");
   kcalInput.type = "number";
   kcalInput.min = "0";
   kcalInput.value = exercise.kcalBurned ?? "";
   kcalInput.placeholder = "kcal";
-  kcalInput.setAttribute("aria-label", "Calories burned");
 
   const dateInput = document.createElement("input");
   dateInput.type = "date";
@@ -6750,7 +6784,6 @@ function enterExerciseEditMode(row, exercise) {
   const saveBtn = document.createElement("button");
   saveBtn.type = "button";
   saveBtn.textContent = "Save";
-  saveBtn.style.width = "auto";
   saveBtn.addEventListener("click", async () => {
     await fetch(`/api/exercises/${exercise.id}`, {
       method: "PATCH",
@@ -6764,8 +6797,26 @@ function enterExerciseEditMode(row, exercise) {
     loadWeek();
   });
 
-  editRow.append(descInput, kcalInput, dateInput, saveBtn);
-  row.appendChild(editRow);
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "ghost-sm";
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.addEventListener("click", () => loadWeek());
+
+  editRow.append(
+    editField("What you did", descInput, "full"),
+    editField("Calories burned", kcalInput),
+    editField("Date", dateInput),
+  );
+
+  const actions = document.createElement("div");
+  actions.className = "entry-edit-actions";
+  actions.append(cancelBtn, saveBtn);
+
+  const wrap = document.createElement("div");
+  wrap.className = "entry-edit";
+  wrap.append(editRow, actions);
+  row.appendChild(wrap);
 }
 
 
