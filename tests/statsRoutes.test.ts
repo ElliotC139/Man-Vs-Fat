@@ -667,6 +667,73 @@ describe("GET /api/stats/deficit-streak", () => {
   });
 });
 
+describe("GET /api/stats/meal-breakdown", () => {
+  it("rejects an unauthenticated request", async () => {
+    const res = await fetch(`${baseUrl}/api/stats/meal-breakdown`);
+    expect(res.status).toBe(401);
+  });
+
+  it("ranks meals by calories and averages over the days each was eaten", async () => {
+    const { cookie, userId } = await signUp("alice");
+    // Dinner on all four days, lunch on two. Dinner totals more, but the
+    // point of the per-day-eaten average is that it is not just a total: a
+    // lunch that happens half as often still shows what it costs when it does.
+    for (let d = 4; d >= 1; d--) {
+      state.entries.push({ userId, timestamp: middayDaysAgo(d), kcal: 800, mealType: "dinner" });
+    }
+    for (const d of [2, 1]) {
+      state.entries.push({ userId, timestamp: middayDaysAgo(d), kcal: 600, mealType: "lunch" });
+    }
+
+    const res = await fetch(`${baseUrl}/api/stats/meal-breakdown`, { headers: { Cookie: cookie } });
+    const body = (await res.json()) as any;
+
+    expect(body.meals.map((m: any) => m.mealType)).toEqual(["dinner", "lunch"]);
+    expect(body.meals[0]).toMatchObject({
+      mealType: "dinner",
+      kcal: 3200,
+      avgKcalPerDayEaten: 800,
+      daysEaten: 4,
+    });
+    expect(body.meals[1]).toMatchObject({
+      mealType: "lunch",
+      kcal: 1200,
+      avgKcalPerDayEaten: 600,
+      daysEaten: 2,
+    });
+    // Shares are of everything logged, so they account for the whole window.
+    expect(body.meals.reduce((sum: number, m: any) => sum + m.share, 0)).toBe(100);
+    expect(body.totalKcal).toBe(4400);
+  });
+
+  it("keeps untagged entries out of snack rather than folding them in", async () => {
+    // Folding them into snack is the tempting shortcut and it overstates
+    // snacking, which is exactly the number someone reads this card for.
+    const { cookie, userId } = await signUp("alice");
+    state.entries.push({ userId, timestamp: middayDaysAgo(3), kcal: 200, mealType: "snack" });
+    state.entries.push({ userId, timestamp: middayDaysAgo(2), kcal: 500, mealType: null });
+    state.entries.push({ userId, timestamp: middayDaysAgo(1), kcal: 700, mealType: "dinner" });
+
+    const res = await fetch(`${baseUrl}/api/stats/meal-breakdown`, { headers: { Cookie: cookie } });
+    const body = (await res.json()) as any;
+
+    const untagged = body.meals.find((m: any) => m.mealType === null);
+    const snack = body.meals.find((m: any) => m.mealType === "snack");
+    expect(untagged).toMatchObject({ label: "Untagged", kcal: 500 });
+    expect(snack).toMatchObject({ kcal: 200 });
+  });
+
+  it("uses the user's own names for the slots", async () => {
+    const { cookie, userId } = await signUp("alice");
+    state.users[0]!.mealTagNames = '{"dinner":"Tea"}';
+    state.entries.push({ userId, timestamp: middayDaysAgo(1), kcal: 700, mealType: "dinner" });
+
+    const res = await fetch(`${baseUrl}/api/stats/meal-breakdown`, { headers: { Cookie: cookie } });
+    const body = (await res.json()) as any;
+    expect(body.meals[0].label).toBe("Tea");
+  });
+});
+
 describe("GET /api/stats/share-card", () => {
   interface ShareCard {
     label: string;

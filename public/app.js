@@ -2132,6 +2132,13 @@ function openConfirmSheet({
   rawInput = null,
   source = "ai",
   lastWeek = false,
+  // The day the entry belongs to, and the meal it was tagged with, captured
+  // when the form was submitted. Both were being accepted by the caller and
+  // then dropped on the floor here — the sheet only carried the five fields
+  // below — so a meal tagged Breakfast saved as whatever the clock said, and
+  // logging while looking at an earlier day wrote to today.
+  date = null,
+  mealType = undefined,
   sourceLabel = "Estimate",
   note = "",
   warning = "",
@@ -2143,6 +2150,8 @@ function openConfirmSheet({
     rawInput,
     source,
     lastWeek,
+    date,
+    mealType,
   };
 
   confirmSourceEl.textContent = sourceLabel;
@@ -2450,6 +2459,10 @@ function openProductSheet(product) {
   openConfirmSheet({
     items: [item],
     source: "database",
+    // Same as the typed path: a scan made while looking at an earlier day
+    // belongs to that day, and takes whatever meal tag is selected.
+    date: loggingDate(),
+    mealType: chosenMealTag(),
     sourceLabel: "From the packet",
     note: "Set the serving size — the figures follow it.",
     alt: product.barcode ? { label: "Scan again", run: openScanner } : null,
@@ -2958,6 +2971,7 @@ function loadStatsScreen() {
   loadMeasurements();
   loadProgressPhotos();
   loadEatingWindow();
+  loadMealBreakdown();
   loadMacroStats();
 }
 
@@ -5085,6 +5099,8 @@ function openFoodResult(result) {
     ],
     // Their own past entry is theirs; anything else came off a database.
     source: result.kind === "yours" ? "manual" : "database",
+    date: loggingDate(),
+    mealType: chosenMealTag(),
     sourceLabel: result.kind === "yours" ? "From your diary" : `Per ${result.portion.label}`,
     note: "Change the quantity if you had more than one.",
   });
@@ -7434,6 +7450,75 @@ function minutesToDuration(minutes) {
   const hours = Math.floor(minutes / 60);
   const mins = Math.round(minutes % 60);
   return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
+}
+
+// ── Where the calories go ───────────────────────────────────────────────────
+//
+// Tagging meals only earns its taps if it answers something. A day that lands
+// 400 over is rarely 400 over everywhere — it is one meal that ran away — and
+// this is the card that says which.
+const mealBreakdownCard = document.getElementById("meal-breakdown-card");
+const mealBreakdownRows = document.getElementById("meal-breakdown-rows");
+const mealBreakdownNote = document.getElementById("meal-breakdown-note");
+
+async function loadMealBreakdown() {
+  try {
+    const res = await fetch("/api/stats/meal-breakdown?days=30");
+    if (!res.ok) throw new Error();
+    renderMealBreakdown(await res.json());
+  } catch {
+    mealBreakdownCard.hidden = true;
+  }
+}
+
+function renderMealBreakdown(data) {
+  // One meal on its own is not a breakdown of anything.
+  if (!data || data.meals.length < 2 || data.loggedDays < 3) {
+    mealBreakdownCard.hidden = true;
+    return;
+  }
+  mealBreakdownCard.hidden = false;
+  mealBreakdownRows.innerHTML = "";
+
+  // Bars are drawn against the biggest meal rather than the total, so the
+  // shape of the comparison is visible even when one meal dominates.
+  const biggest = Math.max(...data.meals.map((meal) => meal.avgKcalPerDayEaten));
+
+  for (const meal of data.meals) {
+    const row = document.createElement("div");
+    row.className = "meal-breakdown-row";
+
+    const head = document.createElement("div");
+    head.className = "meal-breakdown-head";
+    const name = document.createElement("span");
+    name.className = "meal-breakdown-name";
+    name.textContent = meal.label;
+    const value = document.createElement("span");
+    value.className = "meal-breakdown-value";
+    value.textContent = `${meal.avgKcalPerDayEaten.toLocaleString()} kcal`;
+    head.append(name, value);
+
+    const track = document.createElement("div");
+    track.className = "meal-breakdown-track";
+    const fill = document.createElement("div");
+    fill.className = "meal-breakdown-fill";
+    fill.style.width = `${biggest === 0 ? 0 : Math.round((meal.avgKcalPerDayEaten / biggest) * 100)}%`;
+    track.appendChild(fill);
+
+    const sub = document.createElement("span");
+    sub.className = "meal-breakdown-sub";
+    // "on the days you had it" is the point of the figure above — an evening
+    // averaging 900 across the days it happens is a different thing from one
+    // averaging 900 across every day.
+    sub.textContent = `${meal.share}% of everything logged · ${pluralDays(meal.daysEaten)}`;
+
+    row.append(head, track, sub);
+    mealBreakdownRows.appendChild(row);
+  }
+
+  mealBreakdownNote.textContent = data.tagged
+    ? `Average per day you had it, over the last 30 days. ${pluralDays(data.loggedDays)} logged.`
+    : `Average per day you had it, over the last 30 days — meals worked out from the time of day, since meal tags are off. ${pluralDays(data.loggedDays)} logged.`;
 }
 
 async function loadEatingWindow() {
