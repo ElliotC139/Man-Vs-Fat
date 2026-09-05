@@ -171,7 +171,8 @@ const logSchema = z.object({
   // on the Today screen, which can now be pointed at an earlier day — so a tap
   // there has to land on the day on screen, not the day it happens to be.
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  mealType: z.enum(MEAL_TYPES).optional(),
+  // Null means the user chose no tag; absent means infer from the clock.
+  mealType: z.enum(MEAL_TYPES).nullable().optional(),
 });
 
 // Quick "+Today" re-log from the food library — same idea as POST
@@ -210,7 +211,9 @@ foodsRouter.post("/log", async (req, res) => {
   const entryTimestamp = date ? timestampOnLocalDay(date, new Date(), chosenMeal) : new Date();
   const weekStart = await getUserWeekStart(req.userId!);
   const matchWeek = await findOrCreateMatchWeek(entryTimestamp, config.TIMEZONE, req.userId!, weekStart);
-  const mealType = chosenMeal ?? inferMealType(getLocalParts(entryTimestamp, config.TIMEZONE).hour);
+  const mealType = chosenMeal === undefined
+    ? inferMealType(getLocalParts(entryTimestamp, config.TIMEZONE).hour)
+    : chosenMeal;
 
   const entry = await prisma.entry.create({
     data: {

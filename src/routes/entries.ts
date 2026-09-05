@@ -34,9 +34,17 @@ const createEntrySchema = z.object({
   // looking at an earlier day. Without it the diary could only ever write to
   // now, which is why the log form used to disappear on a past day.
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  // The meal slot, when the user has been asked for one. Absent means fall
-  // back to inferring it from the clock, exactly as before.
-  mealType: z.enum(MEAL_TYPES).optional(),
+  // The meal slot, when the user has been asked for one. Three states, and
+  // they are all different: absent means infer it from the clock as before,
+  // null means the user chose no tag, a slot means that slot.
+  //
+  // This route takes multipart, where there is no null — so an empty string
+  // is how "no meal" arrives from the offline queue, and it is turned back
+  // into one here rather than failing the enum.
+  mealType: z.preprocess(
+    (value) => (value === "" ? null : value),
+    z.enum(MEAL_TYPES).nullable().optional(),
+  ),
   directKcal: z.coerce.number().int().positive().optional(),
   // Sent alongside directKcal by the barcode scanner and food search when
   // Open Food Facts has per-100g macro data. Real label figures, so they skip
@@ -45,6 +53,20 @@ const createEntrySchema = z.object({
   directCarbsG: z.coerce.number().min(0).max(1000).optional(),
   directFatG: z.coerce.number().min(0).max(1000).optional(),
 });
+
+/**
+ * The meal slot to store.
+ *
+ * Absent means nobody was asked, so the clock decides — which is how the diary
+ * has always worked and still does with meal tags switched off. Null means the
+ * user was asked and answered "none", and that answer is kept: filing an
+ * untagged coffee under "snack" because the column had to hold something is
+ * what made the tag meaningless in the first place.
+ */
+function resolveMealType(chosen: MealType | null | undefined, at: Date): MealType | null {
+  if (chosen === undefined) return inferMealType(getLocalParts(at, config.TIMEZONE).hour);
+  return chosen;
+}
 
 entriesRouter.post("/", upload.single("photo"), async (req, res) => {
   const parsed = createEntrySchema.safeParse(req.body);
@@ -128,7 +150,7 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
 
   const imageUrl = photo ? saveUploadedImage(photo.buffer) : null;
   const matchWeek = await findOrCreateMatchWeek(entryTimestamp, config.TIMEZONE, req.userId!, weekStart);
-  const mealType = chosenMeal ?? inferMealType(getLocalParts(entryTimestamp, config.TIMEZONE).hour);
+  const mealType = resolveMealType(chosenMeal, entryTimestamp);
 
   const entries = await prisma.$transaction(
     items.map((item) =>
@@ -230,7 +252,7 @@ const confirmSchema = z.object({
   // Same two as POST / — the day being looked at, and the meal slot if the
   // user was asked for one.
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  mealType: z.enum(MEAL_TYPES).optional(),
+  mealType: z.enum(MEAL_TYPES).nullable().optional(),
 });
 
 /**
@@ -255,7 +277,7 @@ entriesRouter.post("/confirm", async (req, res) => {
   }
 
   const matchWeek = await findOrCreateMatchWeek(timestamp, config.TIMEZONE, req.userId!, weekStart);
-  const mealType = chosenMeal ?? inferMealType(getLocalParts(timestamp, config.TIMEZONE).hour);
+  const mealType = resolveMealType(chosenMeal, timestamp);
 
   // Only the safe filename part of an uploaded URL is honoured, so a doctored
   // value can't point an entry at something outside the uploads directory.
@@ -372,8 +394,11 @@ entriesRouter.patch("/:id", async (req, res) => {
       const [year, month, day] = date
         ? (date.split("-").map(Number) as [number, number, number])
         : [localTime.year, localTime.month, localTime.day];
-      const effectiveMealType = (rest.mealType ?? existing.mealType) as MealType;
-      const resolvedHour = hour ?? MEAL_TYPE_DEFAULT_HOUR[effectiveMealType];
+      // An untagged entry has no meal hour to move to, so it keeps the time
+      // of day it already had rather than being pushed to a slot it isn't in.
+      const effectiveMealType = (rest.mealType !== undefined ? rest.mealType : existing.mealType) as MealType | null;
+      const resolvedHour = hour
+        ?? (effectiveMealType ? MEAL_TYPE_DEFAULT_HOUR[effectiveMealType] : localTime.hour);
       const newTimestamp = zonedTimeToUtc(year, month, day, resolvedHour, localTime.minute, config.TIMEZONE);
       const weekStart = await getUserWeekStart(req.userId!);
       const matchWeek = await findOrCreateMatchWeek(newTimestamp, config.TIMEZONE, req.userId!, weekStart);

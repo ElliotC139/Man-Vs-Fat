@@ -11,7 +11,7 @@ import { MEAL_TYPE_DEFAULT_HOUR, type MealType } from "./mealType";
  * the entry is actually made, unless a meal slot was picked, in which case
  * that slot's representative hour is the honest answer.
  */
-export function timestampOnLocalDay(date: string, now: Date, meal?: MealType): Date {
+export function timestampOnLocalDay(date: string, now: Date, meal?: MealType | null): Date {
   const [year, month, day] = date.split("-").map(Number);
   if (!year || !month || !day) return now;
 
