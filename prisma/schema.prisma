@@ -409,9 +409,14 @@ model Entry {
   // can fill the number in by hand.
   kcal        Int?
   imageUrl    String?
-  // Breakfast / lunch / dinner / snack — defaulted from local time-of-day at
-  // creation (see inferMealType), editable afterwards via PATCH.
-  mealType    String    @default("snack")
+  // Breakfast / lunch / dinner / snack, or null for deliberately untagged.
+  //
+  // Defaulted from local time-of-day at creation (see inferMealType) and
+  // editable afterwards via PATCH. Nullable because "no meal" is a real
+  // answer once the user is being asked the question: a coffee at 4pm isn't
+  // any of the four, and filing it under one because the column had to hold
+  // something made the tag mean nothing.
+  mealType    String?
   // Where the kcal figure came from, so the diary can be honest about how
   // much to trust it: "ai" (estimated from text/photo), "database" (a real
   // per-100g figure from Open Food Facts), "manual" (the user typed the

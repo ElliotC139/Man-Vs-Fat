@@ -43,7 +43,8 @@ export interface InsightsEntry {
   label: string;
   kcal: number | null;
   timestamp: Date;
-  mealType: string;
+  // Null for an entry the user deliberately left untagged.
+  mealType: string | null;
 }
 
 export interface InsightsInput {

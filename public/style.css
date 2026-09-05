@@ -4451,6 +4451,48 @@ body.modal-open {
   cursor: pointer;
 }
 
+/* ── Meal tags ── */
+/* The tag on an entry row: quiet, because the food and the figure are what
+   the row is for — the tag is only there to say which meal it landed in. */
+.entry-meal-tag {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--hairline);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+/* Under a meal heading the chip only repeats it, so it comes off there. */
+.meal-grouped .entry-meal-tag {
+  display: none;
+}
+
+/* The heading above each meal's items, once the day is grouped by meal. */
+.meal-group-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 2px 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.meal-group-heading:first-child {
+  margin-top: 4px;
+}
+.meal-group-total {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
 /* Entry times are hidden with a body class rather than by not rendering them:
    the preference flips instantly, with no re-fetch and no list rebuild. */
 body.hide-entry-times .entry-time {

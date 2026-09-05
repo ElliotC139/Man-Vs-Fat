@@ -242,7 +242,8 @@ const logSchema = z.object({
   // How much of the meal was eaten: portions for a recipe, multiples of the
   // whole thing for a template.
   servings: z.number().positive().max(20).default(1),
-  mealType: z.enum(MEAL_TYPES).optional(),
+  // Null means the user chose no tag; absent means infer from the clock.
+  mealType: z.enum(MEAL_TYPES).nullable().optional(),
   // The day being looked at, when that isn't today.
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
@@ -270,8 +271,9 @@ mealsRouter.post("/:id/log", async (req, res) => {
     : new Date();
   const weekStart = await getUserWeekStart(req.userId!);
   const matchWeek = await findOrCreateMatchWeek(timestamp, config.TIMEZONE, req.userId!, weekStart);
-  const mealType: MealType =
-    parsed.data.mealType ?? inferMealType(getLocalParts(timestamp, config.TIMEZONE).hour);
+  const mealType: MealType | null = parsed.data.mealType === undefined
+    ? inferMealType(getLocalParts(timestamp, config.TIMEZONE).hour)
+    : parsed.data.mealType;
 
   const items = [...meal.items].sort((a, b) => a.sortOrder - b.sortOrder);
 

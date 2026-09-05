@@ -610,6 +610,16 @@ function renderEntryRow(entry) {
 
   main.append(label, time);
 
+  // The meal it was filed under, but only once the user has asked to be asked:
+  // with tags off every entry still carries a slot inferred from the clock,
+  // and showing a guess nobody made would be noise.
+  if (mealTagsOn() && entry.mealType) {
+    const tag = document.createElement("span");
+    tag.className = "entry-meal-tag";
+    tag.textContent = mealTagName(entry.mealType);
+    main.appendChild(tag);
+  }
+
   // Only shown once macros are switched on, and only for entries that have
   // them — the back catalogue stays exactly as it looked before.
   if (currentUser?.macroTargets && hasMacros(entry)) {
@@ -754,6 +764,20 @@ function enterEditMode(row, entry) {
     });
   }
 
+  // Changing the tag is the other half of having one. Only offered when tags
+  // are switched on, for the same reason the row only shows one then.
+  let mealSelect = null;
+  if (mealTagsOn()) {
+    mealSelect = document.createElement("select");
+    for (const option of [{ value: "", label: "No meal" }, ...MEAL_TAG_SLOTS.map((slot) => ({ value: slot, label: mealTagName(slot) }))]) {
+      const opt = document.createElement("option");
+      opt.value = option.value;
+      opt.textContent = option.label;
+      mealSelect.appendChild(opt);
+    }
+    mealSelect.value = entry.mealType ?? "";
+  }
+
   const dateInput = document.createElement("input");
   dateInput.type = "date";
   dateInput.value = toDateInputValue(entry.timestamp);
@@ -799,6 +823,9 @@ function enterEditMode(row, entry) {
       if (!input) continue;
       body[`${key}G`] = input.value === "" ? null : Number(input.value);
     }
+    // Null, not omitted: "No meal" is an answer to be saved, not a question
+    // left blank for the clock to answer again.
+    if (mealSelect) body.mealType = mealSelect.value === "" ? null : mealSelect.value;
     if (isRolloverDay(dateInput.value)) {
       body.hour = weekSelect.value === "last"
         ? Math.max(0, userWeekStartHour - 1)
@@ -832,7 +859,8 @@ function enterEditMode(row, entry) {
   for (const key of ["protein", "carbs", "fat"]) {
     if (macroInputs[key]) editRow.appendChild(editField(`${MACRO_LABELS[key]} (g)`, macroInputs[key], "third"));
   }
-  editRow.appendChild(editField("Date", dateInput, "full"));
+  if (mealSelect) editRow.appendChild(editField("Meal", mealSelect, "half"));
+  editRow.appendChild(editField("Date", dateInput, mealSelect ? "half" : "full"));
   // Only on a rollover day, when an entry genuinely could belong to either
   // week and the date alone can't say which.
   const weekField = editField("Counts toward", weekSelect, "full");
@@ -901,7 +929,7 @@ form.addEventListener("submit", async (event) => {
           photoName: photo?.name ?? null,
           lastWeek: logToLastWeek,
           date: loggingDate() ?? null,
-          mealType: chosenMealTag() ?? null,
+          mealType: chosenMealTag(),
         },
       });
       haptic();
@@ -2362,7 +2390,7 @@ confirmSaveBtn.addEventListener("click", async () => {
         source: confirmState.source,
         lastWeek: confirmState.lastWeek,
         date: confirmState.date ?? undefined,
-        mealType: confirmState.mealType ?? undefined,
+        mealType: confirmState.mealType,
       }),
     });
     if (!res.ok) {
@@ -3373,9 +3401,17 @@ function mealTagsOn() {
   return Boolean(currentUser?.mealTagsEnabled);
 }
 
-/** What the form should send: a slot, or nothing at all for the blank tag. */
+/**
+ * What the form should send.
+ *
+ * Three states on the wire, and they mean different things: undefined for
+ * "nobody was asked, let the clock decide", null for "asked, and the answer
+ * was none", or a slot. Sending undefined for the blank tag is what made the
+ * blank option do nothing at all.
+ */
 function chosenMealTag() {
-  return mealTagsOn() && selectedMealTag ? selectedMealTag : undefined;
+  if (!mealTagsOn()) return undefined;
+  return selectedMealTag ?? null;
 }
 
 function renderMealTagRow() {
@@ -5950,7 +5986,7 @@ async function replayQueued(item) {
   // The day and meal are the ones from when it was queued: a log made on
   // Tuesday that syncs on Thursday still belongs to Tuesday.
   if (item.payload.date) body.append("date", item.payload.date);
-  if (item.payload.mealType) body.append("mealType", item.payload.mealType);
+  if (item.payload.mealType !== undefined) body.append("mealType", item.payload.mealType ?? "");
   const res = await fetch("/api/entries", { method: "POST", body });
   return res.ok;
 }
@@ -8797,7 +8833,39 @@ function renderTodayEntries(entries) {
   }
   // Reuses the diary's own row, so editing, repeating, deleting and the
   // photo thumbnail all behave identically in both places.
-  for (const entry of entries) todayEntryList.appendChild(renderEntryRow(entry));
+  //
+  // With meal tags on the day reads as meals rather than as one flat list,
+  // which is the point of tagging in the first place. Untagged items go last,
+  // under their own heading, so nothing is hidden by not having a tag.
+  if (!mealTagsOn()) {
+    todayEntryList.classList.remove("meal-grouped");
+    for (const entry of entries) todayEntryList.appendChild(renderEntryRow(entry));
+    return;
+  }
+  // Grouped, so each row's own tag would only repeat the heading above it.
+  // The chip earns its place on the diary screen, where the day is one flat
+  // list and nothing else says which meal a row belongs to.
+  todayEntryList.classList.add("meal-grouped");
+
+  for (const slot of [...MEAL_TAG_SLOTS, null]) {
+    const inSlot = entries.filter((entry) => (entry.mealType ?? null) === slot);
+    if (inSlot.length === 0) continue;
+
+    const heading = document.createElement("div");
+    heading.className = "meal-group-heading";
+    const name = document.createElement("span");
+    name.textContent = slot ? mealTagName(slot) : "Untagged";
+    const total = document.createElement("span");
+    total.className = "meal-group-total";
+    // Only the items that have a figure, so a group holding one unestimated
+    // entry doesn't quietly report a total that leaves it out.
+    const kcal = inSlot.reduce((sum, entry) => sum + (entry.kcal ?? 0), 0);
+    total.textContent = `${kcal.toLocaleString()} kcal`;
+    heading.append(name, total);
+    todayEntryList.appendChild(heading);
+
+    for (const entry of inSlot) todayEntryList.appendChild(renderEntryRow(entry));
+  }
 }
 
 
