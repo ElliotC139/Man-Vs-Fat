@@ -21,6 +21,8 @@ import { recordError } from "../errorLog";
 import { MACRO_KEYS, resolveMacroTargets, sumMacros, type MacroKey } from "../macros";
 import { expectedBurnToday, macroRoom, whatCanIStillEat, type WhatNowFood, type WhatNowMeal } from "../whatNow";
 import { normalizeLabel } from "./foods";
+import { readMealTagNames } from "../mealTags";
+import { MEAL_TYPES, type MealType } from "../mealType";
 import { getRecentSleepRecovery, refreshWhoopSoon } from "../whoop/sync";
 
 export const statsRouter = Router();
@@ -141,6 +143,8 @@ function projectGoal(goalWeightKg: number, currentWeightKg: number, kgPerWeek: n
     movingTowardGoal: true,
   };
 }
+
+const UNTAGGED_KEY = "__untagged__";
 
 statsRouter.get("/summary", async (req, res) => {
   const userId = req.userId!;
@@ -1227,6 +1231,81 @@ statsRouter.get("/eating-window", async (req, res) => {
     avgFirstMealMin: average(rows.filter((row) => row.windowMin !== null).map((row) => row.firstMealMin)),
     avgLastMealMin: average(rows.filter((row) => row.windowMin !== null).map((row) => row.lastMealMin)),
     daysMeasured: windows.length,
+  });
+});
+
+// ── Which meals the calories go in ──────────────────────────────────────────
+//
+// Tagging meals is only worth the taps if it answers something, and the
+// question people actually have is "where is it all going?" — a day that comes
+// in 400 over is rarely 400 over everywhere, it is one meal that runs away.
+//
+// Reported as an average per day rather than a total, so a fortnight and a
+// quarter are comparable, and alongside how many of those days that meal was
+// logged at all: an evening that averages 900 across the days it happens is a
+// different problem from one that averages 900 across every day.
+statsRouter.get("/meal-breakdown", async (req, res) => {
+  const userId = req.userId!;
+  const days = clampInt(req.query.days, WINDOW_MIN_DAYS, WINDOW_MAX_DAYS, WINDOW_DEFAULT_DAYS);
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const [user, entries] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId } }),
+    prisma.entry.findMany({
+      where: { matchWeek: { userId }, timestamp: { gte: since } },
+      select: { timestamp: true, kcal: true, mealType: true },
+      orderBy: { timestamp: "asc" },
+    }),
+  ]);
+
+  // Keyed by slot, with null — deliberately untagged — kept as its own bucket
+  // rather than folded into snack, which would overstate snacking.
+  const buckets = new Map<string, { kcal: number; entries: number; days: Set<string> }>();
+  const loggedDays = new Set<string>();
+
+  for (const entry of entries) {
+    const dayKey = localDayKey(entry.timestamp, config.TIMEZONE);
+    loggedDays.add(dayKey);
+    const key = entry.mealType ?? UNTAGGED_KEY;
+    const bucket = buckets.get(key) ?? { kcal: 0, entries: 0, days: new Set<string>() };
+    bucket.kcal += entry.kcal ?? 0;
+    bucket.entries += 1;
+    bucket.days.add(dayKey);
+    buckets.set(key, bucket);
+  }
+
+  const totalKcal = [...buckets.values()].reduce((sum, bucket) => sum + bucket.kcal, 0);
+  const names = readMealTagNames(user?.mealTagNames);
+
+  const rows = [...MEAL_TYPES, UNTAGGED_KEY]
+    .map((key) => {
+      const bucket = buckets.get(key);
+      if (!bucket) return null;
+      return {
+        mealType: key === UNTAGGED_KEY ? null : key,
+        label: key === UNTAGGED_KEY ? "Untagged" : names[key as MealType],
+        kcal: Math.round(bucket.kcal),
+        // Two averages, because they answer different questions: per logged
+        // day is what this meal costs when it happens, per day in the window
+        // is what it contributes to a typical day.
+        avgKcalPerDayEaten: Math.round(bucket.kcal / bucket.days.size),
+        avgKcalPerLoggedDay: loggedDays.size === 0 ? 0 : Math.round(bucket.kcal / loggedDays.size),
+        daysEaten: bucket.days.size,
+        entries: bucket.entries,
+        share: totalKcal === 0 ? 0 : Math.round((bucket.kcal / totalKcal) * 100),
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
+
+  res.json({
+    days,
+    loggedDays: loggedDays.size,
+    totalKcal: Math.round(totalKcal),
+    // Biggest first: the answer to "where is it going" is the top row.
+    meals: [...rows].sort((a, b) => b.kcal - a.kcal),
+    // Whether the figures reflect choices or the clock's guesses, so the
+    // screen can say which it is rather than implying more than it knows.
+    tagged: Boolean(user?.mealTagsEnabled),
   });
 });
 
