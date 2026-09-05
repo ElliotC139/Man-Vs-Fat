@@ -1112,6 +1112,8 @@ function populateSettings(user) {
   loadLayout();
   renderLayoutEditor();
   loadBackfillStatus();
+  currentBurnChoice = user.burnSource ?? "measured";
+  renderBurnChoices();
   settingsUsername.textContent = user.username;
   settingsReminderHour.value = user.reminderHour === null ? "" : String(user.reminderHour);
   settingsWeekday.value = String(user.weekStartWeekday);
@@ -7884,34 +7886,32 @@ function renderToday(data) {
   todayRingFill.classList.toggle("today-ring-fill--over", Boolean(ringBasis) && eaten > ringBasis);
   animateRing(eaten, pct);
 
-  if (data.kcal.target !== null) {
-    const left = data.kcal.remaining ?? 0;
-    todayRemaining.textContent = Math.abs(left).toLocaleString();
-    todayRemainingCaption.textContent = left >= 0 ? "kcal left" : "kcal over";
-  } else {
-    todayRemaining.textContent = eaten.toLocaleString();
-    todayRemainingCaption.textContent = viewingToday ? "logged today" : "logged";
-  }
+  // Always what was logged, never "kcal left". The three lines are a sum now —
+  // what the day is measured against, what went in, and the difference — and a
+  // middle line showing the answer to the third would make the other two look
+  // like they didn't add up. What's left is the net line below, and the "what
+  // still fits" card underneath.
+  todayRemaining.textContent = eaten.toLocaleString();
+  todayRemainingCaption.textContent = viewingToday ? "logged today" : "logged";
 
-  // Only a measured burn goes in the burn tile. An estimate or a target
-  // isn't a burn, and labelling it as one would be a lie about where the
-  // number came from.
-  const burn = data.kcal.measuredBurn;
-  todayBurn.textContent = burn === null ? "—" : burn.toLocaleString();
-  todayBurnCaption.textContent = burn === null ? "burn (no tracker)" : "burned so far";
+  // The burn figure is whichever of the three the user picked — measured by a
+  // tracker, their daily target, or the height-and-weight estimate — and the
+  // caption underneath always names the one actually used. A whole-day
+  // estimate is never labelled "burned so far".
+  const burn = data.kcal.burn ?? { kcal: data.kcal.measuredBurn, source: "measured", caption: "burned so far", netCaption: "net so far" };
+  todayBurn.textContent = burn.kcal === null ? "—" : burn.kcal.toLocaleString();
+  todayBurnCaption.textContent = burn.caption;
+  currentBurnChoice = burn.chosen ?? "measured";
 
-  const netBasis = burn ?? data.kcal.reference ?? null;
-  if (netBasis === null) {
+  if (burn.kcal === null) {
     todayNet.textContent = "—";
     todayNetCaption.textContent = "net";
   } else {
-    const net = eaten - netBasis;
+    const net = eaten - burn.kcal;
     todayNet.textContent = `${net > 0 ? "+" : net < 0 ? "−" : ""}${Math.abs(Math.round(net)).toLocaleString()}`;
-    todayNetCaption.textContent = burn !== null
-      ? "net so far"
-      : data.kcal.referenceSource === "target" ? "vs target" : "vs estimate";
+    todayNetCaption.textContent = burn.netCaption;
   }
-  todayNet.className = netBasis !== null && eaten > netBasis ? "today-stat-value today-stat-value--over" : "today-stat-value today-stat-value--under";
+  todayNet.className = burn.kcal !== null && eaten > burn.kcal ? "today-stat-value today-stat-value--over" : "today-stat-value today-stat-value--under";
 
   if (data.kcal.pendingEntries > 0) {
     const n = data.kcal.pendingEntries;
@@ -8259,6 +8259,101 @@ async function logSuggestion(suggestion, button) {
     onAction: () => undoEntries(savedIds),
   });
   await refreshCurrentView();
+}
+
+// ── What the day is measured against ────────────────────────────────────────
+//
+// Three figures have a claim on the top slot of the Today card, and which one
+// is right depends on the person: a tracker's measured burn, the daily calorie
+// target, or the height-and-weight estimate. The choice lives on the account
+// (see src/burnSource.ts, which also decides what each is honestly called).
+//
+// Offered in two places on purpose — an (i) beside the figures, for the moment
+// you are looking at them and wondering, and in Settings, where someone who
+// remembers the option exists will go looking for it.
+const BURN_CHOICES = [
+  {
+    key: "measured",
+    label: "What my tracker measured",
+    note: "Grows through the day as your watch records it. Needs a tracker connected.",
+  },
+  {
+    key: "target",
+    label: "My daily calorie target",
+    note: "The number you set in Settings. Not a burn — the figure you're aiming at.",
+  },
+  {
+    key: "estimate",
+    label: "Worked out from my body stats",
+    note: "A whole day's burn from your height, weight, age and activity level.",
+  },
+];
+
+let currentBurnChoice = "measured";
+
+const burnInfoBtn = document.getElementById("burn-info-btn");
+const burnModal = document.getElementById("burn-modal");
+const burnCloseBtn = document.getElementById("burn-close-btn");
+const burnChoicesEl = document.getElementById("burn-choices");
+const settingsBurnChoicesEl = document.getElementById("settings-burn-choices");
+
+burnInfoBtn.innerHTML = ICONS.info;
+burnInfoBtn.addEventListener("click", () => {
+  renderBurnChoices();
+  burnModal.hidden = false;
+});
+burnCloseBtn.addEventListener("click", () => { burnModal.hidden = true; });
+burnModal.addEventListener("click", (event) => {
+  if (event.target === burnModal) burnModal.hidden = true;
+});
+
+function renderBurnChoices() {
+  for (const container of [burnChoicesEl, settingsBurnChoicesEl]) {
+    if (!container) continue;
+    container.innerHTML = "";
+    for (const choice of BURN_CHOICES) {
+      container.appendChild(burnChoiceRow(choice, container === burnChoicesEl));
+    }
+  }
+}
+
+function burnChoiceRow(choice, closeAfter) {
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = "burn-choice";
+  row.classList.toggle("burn-choice--on", choice.key === currentBurnChoice);
+  row.setAttribute("aria-pressed", String(choice.key === currentBurnChoice));
+
+  const label = document.createElement("span");
+  label.className = "burn-choice-label";
+  label.textContent = choice.label;
+
+  const note = document.createElement("span");
+  note.className = "burn-choice-note";
+  note.textContent = choice.note;
+
+  row.append(label, note);
+  row.addEventListener("click", () => chooseBurnSource(choice.key, closeAfter));
+  return row;
+}
+
+async function chooseBurnSource(key, closeAfter) {
+  currentBurnChoice = key;
+  renderBurnChoices();
+  haptic();
+  try {
+    const res = await fetch("/api/auth/me", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ burnSource: key }),
+    });
+    if (!res.ok) throw new Error();
+    if (currentUser) currentUser.burnSource = key;
+    if (closeAfter) burnModal.hidden = true;
+    loadToday();
+  } catch {
+    showToast("Couldn't save that — please try again.");
+  }
 }
 
 // ── The day's note ──────────────────────────────────────────────────────────

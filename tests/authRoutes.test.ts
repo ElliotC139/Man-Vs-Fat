@@ -198,6 +198,9 @@ describe("POST /api/auth/signup", () => {
       reminderHour: null,
       sex: null,
       layout: null,
+      // Unset means measured, which is what the Today card did before this
+      // became a choice.
+      burnSource: "measured",
       email: null,
       // Signed up with a password and no Google account, so the settings
       // screen knows a password change is possible and a Google unlink isn't.
