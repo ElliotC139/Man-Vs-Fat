@@ -198,6 +198,11 @@ describe("POST /api/auth/signup", () => {
       reminderHour: null,
       sex: null,
       layout: null,
+      // Meal tags are opt-in, and their names come back resolved rather than
+      // as the null the column actually holds — so the client never has to
+      // know what an unset slot falls back to.
+      mealTagsEnabled: false,
+      mealTagNames: { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner", snack: "Snack" },
       // Unset means measured, which is what the Today card did before this
       // became a choice.
       burnSource: "measured",

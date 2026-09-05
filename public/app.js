@@ -859,7 +859,14 @@ form.addEventListener("submit", async (event) => {
       if (!isNetworkFailure(error)) throw error;
       await enqueue({
         kind: "entry",
-        payload: { text, photo: photo ?? null, photoName: photo?.name ?? null, lastWeek: logToLastWeek },
+        payload: {
+          text,
+          photo: photo ?? null,
+          photoName: photo?.name ?? null,
+          lastWeek: logToLastWeek,
+          date: loggingDate() ?? null,
+          mealType: chosenMealTag() ?? null,
+        },
       });
       haptic();
       form.reset();
@@ -887,6 +894,11 @@ form.addEventListener("submit", async (event) => {
       rawInput: preview.rawInput,
       source: "ai",
       lastWeek: logToLastWeek,
+      // Captured when the form was submitted, not when the sheet is saved:
+      // the day on screen is what the user meant, and they could step to
+      // another one while the sheet is open.
+      date: loggingDate(),
+      mealType: chosenMealTag(),
       sourceLabel: "AI estimate",
       note: "Change anything that's off, then log it.",
     });
@@ -899,7 +911,8 @@ form.addEventListener("submit", async (event) => {
     formError.hidden = false;
   } finally {
     submitBtn.disabled = false;
-    submitBtn.textContent = "Log it";
+    // Not a hardcoded "Log it": on an earlier day the button names that day.
+    submitBtn.textContent = submitLabel();
   }
 });
 
@@ -1117,6 +1130,8 @@ function populateSettings(user) {
   loadBackfillStatus();
   currentBurnChoice = user.burnSource ?? "measured";
   renderBurnChoices();
+  renderMealTagSettings(user);
+  renderMealTagRow();
   settingsUsername.textContent = user.username;
   settingsReminderHour.value = user.reminderHour === null ? "" : String(user.reminderHour);
   settingsWeekday.value = String(user.weekStartWeekday);
@@ -1718,7 +1733,7 @@ function stopScanHints() {
 }
 
 function openScanner() {
-  scanModal.hidden = false;
+  setModalOpen(scanModal, true);
   scannerActive = true;
   scanStatusEl.textContent = "Starting the camera…";
   scanManualRow.hidden = true;
@@ -1774,7 +1789,7 @@ function stopScanner() {
   // muting the track keeps the session alive with no frames flowing.
   scanVideo.pause();
   scanStream?.getVideoTracks().forEach((t) => { t.enabled = false; });
-  scanModal.hidden = true;
+  setModalOpen(scanModal, false);
 
   clearTimeout(cameraReleaseTimer);
   cameraReleaseTimer = setTimeout(releaseCameraStream, CAMERA_HOLD_MS);
@@ -2310,6 +2325,8 @@ confirmSaveBtn.addEventListener("click", async () => {
         rawInput: confirmState.rawInput,
         source: confirmState.source,
         lastWeek: confirmState.lastWeek,
+        date: confirmState.date ?? undefined,
+        mealType: confirmState.mealType ?? undefined,
       }),
     });
     if (!res.ok) {
@@ -2319,6 +2336,8 @@ confirmSaveBtn.addEventListener("click", async () => {
     const created = await res.json();
     haptic();
     closeConfirmSheet();
+    selectedMealTag = null;
+    renderMealTagRow();
     showToast(
       created.length === 1 ? "Saved to your diary" : `${created.length} items saved`,
       { actionLabel: "Undo", onAction: () => undoEntries(created.map((e) => e.id)) },
@@ -2775,7 +2794,7 @@ async function logFood(food, btn) {
     const res = await fetch("/api/foods/log", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ labelKey: food.labelKey }),
+      body: JSON.stringify({ labelKey: food.labelKey, date: loggingDate() ?? undefined, mealType: chosenMealTag() }),
     });
     if (res.ok) {
       const entry = await res.json();
@@ -3183,6 +3202,185 @@ function renderTdee(data) {
   } else {
     tdeeUnderlogging.hidden = true;
   }
+}
+
+// ── Modals ───────────────────────────────────────────────────────────────
+//
+// A modal covers the screen, so nothing behind it should move. Fixing the body
+// is the only thing that reliably stops a phone scrolling the page under an
+// overlay; the scroll position is stashed and put back, because `position:
+// fixed` on the body otherwise jumps you to the top the moment a modal opens.
+let scrollLockY = 0;
+let openModalCount = 0;
+
+function setModalOpen(modal, open) {
+  if (!modal) return;
+  const wasOpen = !modal.hidden;
+  if (wasOpen === open) return;
+  modal.hidden = !open;
+
+  if (open) {
+    if (openModalCount === 0) {
+      scrollLockY = window.scrollY;
+      document.body.style.top = `-${scrollLockY}px`;
+      document.body.classList.add("modal-open");
+    }
+    openModalCount += 1;
+    return;
+  }
+
+  openModalCount = Math.max(0, openModalCount - 1);
+  if (openModalCount === 0) {
+    document.body.classList.remove("modal-open");
+    document.body.style.top = "";
+    window.scrollTo(0, scrollLockY);
+  }
+}
+
+// ── Jumping to a date ───────────────────────────────────────────────────────
+//
+// The arrows are fine for "yesterday" and useless for "the Tuesday before
+// last". Both screens get a calendar that goes straight there — the Today tab
+// to a day, the diary to whichever week contains the day picked.
+
+const dayJumpInput = document.getElementById("day-jump");
+const weekJumpInput = document.getElementById("week-jump");
+
+/**
+ * The most recent week boundary at or before a moment, in the device's local
+ * time — which is the app's timezone for everyone this diary is built for.
+ *
+ * The user's week can start on any weekday at any time (Monday 17:00 by
+ * default), so this is not "the previous Monday": it is the last time the
+ * chosen weekday and clock time went past.
+ */
+function weekStartAtOrBefore(date) {
+  // weekStartWeekday counts from Monday; getDay() counts from Sunday.
+  const targetJsDay = (userWeekStartWeekday + 1) % 7;
+  const boundary = new Date(date);
+  boundary.setHours(userWeekStartHour, userWeekStartMinute, 0, 0);
+  boundary.setDate(boundary.getDate() - ((boundary.getDay() - targetJsDay + 7) % 7));
+  // Landing after the moment asked about means this week's boundary hasn't
+  // happened yet, so the one that governs it is a week earlier.
+  if (boundary > date) boundary.setDate(boundary.getDate() - 7);
+  return boundary;
+}
+
+/** How many whole weeks back the week containing `date` is from this one. */
+function weeksAgoFor(date) {
+  const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
+  const diff = weekStartAtOrBefore(new Date()) - weekStartAtOrBefore(date);
+  // Rounded, not floored: a clock change makes one of these weeks 23 or 25
+  // hours short of a round seven days.
+  return Math.max(0, Math.round(diff / MS_PER_WEEK));
+}
+
+function todayDateKey() {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+dayJumpInput.addEventListener("change", () => {
+  const value = dayJumpInput.value;
+  if (!value) return;
+  // Picking today goes back to live-today rather than to a fixed key, so the
+  // screen keeps updating as the day goes on.
+  todayViewDate = value === todayDateKey() ? null : value;
+  ringIntroPending = true;
+  haptic();
+  loadToday();
+});
+
+weekJumpInput.addEventListener("change", () => {
+  const value = weekJumpInput.value;
+  if (!value) return;
+  // Midday, so the date lands unambiguously inside the day picked whichever
+  // side of a clock change it falls.
+  const [y, m, d] = value.split("-").map(Number);
+  weeksAgo = weeksAgoFor(new Date(y, m - 1, d, 12, 0, 0, 0));
+  haptic();
+  loadWeek();
+});
+
+// Neither picker can be pointed at the future: there is nothing logged there,
+// and the day screen would only bounce back to today.
+function capDateJumps() {
+  const max = todayDateKey();
+  dayJumpInput.max = max;
+  weekJumpInput.max = max;
+}
+capDateJumps();
+
+// ── Meal tags, and the two diary display preferences ────────────────────────
+//
+// The four slots are fixed — they are the values already stored on every entry
+// — and only their labels move, so renaming one re-labels the back catalogue
+// rather than orphaning it. The whole feature is off by default: the diary has
+// always worked the meal out from the clock, and most people never want to be
+// asked.
+const MEAL_TAG_SLOTS = ["breakfast", "lunch", "dinner", "snack"];
+const MEAL_TAG_FALLBACK = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner", snack: "Snack" };
+
+// Null means the blank tag, which is a real choice rather than "not answered":
+// someone who logs a coffee at 4pm may not want it filed as anything.
+let selectedMealTag = null;
+
+const mealTagRow = document.getElementById("meal-tag-row");
+const mealTagBtns = document.getElementById("meal-tag-btns");
+
+function mealTagName(slot) {
+  return currentUser?.mealTagNames?.[slot] || MEAL_TAG_FALLBACK[slot];
+}
+
+function mealTagsOn() {
+  return Boolean(currentUser?.mealTagsEnabled);
+}
+
+/** What the form should send: a slot, or nothing at all for the blank tag. */
+function chosenMealTag() {
+  return mealTagsOn() && selectedMealTag ? selectedMealTag : undefined;
+}
+
+function renderMealTagRow() {
+  mealTagRow.hidden = !mealTagsOn();
+  if (!mealTagsOn()) return;
+
+  mealTagBtns.innerHTML = "";
+  // The blank option first, and selected by default, so the row never forces a
+  // choice on someone who just wants to log something.
+  const options = [{ key: null, label: "—" }, ...MEAL_TAG_SLOTS.map((slot) => ({ key: slot, label: mealTagName(slot) }))];
+  for (const option of options) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "log-week-btn";
+    btn.classList.toggle("log-week-btn--active", option.key === selectedMealTag);
+    btn.textContent = option.label;
+    if (option.key === null) btn.setAttribute("aria-label", "No meal tag");
+    btn.addEventListener("click", () => {
+      selectedMealTag = option.key;
+      haptic();
+      renderMealTagRow();
+    });
+    mealTagBtns.appendChild(btn);
+  }
+}
+
+/** The log button names the day it is about to write to, when that isn't today. */
+function submitLabel() {
+  return viewingToday ? "Log it" : `Log it on ${todayShortLabel || "that day"}`;
+}
+
+// Whether entry rows show the time they were logged at. A display preference
+// in the same mould as units and theme, so it lives beside them in the
+// browser rather than on the account.
+const SHOW_TIMES_KEY = "showEntryTimes";
+let showEntryTimes = localStorage.getItem(SHOW_TIMES_KEY) !== "0";
+
+function applyShowTimes(on) {
+  showEntryTimes = on;
+  localStorage.setItem(SHOW_TIMES_KEY, on ? "1" : "0");
+  document.body.classList.toggle("hide-entry-times", !on);
 }
 
 // ── Tooltips ─────────────────────────────────────────────────────────────
@@ -4339,7 +4537,7 @@ async function quickLogFood(food) {
   const res = await fetch("/api/foods/log", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ labelKey: food.labelKey }),
+    body: JSON.stringify({ labelKey: food.labelKey, date: loggingDate() ?? undefined, mealType: chosenMealTag() }),
   });
   if (!res.ok) throw new Error("log failed");
   const entry = await res.json();
@@ -4362,7 +4560,7 @@ async function logSavedMeal(meal) {
   const res = await fetch(`/api/meals/${meal.id}/log`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ servings }),
+    body: JSON.stringify({ servings, date: loggingDate() ?? undefined, mealType: chosenMealTag() }),
   });
   if (!res.ok) throw new Error("log failed");
   const created = await res.json();
@@ -4953,12 +5151,12 @@ shareModal.addEventListener("click", (event) => {
 });
 
 function closeShareCard() {
-  shareModal.hidden = true;
+  setModalOpen(shareModal, false);
   shareBlob = null;
 }
 
 async function openShareCard() {
-  shareModal.hidden = false;
+  setModalOpen(shareModal, true);
   shareStatus.hidden = false;
   shareStatus.textContent = "Building your card…";
   shareSendBtn.disabled = true;
@@ -5273,6 +5471,76 @@ function initSettingsSections() {
     });
   }
 }
+
+// ── The diary display settings ──────────────────────────────────────────────
+const settingShowTimes = document.getElementById("setting-show-times");
+const settingMealTags = document.getElementById("setting-meal-tags");
+const mealTagNamesBox = document.getElementById("meal-tag-names");
+const mealTagErrorEl = document.getElementById("meal-tag-error");
+const mealNameInputs = {
+  breakfast: document.getElementById("meal-name-breakfast"),
+  lunch: document.getElementById("meal-name-lunch"),
+  dinner: document.getElementById("meal-name-dinner"),
+  snack: document.getElementById("meal-name-snack"),
+};
+
+function renderMealTagSettings(user) {
+  settingMealTags.checked = Boolean(user.mealTagsEnabled);
+  mealTagNamesBox.hidden = !user.mealTagsEnabled;
+  for (const slot of MEAL_TAG_SLOTS) {
+    // The placeholder already carries the default, so a slot nobody has
+    // renamed shows an empty box rather than a word to delete first.
+    const name = user.mealTagNames?.[slot] ?? "";
+    mealNameInputs[slot].value = name === MEAL_TAG_FALLBACK[slot] ? "" : name;
+  }
+}
+
+async function saveMealTagSettings(patch) {
+  mealTagErrorEl.hidden = true;
+  try {
+    const res = await fetch("/api/auth/me", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) throw new Error();
+    // The response is the resolved profile, so the names on the log form and
+    // the ones in the boxes can't drift apart.
+    currentUser = await res.json();
+    renderMealTagSettings(currentUser);
+    renderMealTagRow();
+    refreshCurrentView();
+  } catch {
+    mealTagErrorEl.textContent = "Couldn't save that — please try again.";
+    mealTagErrorEl.hidden = false;
+  }
+}
+
+settingMealTags.addEventListener("change", () => {
+  mealTagNamesBox.hidden = !settingMealTags.checked;
+  haptic();
+  saveMealTagSettings({ mealTagsEnabled: settingMealTags.checked });
+});
+
+for (const slot of MEAL_TAG_SLOTS) {
+  // On blur rather than on every keystroke: one save per rename, not one per
+  // letter typed.
+  mealNameInputs[slot].addEventListener("blur", () => {
+    const names = {};
+    for (const key of MEAL_TAG_SLOTS) names[key] = mealNameInputs[key].value.trim();
+    saveMealTagSettings({ mealTagNames: names });
+  });
+}
+
+settingShowTimes.addEventListener("change", () => {
+  applyShowTimes(settingShowTimes.checked);
+  haptic();
+});
+
+// Applied before anything is drawn, so entry rows never flash their times on
+// for someone who has turned them off.
+applyShowTimes(showEntryTimes);
+settingShowTimes.checked = showEntryTimes;
 
 // ── Page layout ─────────────────────────────────────────────────────────────
 //
@@ -5643,6 +5911,10 @@ async function replayQueued(item) {
   if (item.payload.text) body.append("text", item.payload.text);
   if (item.payload.photo) body.append("photo", item.payload.photo, item.payload.photoName || "photo.jpg");
   if (item.payload.lastWeek) body.append("lastWeek", "true");
+  // The day and meal are the ones from when it was queued: a log made on
+  // Tuesday that syncs on Thursday still belongs to Tuesday.
+  if (item.payload.date) body.append("date", item.payload.date);
+  if (item.payload.mealType) body.append("mealType", item.payload.mealType);
   const res = await fetch("/api/entries", { method: "POST", body });
   return res.ok;
 }
@@ -6414,12 +6686,12 @@ function openPhotoModal(url, caption) {
   photoModalImg.src = url;
   photoModalImg.alt = caption ?? "";
   photoModalCaption.textContent = caption ?? "";
-  photoModal.hidden = false;
+  setModalOpen(photoModal, true);
   photoModalClose.focus();
 }
 
 function closePhotoModal() {
-  photoModal.hidden = true;
+  setModalOpen(photoModal, false);
   // Dropped so a large photo isn't held in memory behind a hidden dialog.
   photoModalImg.src = "";
 }
@@ -7943,6 +8215,8 @@ let currentTodayDate = null;
 let todayViewDate = null;
 // Whether the screen is showing today, which several captions depend on.
 let viewingToday = true;
+// "Tue 2 Sep" for the day on screen, for the log button to name it.
+let todayShortLabel = "";
 
 const todayEntriesHeading = document.getElementById("today-entries-heading");
 
@@ -7958,12 +8232,28 @@ function renderDayNav(data) {
   dayPrevBtn.dataset.date = data.previousDate ?? "";
   dayNextBtn.dataset.date = data.nextDate ?? "";
 
-  // Logging always writes to now, so on an earlier day the form would say one
-  // thing and do another. It comes off the screen entirely, with a way back.
+  // Logging used to always write to now, so on an earlier day the form said
+  // one thing and did another and was hidden rather than fixed. It writes to
+  // the day on screen now, so it stays — with the note above it saying which
+  // day that is, and the button saying so too.
   const past = !data.isToday;
+  todayShortLabel = data.shortLabel ?? "";
   dayPastNote.hidden = !past;
-  form.hidden = past;
+  form.hidden = false;
+  submitBtn.textContent = submitLabel();
+  renderMealTagRow();
+  // Water is still today-only: it is a running count for the current day
+  // rather than a timestamped entry, so there is nothing to write it onto.
   waterCard.hidden = past;
+}
+
+/**
+ * The day any new entry should land on: null for today, a YYYY-MM-DD key while
+ * looking back. Every log path sends this, so what the screen is showing and
+ * what a tap writes to can't come apart.
+ */
+function loggingDate() {
+  return viewingToday ? null : currentTodayDate;
 }
 
 function goToDay(key) {
@@ -8238,12 +8528,12 @@ async function logSuggestion(suggestion, button) {
             headers: { "Content-Type": "application/json" },
             // The card costs a meal per serving, so one serving is what it
             // offered and one serving is what it logs.
-            body: JSON.stringify({ servings: 1 }),
+            body: JSON.stringify({ servings: 1, date: loggingDate() ?? undefined, mealType: chosenMealTag() }),
           })
         : await fetch("/api/foods/log", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ labelKey: part.labelKey }),
+            body: JSON.stringify({ labelKey: part.labelKey, date: loggingDate() ?? undefined, mealType: chosenMealTag() }),
           });
       if (!res.ok) throw new Error("log failed");
       const created = await res.json();
@@ -8281,17 +8571,17 @@ const BURN_CHOICES = [
   {
     key: "measured",
     label: "My tracker's burn",
-    note: "Live from your watch, building up through the day. Needs a tracker connected.",
+    note: "Total calories burned, according to your fitness tracker — building throughout the day.",
   },
   {
     key: "target",
     label: "My calorie target",
-    note: "The number you set in Settings. The same every day.",
+    note: "Your calorie target as set by you in your settings.",
   },
   {
     key: "estimate",
     label: "My estimated burn",
-    note: "A full day's burn from your height, weight, age and activity.",
+    note: "Your estimated calories burned based on your height, weight and age. This is the default setting if no tracker connected or target set.",
   },
 ];
 
@@ -8306,11 +8596,11 @@ const settingsBurnChoicesEl = document.getElementById("settings-burn-choices");
 burnSettingsBtn.innerHTML = ICONS.cog;
 burnSettingsBtn.addEventListener("click", () => {
   renderBurnChoices();
-  burnModal.hidden = false;
+  setModalOpen(burnModal, true);
 });
-burnCloseBtn.addEventListener("click", () => { burnModal.hidden = true; });
+burnCloseBtn.addEventListener("click", () => { setModalOpen(burnModal, false); });
 burnModal.addEventListener("click", (event) => {
-  if (event.target === burnModal) burnModal.hidden = true;
+  if (event.target === burnModal) setModalOpen(burnModal, false);
 });
 
 function renderBurnChoices() {
@@ -8369,7 +8659,7 @@ async function chooseBurnSource(key, closeAfter) {
     });
     if (!res.ok) throw new Error();
     if (currentUser) currentUser.burnSource = key;
-    if (closeAfter) burnModal.hidden = true;
+    if (closeAfter) setModalOpen(burnModal, false);
     loadToday();
   } catch {
     showToast("Couldn't save that — please try again.");

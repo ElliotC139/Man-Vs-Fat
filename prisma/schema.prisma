@@ -43,6 +43,19 @@ model User {
   // whichever is picked, the caption on the card says which one it is rather
   // than calling a whole-day figure "burned so far".
   burnSource         String?
+  // Meal tags: whether the log form asks which meal an entry belongs to, and
+  // what those four slots are called. Off by default — the diary has always
+  // inferred a meal from the clock and most people never want to think about
+  // it, so this is opt-in rather than another field in the way.
+  //
+  // The names are labels only. The stored values on an entry stay the four in
+  // MEAL_TYPES, so renaming "snack" to "supper" re-labels the back catalogue
+  // instead of orphaning it, and turning the feature off leaves every entry
+  // exactly where it was.
+  mealTagsEnabled    Boolean              @default(false)
+  // JSON: {"breakfast":"...","lunch":"...","dinner":"...","snack":"..."}.
+  // Null, or any missing key, falls back to the built-in name.
+  mealTagNames       String?
   activityLevel      String?
   weeklyGoalKg       Float?
   // Target weight. weeklyGoalKg is the desired *rate*; this is the

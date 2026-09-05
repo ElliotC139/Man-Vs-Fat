@@ -4244,6 +4244,19 @@ body.sheet-open { overflow: hidden; }
   padding: 16px;
   background: rgba(7, 20, 13, 0.72);
   overflow-y: auto;
+  /* Without this, scrolling past the end of the panel hands the gesture to the
+     page underneath and the background slides around behind the modal. */
+  overscroll-behavior: contain;
+}
+/* Belt and braces with the above: the body itself is frozen for as long as any
+   modal is open, so nothing behind it can move even where scroll chaining is
+   not what's driving it (iOS Safari being the usual culprit). The scroll
+   position is held rather than reset, so closing the modal puts the page back
+   exactly where it was. */
+body.modal-open {
+  position: fixed;
+  width: 100%;
+  overflow: hidden;
 }
 .share-panel {
   width: 100%;
@@ -4386,6 +4399,146 @@ body.sheet-open { overflow: hidden; }
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: none; }
 }
+/* ── Jump to a date ── */
+/* The input sits invisible on top of the icon rather than beside it: tapping
+   the label is what opens the OS date picker on a phone, and every attempt to
+   drive one from a button ends up fighting a different browser's idea of
+   showPicker(). The icon is what you see; the input is what you press. */
+.date-jump {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  margin: 0;
+  border-radius: 999px;
+  color: inherit;
+  cursor: pointer;
+}
+.date-jump .icon {
+  width: 19px;
+  height: 19px;
+  pointer-events: none;
+}
+.date-jump input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Entry times are hidden with a body class rather than by not rendering them:
+   the preference flips instantly, with no re-fetch and no list rebuild. */
+body.hide-entry-times .entry-time {
+  display: none;
+}
+
+/* Five tags plus the blank one will not sit on one line of a phone, so the row
+   wraps and the label sits above rather than beside them. */
+#meal-tag-row {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+#meal-tag-row .log-week-btns {
+  flex-wrap: wrap;
+}
+
+/* ── Setting toggles ── */
+/* A checkbox drawn as a switch. The whole row is the label, so the text is as
+   tappable as the switch itself — on a phone the switch alone is a poor
+   target. */
+.setting-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 14px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.setting-toggle input {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 26px;
+  margin: 2px 0 0;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--hairline);
+  border: none;
+  position: relative;
+  transition: background 0.18s var(--ease);
+  cursor: pointer;
+}
+.setting-toggle input::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.18s var(--ease);
+}
+.setting-toggle input:checked {
+  background: var(--pitch);
+}
+.setting-toggle input:checked::after {
+  transform: translateX(18px);
+}
+.setting-toggle input:focus-visible {
+  outline: 2px solid var(--pitch);
+  outline-offset: 2px;
+}
+.setting-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.setting-toggle-label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.setting-toggle-note {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* The same open/close behaviour inside a card, where the card already supplies
+   the border and the padding — so the head loses the panel chrome and keeps
+   only the hit area, and the title carries a heading's weight rather than a
+   settings row's. */
+.card-collapse-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-collapse-head {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0;
+}
+.card-collapse-head .settings-section-title {
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.card-collapse-body {
+  padding: 12px 0 0;
+}
+
 .settings-section--danger {
   border-color: var(--danger);
 }
@@ -4586,10 +4739,12 @@ body.sheet-open { overflow: hidden; }
 }
 .burn-settings-btn {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 34px;
-  min-height: 34px;
+  top: 6px;
+  right: 6px;
+  /* 40px, not 34: the cog is the only control on this card and it was landing
+     a thumb's width from the figures. */
+  width: 40px;
+  min-height: 40px;
   padding: 0;
   display: grid;
   place-items: center;
@@ -4599,11 +4754,19 @@ body.sheet-open { overflow: hidden; }
   border-radius: 999px;
 }
 .burn-settings-btn .icon {
-  width: 18px;
-  height: 18px;
+  width: 19px;
+  height: 19px;
 }
-.burn-settings-btn:hover {
+.burn-settings-btn:hover,
+.burn-settings-btn:focus-visible {
   color: var(--pitch);
+}
+/* The cog is absolutely positioned, so without a band reserved for it the
+   first stat's figure ran straight underneath — the top-right of the card had
+   a number and an icon fighting for the same corner. The row starts below it
+   instead. */
+.today-hero--anchored .today-hero-row {
+  margin-top: 22px;
 }
 .burn-choices {
   display: flex;
