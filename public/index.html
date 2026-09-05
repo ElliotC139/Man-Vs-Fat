@@ -72,6 +72,11 @@
           <button id="day-prev" type="button" aria-label="Previous day"><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
           <p id="today-date" class="today-date"></p>
           <button id="day-next" type="button" aria-label="Next day" disabled><svg class="icon" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+          <label class="date-jump" title="Jump to a date">
+            <span class="visually-hidden">Jump to a date</span>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            <input type="date" id="day-jump" aria-label="Jump to a date" />
+          </label>
         </div>
       </header>
 
@@ -189,7 +194,7 @@
         </section>
 
         <section id="day-past-note" class="card day-past-note" hidden>
-          <p class="muted">You're looking at an earlier day. Anything you log now goes on today.</p>
+          <p class="muted">You're looking at an earlier day. Anything you log goes on that day.</p>
           <button type="button" id="day-back-to-today" class="ghost-sm">Back to today</button>
         </section>
 
@@ -238,6 +243,11 @@
         <svg class="icon" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></svg>
         <span id="voice-btn-label">Speak</span>
         </button>
+        </div>
+
+        <div id="meal-tag-row" class="log-week-row" hidden>
+        <span class="muted">Meal</span>
+        <div id="meal-tag-btns" class="log-week-btns"></div>
         </div>
 
         <div id="log-week-row" class="log-week-row" hidden>
@@ -307,6 +317,11 @@
           <button id="week-prev" type="button" aria-label="Previous week"><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
           <p id="week-range" class="muted">Loading…</p>
           <button id="week-next" type="button" aria-label="Next week" disabled><svg class="icon" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+          <label class="date-jump" title="Jump to a week">
+            <span class="visually-hidden">Jump to a week</span>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            <input type="date" id="week-jump" aria-label="Jump to the week containing a date" />
+          </label>
         </div>
       </header>
 
@@ -623,6 +638,62 @@
               <button type="button" id="units-imperial" class="units-btn">Imperial (lbs, ft/in)</button>
             </div>
           </div>
+          </section>
+
+          <section class="settings-section" data-settings-section>
+            <button type="button" class="settings-section-head" aria-expanded="false">
+              <span class="settings-section-title">Diary display</span>
+              <span class="settings-section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="settings-section-body" hidden>
+              <label class="setting-toggle">
+                <input type="checkbox" id="setting-show-times" />
+                <span class="setting-toggle-text">
+                  <span class="setting-toggle-label">Show times on logged items</span>
+                  <span class="setting-toggle-note">The clock time each entry was logged at.</span>
+                </span>
+              </label>
+
+              <label class="setting-toggle">
+                <input type="checkbox" id="setting-meal-tags" />
+                <span class="setting-toggle-text">
+                  <span class="setting-toggle-label">Ask which meal when logging</span>
+                  <span class="setting-toggle-note">
+                    Adds breakfast, lunch, dinner and snack buttons to the log form. Leave it off
+                    and the diary works out the meal from the time, as it always has.
+                  </span>
+                </span>
+              </label>
+
+              <div id="meal-tag-names" hidden>
+                <span class="field-label">What to call them</span>
+                <div class="settings-row">
+                  <div class="settings-field">
+                    <label for="meal-name-breakfast">Breakfast</label>
+                    <input type="text" id="meal-name-breakfast" maxlength="20" placeholder="Breakfast" />
+                  </div>
+                  <div class="settings-field">
+                    <label for="meal-name-lunch">Lunch</label>
+                    <input type="text" id="meal-name-lunch" maxlength="20" placeholder="Lunch" />
+                  </div>
+                </div>
+                <div class="settings-row">
+                  <div class="settings-field">
+                    <label for="meal-name-dinner">Dinner</label>
+                    <input type="text" id="meal-name-dinner" maxlength="20" placeholder="Dinner" />
+                  </div>
+                  <div class="settings-field">
+                    <label for="meal-name-snack">Snack</label>
+                    <input type="text" id="meal-name-snack" maxlength="20" placeholder="Snack" />
+                  </div>
+                </div>
+                <p class="muted">
+                  Renaming a tag re-labels everything already logged under it — nothing is
+                  moved or lost.
+                </p>
+              </div>
+              <p id="meal-tag-error" class="error" hidden></p>
+            </div>
           </section>
 
           <h2 class="settings-group">You and your targets</h2>
@@ -1184,19 +1255,27 @@
             </section>
           </div>
 
-          <section id="breakdown-weight-card" class="card" data-module="stats-weight:breakdown" data-module-name="Weekly weight table" hidden>
-            <div class="card-header-row"><h2>Weekly Weight</h2><button type="button" class="info-btn" data-info="weekly-weight" aria-label="What this means"></button></div>
-            <div class="table-scroll">
-              <table class="breakdown-table">
-                <thead>
-                  <tr>
-                    <th></th>
-                    <th>Week of</th>
-                    <th>Weight change</th>
-                  </tr>
-                </thead>
-                <tbody id="breakdown-weight-body"></tbody>
-              </table>
+          <section id="breakdown-weight-card" class="card" data-module="stats-weight:breakdown" data-module-name="Weekly weight table" data-settings-section hidden>
+            <div class="card-collapse-row">
+              <button type="button" class="settings-section-head card-collapse-head" aria-expanded="false">
+                <span class="settings-section-title">Weekly Weight</span>
+                <span class="settings-section-chevron" aria-hidden="true"></span>
+              </button>
+              <button type="button" class="info-btn" data-info="weekly-weight" aria-label="What this means"></button>
+            </div>
+            <div class="settings-section-body card-collapse-body" hidden>
+              <div class="table-scroll">
+                <table class="breakdown-table">
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>Week of</th>
+                      <th>Weight change</th>
+                    </tr>
+                  </thead>
+                  <tbody id="breakdown-weight-body"></tbody>
+                </table>
+              </div>
             </div>
           </section>
 
@@ -1216,9 +1295,16 @@
             <p id="weighin-error" class="error" hidden></p>
           </form>
 
-          <section data-module="stats-weight:history" data-module-name="Weigh-in history">
-            <h2>History</h2>
-            <div id="weighin-list"></div>
+          <section class="card" data-module="stats-weight:history" data-module-name="Weigh-in history" data-settings-section>
+            <div class="card-collapse-row">
+              <button type="button" class="settings-section-head card-collapse-head" aria-expanded="false">
+                <span class="settings-section-title">History</span>
+                <span class="settings-section-chevron" aria-hidden="true"></span>
+              </button>
+            </div>
+            <div class="settings-section-body card-collapse-body" hidden>
+              <div id="weighin-list"></div>
+            </div>
           </section>
 
           <section id="measurements-card" class="card" data-module="stats-weight:measurements" data-module-name="Measurements">
@@ -1556,12 +1642,12 @@
     <div id="burn-modal" class="share-modal" hidden>
       <div class="share-panel">
         <div class="share-panel-head">
-          <span>Measure today against</span>
+          <span>Your daily target</span>
           <button type="button" id="burn-close-btn" class="share-close-btn" aria-label="Close">
             <svg class="icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
-        <p class="muted">Pick the top figure on the card. What you log is counted against it.</p>
+        <p class="muted">Pick the source of your daily target.</p>
         <div id="burn-choices" class="burn-choices"></div>
         <p class="muted burn-modal-note">Also in Settings, under “Body stats &amp; goal”.</p>
       </div>

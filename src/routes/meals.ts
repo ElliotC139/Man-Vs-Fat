@@ -5,6 +5,7 @@ import { config } from "../config";
 import { requireAuth } from "../auth";
 import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart } from "../matchWeek";
 import { MEAL_TYPES, inferMealType, type MealType } from "../mealType";
+import { timestampOnLocalDay } from "../entryTiming";
 import { scaleMacros, sumMacros } from "../macros";
 
 export const mealsRouter = Router();
@@ -242,6 +243,8 @@ const logSchema = z.object({
   // whole thing for a template.
   servings: z.number().positive().max(20).default(1),
   mealType: z.enum(MEAL_TYPES).optional(),
+  // The day being looked at, when that isn't today.
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 mealsRouter.post("/:id/log", async (req, res) => {
@@ -262,7 +265,9 @@ mealsRouter.post("/:id/log", async (req, res) => {
     return;
   }
 
-  const timestamp = new Date();
+  const timestamp = parsed.data.date
+    ? timestampOnLocalDay(parsed.data.date, new Date(), parsed.data.mealType)
+    : new Date();
   const weekStart = await getUserWeekStart(req.userId!);
   const matchWeek = await findOrCreateMatchWeek(timestamp, config.TIMEZONE, req.userId!, weekStart);
   const mealType: MealType =

@@ -798,6 +798,14 @@ statsRouter.get("/today", async (req, res) => {
     previousDate: shiftDayKey(dayKey, -1),
     nextDate: isToday ? null : shiftDayKey(dayKey, 1),
     label: localDayLabel(subject, config.TIMEZONE),
+    // A short form for places the full "Tuesday 2 September" won't fit — the
+    // log button, which has to say which day it is about to write to.
+    shortLabel: new Intl.DateTimeFormat("en-GB", {
+      timeZone: config.TIMEZONE,
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    }).format(subject),
     kcal: {
       eaten,
       pendingEntries: pending,

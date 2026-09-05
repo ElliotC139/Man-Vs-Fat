@@ -13,6 +13,8 @@ import {
   revokeAllSessions,
 } from "../auth";
 import { BURN_SOURCES, readBurnSource } from "../burnSource";
+import { readMealTagNames, writeMealTagNames } from "../mealTags";
+import { MEAL_TYPES } from "../mealType";
 import { deleteAccount } from "../deleteAccount";
 import { canSendMail, sendMail } from "../mailer";
 import { consume, reset as resetRateLimit, LOGIN_BURST, RESET_BURST } from "../rateLimit";
@@ -61,6 +63,16 @@ const settingsSchema = z.object({
   reminderHour: z.number().int().min(0).max(23).nullable().optional(),
   // Which figure the Today card calls the day's burn. Null means measured.
   burnSource: z.enum(BURN_SOURCES).nullable().optional(),
+  // Whether the log form asks which meal an entry belongs to.
+  mealTagsEnabled: z.boolean().optional(),
+  // What the four slots are called. Only the four known slots are accepted, so
+  // this can never introduce a fifth the rest of the app doesn't know about.
+  mealTagNames: z
+    .object(Object.fromEntries(MEAL_TYPES.map((slot) => [slot, z.string().trim().max(20)])) as
+      Record<(typeof MEAL_TYPES)[number], z.ZodString>)
+    .partial()
+    .nullable()
+    .optional(),
   // Which cards each screen shows and in what order. Validated by shape rather
   // than against a list of card names on purpose: the cards live in the page's
   // markup, and a server that had to be redeployed to know about a new one
@@ -130,6 +142,8 @@ function toPublicUser(user: {
   reminderHour?: number | null;
   layout?: string | null;
   burnSource?: string | null;
+  mealTagsEnabled?: boolean | null;
+  mealTagNames?: string | null;
   email?: string | null;
   googleId?: string | null;
   passwordHash?: string | null;
@@ -167,6 +181,10 @@ function toPublicUser(user: {
     // every screen it touches.
     layout: parseLayout(user.layout),
     burnSource: readBurnSource(user.burnSource),
+    mealTagsEnabled: user.mealTagsEnabled ?? false,
+    // Sent resolved rather than raw, so the client never has to know what an
+    // unset slot falls back to.
+    mealTagNames: readMealTagNames(user.mealTagNames),
     email: user.email ?? null,
     // The settings screen needs to know which recovery routes exist for this
     // account without being told the secrets behind them.
@@ -358,12 +376,15 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
     return;
   }
 
-  // The layout is the one field that isn't stored as it arrives: SQLite has no
-  // JSON column, so it goes in as text.
-  const { layout, ...fields } = parsed.data;
-  const data = layout === undefined
-    ? fields
-    : { ...fields, layout: layout === null ? null : JSON.stringify(layout) };
+  // The layout and the meal tag names are the fields that aren't stored as
+  // they arrive: SQLite has no JSON column, so they go in as text.
+  const { layout, mealTagNames, ...fields } = parsed.data;
+  const data: Record<string, unknown> = { ...fields };
+  if (layout !== undefined) data.layout = layout === null ? null : JSON.stringify(layout);
+  // writeMealTagNames drops anything that matches the built-in name, so
+  // renaming a slot and changing your mind back leaves a clean row rather than
+  // a frozen copy of the defaults.
+  if (mealTagNames !== undefined) data.mealTagNames = writeMealTagNames(mealTagNames);
 
   const user = await prisma.user.update({ where: { id: req.userId! }, data });
 

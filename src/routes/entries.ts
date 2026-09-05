@@ -9,6 +9,7 @@ import { findReferences } from "../estimateGrounding";
 import { scaleMacros } from "../macros";
 import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart, localDayKey, zonedTimeToUtc } from "../matchWeek";
 import { MEAL_TYPES, MEAL_TYPE_DEFAULT_HOUR, inferMealType, type MealType } from "../mealType";
+import { timestampOnLocalDay } from "../entryTiming";
 import { saveUploadedImage, deleteUploadedImage, uploadFilename } from "../lib/storage";
 import { normalizeUploadedImage } from "../lib/imageProcessing";
 import { consumeAll, AI_BURST, AI_DAILY } from "../rateLimit";
@@ -29,6 +30,13 @@ const createEntrySchema = z.object({
   text: z.string().trim().optional(),
   timestamp: z.string().datetime().optional(),
   lastWeek: z.string().optional(),
+  // The local day this entry belongs to (YYYY-MM-DD), sent when logging while
+  // looking at an earlier day. Without it the diary could only ever write to
+  // now, which is why the log form used to disappear on a past day.
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  // The meal slot, when the user has been asked for one. Absent means fall
+  // back to inferring it from the clock, exactly as before.
+  mealType: z.enum(MEAL_TYPES).optional(),
   directKcal: z.coerce.number().int().positive().optional(),
   // Sent alongside directKcal by the barcode scanner and food search when
   // Open Food Facts has per-100g macro data. Real label figures, so they skip
@@ -45,7 +53,7 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
     return;
   }
 
-  const { text, timestamp, lastWeek, directKcal, directProteinG, directCarbsG, directFatG } = parsed.data;
+  const { text, timestamp, lastWeek, date, mealType: chosenMeal, directKcal, directProteinG, directCarbsG, directFatG } = parsed.data;
   const rawPhoto = req.file;
 
   if (!text?.trim() && !rawPhoto) {
@@ -70,6 +78,10 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
   const weekStart = await getUserWeekStart(req.userId!);
 
   let entryTimestamp = timestamp ? new Date(timestamp) : new Date();
+  // Logging onto an earlier day keeps the current time of day, so the entry
+  // still lands in the meal slot it was actually eaten in and the match week
+  // is worked out against a real moment rather than midnight.
+  if (date) entryTimestamp = timestampOnLocalDay(date, entryTimestamp, chosenMeal);
   if (lastWeek === "true") {
     // Place the entry 1 minute before the user's rollover boundary so it lands
     // in the closing week regardless of when it was actually logged.
@@ -116,7 +128,7 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
 
   const imageUrl = photo ? saveUploadedImage(photo.buffer) : null;
   const matchWeek = await findOrCreateMatchWeek(entryTimestamp, config.TIMEZONE, req.userId!, weekStart);
-  const mealType = inferMealType(getLocalParts(entryTimestamp, config.TIMEZONE).hour);
+  const mealType = chosenMeal ?? inferMealType(getLocalParts(entryTimestamp, config.TIMEZONE).hour);
 
   const entries = await prisma.$transaction(
     items.map((item) =>
@@ -215,6 +227,10 @@ const confirmSchema = z.object({
   // much to trust them after a round trip through the confirm sheet.
   source: z.enum(["ai", "database", "manual", "meal"]).default("ai"),
   lastWeek: z.boolean().optional(),
+  // Same two as POST / — the day being looked at, and the meal slot if the
+  // user was asked for one.
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  mealType: z.enum(MEAL_TYPES).optional(),
 });
 
 /**
@@ -227,10 +243,11 @@ entriesRouter.post("/confirm", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const { items, imageUrl, rawInput, source, lastWeek } = parsed.data;
+  const { items, imageUrl, rawInput, source, lastWeek, date, mealType: chosenMeal } = parsed.data;
 
   const weekStart = await getUserWeekStart(req.userId!);
   let timestamp = new Date();
+  if (date) timestamp = timestampOnLocalDay(date, timestamp, chosenMeal);
   if (lastWeek) {
     const now = getLocalParts(timestamp, config.TIMEZONE);
     const rollover = zonedTimeToUtc(now.year, now.month, now.day, weekStart.hour, weekStart.minute, config.TIMEZONE);
@@ -238,7 +255,7 @@ entriesRouter.post("/confirm", async (req, res) => {
   }
 
   const matchWeek = await findOrCreateMatchWeek(timestamp, config.TIMEZONE, req.userId!, weekStart);
-  const mealType = inferMealType(getLocalParts(timestamp, config.TIMEZONE).hour);
+  const mealType = chosenMeal ?? inferMealType(getLocalParts(timestamp, config.TIMEZONE).hour);
 
   // Only the safe filename part of an uploaded URL is honoured, so a doctored
   // value can't point an entry at something outside the uploads directory.

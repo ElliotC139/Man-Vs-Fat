@@ -4,7 +4,8 @@ import { prisma } from "../db";
 import { config } from "../config";
 import { requireAuth } from "../auth";
 import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart } from "../matchWeek";
-import { inferMealType } from "../mealType";
+import { MEAL_TYPES, inferMealType } from "../mealType";
+import { timestampOnLocalDay } from "../entryTiming";
 import { normalizeLabel } from "../labelKey";
 // Re-exported: this used to live here, and half the app still imports it from
 // this module.
@@ -166,6 +167,11 @@ foodsRouter.post("/tags/remove", async (req, res) => {
 
 const logSchema = z.object({
   labelKey: z.string().trim().min(1),
+  // The day being looked at, when that isn't today. The quick-add strip lives
+  // on the Today screen, which can now be pointed at an earlier day — so a tap
+  // there has to land on the day on screen, not the day it happens to be.
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  mealType: z.enum(MEAL_TYPES).optional(),
 });
 
 // Quick "+Today" re-log from the food library — same idea as POST
@@ -177,7 +183,7 @@ foodsRouter.post("/log", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const { labelKey } = parsed.data;
+  const { labelKey, date, mealType: chosenMeal } = parsed.data;
 
   const [candidates, override] = await Promise.all([
     prisma.entry.findMany({
@@ -201,10 +207,10 @@ foodsRouter.post("/log", async (req, res) => {
     return;
   }
 
-  const entryTimestamp = new Date();
+  const entryTimestamp = date ? timestampOnLocalDay(date, new Date(), chosenMeal) : new Date();
   const weekStart = await getUserWeekStart(req.userId!);
   const matchWeek = await findOrCreateMatchWeek(entryTimestamp, config.TIMEZONE, req.userId!, weekStart);
-  const mealType = inferMealType(getLocalParts(entryTimestamp, config.TIMEZONE).hour);
+  const mealType = chosenMeal ?? inferMealType(getLocalParts(entryTimestamp, config.TIMEZONE).hour);
 
   const entry = await prisma.entry.create({
     data: {
