@@ -721,27 +721,61 @@ h2 {
   box-shadow: none;
 }
 
-.entry-edit-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  flex: 1;
+/* ── Editing an entry ──
+   This was a flex row of bare boxes: a name, then 168, then 1, then a date,
+   with nothing to say which number was which — and the macro boxes were a
+   separate sibling of a flex parent, so they were laid out BESIDE the rest
+   instead of under them and the form read as two unrelated halves.
+   It is one grid now, every box captioned. */
+.entry-edit {
+  flex: 1 1 100%;
+  min-width: 0;
 }
 
-.entry-edit-row input,
-.entry-edit-row select {
+.entry-edit-grid {
+  display: grid;
+  /* Six columns so a field can take a half (3), a third (2) or the lot (6)
+     without a second set of nested containers. */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.entry-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  font-weight: 400;
+}
+.entry-edit-field--full { grid-column: span 6; }
+.entry-edit-field--half { grid-column: span 3; }
+.entry-edit-field--third { grid-column: span 2; }
+
+.entry-edit-caption {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.entry-edit-field input,
+.entry-edit-field select {
+  width: 100%;
+  min-width: 0;
   margin-bottom: 0;
 }
 
-.entry-edit-row input[type="text"] {
-  flex: 1 1 100%;
+.entry-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
 }
-
-.entry-edit-row input[type="number"],
-.entry-edit-row input[type="date"],
-.entry-edit-row select {
-  flex: 1;
-  min-width: 90px;
+.entry-edit-actions button {
+  width: auto;
+  min-width: 92px;
 }
 
 .empty-state {
@@ -2933,10 +2967,6 @@ tr.has-tooltip:active {
 }
 /* Narrower than the label and kcal fields it sits between — a quantity is
    one or two characters, and giving it an equal share squeezed both. */
-.entry-edit-row .entry-qty-input {
-  max-width: 72px;
-}
-
 .photo-modal {
   position: fixed;
   inset: 0;
@@ -3302,28 +3332,15 @@ tr.has-tooltip:active {
   white-space: nowrap;
 }
 
-/* The three gram fields shown in edit mode. */
-.entry-macro-edit {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-.entry-macro-field {
-  flex: 1 1 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 0.7rem;
-  color: var(--muted);
-}
 /* The global input[type="number"] rule sets width:100%, which is what's
-   wanted here — but it also outranks a plain class selector, so anything
-   that needs to differ has to be at least as specific (see .meal-item-row). */
-.entry-macro-field input[type="number"] {
-  width: 100%;
-  min-height: 38px;
-  padding: 6px 8px;
-  font-size: 0.9rem;
+   wanted in the edit grid — but it also outranks a plain class selector, so
+   anything that needs to differ has to be at least as specific. */
+.entry-edit-field input[type="number"],
+.entry-edit-field input[type="date"],
+.entry-edit-field input[type="text"] {
+  min-height: 40px;
+  padding: 7px 10px;
+  font-size: 0.95rem;
 }
 
 /* Settings: the two target forms. */
