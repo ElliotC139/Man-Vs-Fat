@@ -1304,6 +1304,8 @@ settingsSave.addEventListener("click", async () => {
         ...macroSettingsPayload(),
         ...nutrientSettingsPayload(),
         reminderHour: settingsReminderHour.value === "" ? null : Number(settingsReminderHour.value),
+        mealReminders: mealRemindersPayload(),
+        eatingWindowHours: settingsEatingWindow.value === "" ? null : Number(settingsEatingWindow.value),
       }),
     });
     const body = await res.json().catch(() => ({}));
@@ -1335,6 +1337,8 @@ function populateSettings(user) {
   renderMealTagRow();
   settingsUsername.textContent = user.username;
   settingsReminderHour.value = user.reminderHour === null ? "" : String(user.reminderHour);
+  populateMealReminders(user);
+  settingsEatingWindow.value = user.eatingWindowHours ?? "";
   settingsWeekday.value = String(user.weekStartWeekday);
   settingsTime.value = `${String(user.weekStartHour).padStart(2, "0")}:${String(user.weekStartMinute).padStart(2, "0")}`;
   userWeekStartWeekday = user.weekStartWeekday;
@@ -6514,6 +6518,7 @@ const pushEnableBtn = document.getElementById("push-enable-btn");
 const pushTestBtn = document.getElementById("push-test-btn");
 const pushErrorEl = document.getElementById("push-error");
 const settingsReminderHour = document.getElementById("settings-reminder-hour");
+const settingsEatingWindow = document.getElementById("settings-eating-window");
 
 const pushSupported =
   "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
@@ -6525,6 +6530,66 @@ for (let hour = 0; hour < 24; hour++) {
   option.value = String(hour);
   option.textContent = `${String(hour).padStart(2, "0")}:00`;
   settingsReminderHour.appendChild(option);
+}
+
+// ── Per-meal nudges ────────────────────────────────────────────────────────
+//
+// Four independent hours, one per slot. Built rather than declared because
+// the slots are renameable, so the labels come from the user's own names.
+
+const mealReminderRows = document.getElementById("meal-reminder-rows");
+const mealReminderSelects = {};
+
+function buildMealReminderRows() {
+  mealReminderRows.innerHTML = "";
+  for (const slot of MEAL_TAG_SLOTS) {
+    const row = document.createElement("div");
+    row.className = "macro-target-row";
+
+    const label = document.createElement("label");
+    label.className = "macro-target-name";
+    label.htmlFor = `meal-reminder-${slot}`;
+    label.textContent = mealTagName(slot);
+
+    const select = document.createElement("select");
+    select.id = `meal-reminder-${slot}`;
+    select.setAttribute("aria-label", `Nudge me about ${mealTagName(slot).toLowerCase()} at`);
+    const never = document.createElement("option");
+    never.value = "";
+    never.textContent = "Never";
+    select.appendChild(never);
+    for (let hour = 0; hour < 24; hour++) {
+      const option = document.createElement("option");
+      option.value = String(hour);
+      option.textContent = `${String(hour).padStart(2, "0")}:00`;
+      select.appendChild(option);
+    }
+    mealReminderSelects[slot] = select;
+
+    // The third grid column is a value box elsewhere on this row shape; here
+    // the select is the value, so the cell is left empty rather than filled
+    // with something to keep it company.
+    row.append(label, select, document.createElement("span"));
+    mealReminderRows.appendChild(row);
+  }
+}
+
+function populateMealReminders(user) {
+  buildMealReminderRows();
+  const hours = user.mealReminders ?? {};
+  for (const slot of MEAL_TAG_SLOTS) {
+    const value = hours[slot];
+    mealReminderSelects[slot].value = value === null || value === undefined ? "" : String(value);
+  }
+}
+
+function mealRemindersPayload() {
+  const out = {};
+  for (const slot of MEAL_TAG_SLOTS) {
+    const raw = mealReminderSelects[slot]?.value ?? "";
+    out[slot] = raw === "" ? null : Number(raw);
+  }
+  return out;
 }
 
 function showPushError(message) {
@@ -7617,6 +7682,160 @@ function renderNutrientToday(today) {
     nutrientTodayRows.appendChild(row);
   }
 }
+
+// ── The eating window ──────────────────────────────────────────────────────
+//
+// Stats already reports the window that happened — first meal to last meal,
+// worked out from timestamps with nothing extra logged. This is the forward
+// half of the same idea: a target length, and a countdown while the day is
+// still running.
+//
+// The window opens at the first thing logged rather than at a clock time,
+// because that is how time-restricted eating is actually practised. A target
+// that started at 12:00 whether or not you had eaten would be wrong on every
+// morning that ran late.
+
+const fastingCard = document.getElementById("fasting-card");
+const fastingState = document.getElementById("fasting-state");
+const fastingDetail = document.getElementById("fasting-detail");
+const fastingFill = document.getElementById("fasting-fill");
+
+/** "3h 20m", or "18m" once there's less than an hour in it. */
+function durationText(minutes) {
+  const total = Math.max(0, Math.round(minutes));
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
+  if (hours === 0) return `${mins}m`;
+  return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
+}
+
+function renderFasting(today, entries) {
+  const windowHours = currentUser?.eatingWindowHours ?? null;
+  // Off by default, and only ever about today — a countdown on a day that
+  // finished last Tuesday is nonsense.
+  if (!windowHours || !today?.isToday) {
+    fastingCard.hidden = true;
+    return;
+  }
+  fastingCard.hidden = false;
+
+  const times = (entries ?? [])
+    .map((entry) => new Date(entry.timestamp).getTime())
+    .filter((t) => Number.isFinite(t));
+
+  if (times.length === 0) {
+    fastingState.textContent = "Window hasn't opened";
+    fastingDetail.textContent = `${durationText(windowHours * 60)} once you start`;
+    fastingFill.style.width = "0%";
+    fastingFill.className = "fasting-fill fasting-fill--waiting";
+    return;
+  }
+
+  const openedAt = Math.min(...times);
+  const closesAt = openedAt + windowHours * 3600_000;
+  const now = Date.now();
+  const elapsedMin = (now - openedAt) / 60000;
+  const windowMin = windowHours * 60;
+  const openedText = timeFmt.format(new Date(openedAt));
+
+  if (now < closesAt) {
+    fastingState.textContent = `${durationText((closesAt - now) / 60000)} left to eat`;
+    fastingDetail.textContent = `Opened ${openedText} · closes ${timeFmt.format(new Date(closesAt))}`;
+    fastingFill.className = "fasting-fill";
+  } else {
+    // Reported, not scolded: the app says what happened and leaves it there,
+    // same stance as everything else that judges a day.
+    fastingState.textContent = `Window closed ${durationText((now - closesAt) / 60000)} ago`;
+    fastingDetail.textContent = `Opened ${openedText} · ${durationText(windowMin)} target`;
+    fastingFill.className = "fasting-fill fasting-fill--over";
+  }
+  fastingFill.style.width = `${Math.min(100, (elapsedMin / windowMin) * 100)}%`;
+}
+
+
+// ── Quick add ──────────────────────────────────────────────────────────────
+//
+// Every other way into the diary goes through an estimate or a lookup, which
+// is the right default and the wrong one for a figure you already know. This
+// writes straight through the confirm endpoint with source "manual": no model
+// call, no waiting, nothing to approve, and it still works when the estimator
+// is rate-limited or the network is slow.
+
+const quickKcalBtn = document.getElementById("quick-kcal-btn");
+const quickKcalSheet = document.getElementById("quick-kcal-sheet");
+const quickKcalValue = document.getElementById("quick-kcal-value");
+const quickKcalLabel = document.getElementById("quick-kcal-label");
+const quickKcalSave = document.getElementById("quick-kcal-save");
+const quickKcalCancel = document.getElementById("quick-kcal-cancel");
+const quickKcalError = document.getElementById("quick-kcal-error");
+
+function openQuickKcal() {
+  quickKcalError.hidden = true;
+  quickKcalValue.value = "";
+  // Whatever is already in the log box is very often what this is: someone
+  // types "sandwich", realises they know the number, and taps Number.
+  quickKcalLabel.value = textInput.value.trim();
+  setModalOpen(quickKcalSheet, true);
+  quickKcalValue.focus();
+}
+
+quickKcalBtn.addEventListener("click", openQuickKcal);
+quickKcalCancel.addEventListener("click", () => setModalOpen(quickKcalSheet, false));
+quickKcalSheet.addEventListener("click", (event) => {
+  if (event.target === quickKcalSheet) setModalOpen(quickKcalSheet, false);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !quickKcalSheet.hidden) setModalOpen(quickKcalSheet, false);
+});
+quickKcalValue.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") saveQuickKcal();
+});
+
+async function saveQuickKcal() {
+  const kcal = Number(quickKcalValue.value);
+  if (!Number.isFinite(kcal) || kcal < 0) {
+    quickKcalError.textContent = "Put a number of calories in.";
+    quickKcalError.hidden = false;
+    return;
+  }
+
+  quickKcalSave.disabled = true;
+  try {
+    const res = await fetch("/api/entries/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [{ label: quickKcalLabel.value.trim() || `${Math.round(kcal)} kcal`, kcal: Math.round(kcal) }],
+        // Typed by the person whose diary it is, so it is never an estimate
+        // and never carries the under-reporting buffer.
+        source: "manual",
+        date: loggingDate(),
+        mealType: chosenMealTag(),
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : "Couldn't save that.");
+
+    setModalOpen(quickKcalSheet, false);
+    textInput.value = "";
+    selectedMealTag = null;
+    renderMealTagRow();
+    haptic();
+    showToast("Saved to your diary", {
+      actionLabel: "Undo",
+      onAction: () => undoEntries(body.map((entry) => entry.id)),
+    });
+    await refreshCurrentView();
+  } catch (error) {
+    quickKcalError.textContent = error.message;
+    quickKcalError.hidden = false;
+  } finally {
+    quickKcalSave.disabled = false;
+  }
+}
+
+quickKcalSave.addEventListener("click", saveQuickKcal);
+
 
 // ── The target proposal ────────────────────────────────────────────────────
 //
@@ -9527,6 +9746,8 @@ function renderToday(data) {
   // decision about next week's target.
   if (data.isToday) loadTargetReview();
   else targetReviewCard.hidden = true;
+
+  renderFasting(data, data.entries);
 
   renderTodayBody(data.whoop);
   renderTodayInsights(data.insights);

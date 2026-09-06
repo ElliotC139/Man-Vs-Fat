@@ -156,6 +156,15 @@
           <p id="today-pending" class="error" hidden></p>
         </section>
 
+        <!-- Only present once a target window is set, which is off by default. -->
+        <section id="fasting-card" class="card fasting-card" hidden>
+          <div class="fasting-main">
+            <span id="fasting-state" class="fasting-state"></span>
+            <span id="fasting-detail" class="fasting-detail"></span>
+          </div>
+          <div class="fasting-track"><div id="fasting-fill" class="fasting-fill"></div></div>
+        </section>
+
         <!-- Only ever present when there is a proposal to answer, so it isn't
              a permanent fixture of the screen. -->
         <section id="target-review-card" class="card target-review-card" hidden>
@@ -258,6 +267,10 @@
         <button type="button" id="voice-btn" class="capture-btn" hidden>
         <svg class="icon" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></svg>
         <span id="voice-btn-label">Speak</span>
+        </button>
+        <button type="button" id="quick-kcal-btn" class="capture-btn">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        Number
         </button>
         </div>
 
@@ -668,6 +681,24 @@
               <span class="settings-section-chevron" aria-hidden="true"></span>
             </button>
             <div class="settings-section-body" hidden>
+              <div class="settings-row">
+                <div class="settings-field">
+                  <label for="settings-eating-window">Eating window (hours)</label>
+                  <select id="settings-eating-window">
+                    <option value="">Off</option>
+                    <option value="4">4 — 20:4</option>
+                    <option value="6">6 — 18:6</option>
+                    <option value="8">8 — 16:8</option>
+                    <option value="10">10 — 14:10</option>
+                    <option value="12">12 — 12:12</option>
+                  </select>
+                </div>
+              </div>
+              <p class="muted">
+                A countdown on Today. The window opens at the first thing you log, not at a
+                clock time — so a late start moves the whole window with it.
+              </p>
+
               <label class="setting-toggle">
                 <input type="checkbox" id="setting-show-times" />
                 <span class="setting-toggle-text">
@@ -1065,6 +1096,14 @@
                   </select>
                 </div>
               </div>
+
+              <span class="field-label">Or nudge me per meal</span>
+              <p class="muted">
+                One question each — "is there a lunch today" — rather than one about
+                the whole day. Nothing arrives for a meal you've already logged.
+              </p>
+              <div id="meal-reminder-rows" class="macro-targets macro-targets--nutrients"></div>
+
               <p id="push-status" class="muted"></p>
               <div class="export-row">
                 <button type="button" id="push-enable-btn" class="ghost-sm">Enable on this device</button>
@@ -1793,6 +1832,32 @@
         <button type="button" id="select-cancel" class="ghost-sm">Cancel</button>
         <button type="button" id="select-share" class="ghost-sm">Share</button>
         <button type="button" id="select-save-meal">Save as meal</button>
+      </div>
+    </div>
+
+    <div id="quick-kcal-sheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="quick-kcal-title">
+      <div class="sheet-panel">
+        <div class="sheet-head">
+          <h2 id="quick-kcal-title" class="sheet-title">Just a number</h2>
+        </div>
+        <p class="muted sheet-note">
+          For something you already know the figure for. Nothing is estimated, so it
+          saves straight away — and it still works when the estimator is busy or you're
+          offline.
+        </p>
+
+        <label for="quick-kcal-value">Calories</label>
+        <input type="number" id="quick-kcal-value" min="0" max="20000" step="1" inputmode="numeric" placeholder="250" />
+
+        <label for="quick-kcal-label">What was it? (optional)</label>
+        <input type="text" id="quick-kcal-label" maxlength="200" placeholder="e.g. Lunch out" />
+
+        <p id="quick-kcal-error" class="error" hidden></p>
+
+        <div class="sheet-actions">
+          <button type="button" id="quick-kcal-save">Log it</button>
+          <button type="button" id="quick-kcal-cancel" class="ghost">Cancel</button>
+        </div>
       </div>
     </div>
 
