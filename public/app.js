@@ -498,6 +498,7 @@ function renderDailyTotals(days, whoopDailyBurn) {
 
 function renderEntries(entries) {
   entryListEl.innerHTML = "";
+  weekSelectToggle.hidden = entries.length < 2;
 
   if (entries.length === 0) {
     // Left empty on purpose — the message is supplied by
@@ -569,6 +570,25 @@ function renderEntryRow(entry) {
   const row = document.createElement("div");
   row.className = "entry-row";
   row.dataset.id = entry.id;
+
+  // While selecting, the row is a checkbox and nothing else: the Edit, repeat
+  // and delete buttons are hidden, and the whole row is the target. Tapping a
+  // tiny box beside a row you are trying to pick is a fiddle on a phone.
+  if (selectMode) {
+    row.classList.add("entry-row--pick");
+    row.classList.toggle("entry-row--picked", selectedEntryIds.has(entry.id));
+    const tick = document.createElement("span");
+    tick.className = "entry-pick";
+    tick.setAttribute("aria-hidden", "true");
+    tick.innerHTML = ICONS.check;
+    row.appendChild(tick);
+    row.setAttribute("role", "button");
+    row.setAttribute("aria-pressed", String(selectedEntryIds.has(entry.id)));
+    row.addEventListener("click", () => {
+      toggleEntrySelected(entry.id);
+      row.setAttribute("aria-pressed", String(selectedEntryIds.has(entry.id)));
+    });
+  }
 
   // Time sits under the label rather than in its own column. At 390px the
   // old four-column row left the label about 76px, which wrapped "Beef
@@ -657,7 +677,8 @@ function renderEntryRow(entry) {
   delBtn.addEventListener("click", () => deleteEntry(entry.id));
   actions.append(editBtn, repeatBtn, delBtn);
 
-  row.append(main, kcal, actions);
+  row.append(main, kcal);
+  if (!selectMode) row.appendChild(actions);
   return row;
 }
 
@@ -4368,6 +4389,10 @@ let currentTab = "today";
 function navTo(target) {
   if (!TAB_SCREENS[target]) return;
 
+  // A selection belongs to the list it was made in. Carrying it to another
+  // screen would leave a bar counting rows that aren't on it any more.
+  if (selectMode) exitSelectMode();
+
   // The weekly review is a detail view of the week rather than a tab of its
   // own, so navigating anywhere closes it.
   reviewScreen.hidden = true;
@@ -7501,6 +7526,160 @@ function minutesToDuration(minutes) {
   return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
 }
 
+// ── Clumping logged items into a meal ───────────────────────────────────────
+//
+// Four things logged separately this morning are, between them, "usual
+// breakfast". The server has been able to build a saved meal out of existing
+// entries all along (POST /api/meals/from-entries) — nothing ever called it,
+// so the only way to get a re-loggable meal was to type it out again from
+// scratch.
+//
+// One selection mode, shared by the Today list and the diary, because they
+// render the same rows from the same function.
+let selectMode = false;
+const selectedEntryIds = new Set();
+
+const selectBar = document.getElementById("select-bar");
+const selectCountEl = document.getElementById("select-count");
+const selectCancelBtn = document.getElementById("select-cancel");
+const selectSaveMealBtn = document.getElementById("select-save-meal");
+const todaySelectToggle = document.getElementById("today-select-toggle");
+const weekSelectToggle = document.getElementById("week-select-toggle");
+
+function setSelectMode(on) {
+  exitSelectMode(on);
+  // Re-rendered rather than patched, so a row drawn while selecting gets its
+  // checkbox and one drawn afterwards loses it, with no third state.
+  refreshCurrentView();
+}
+
+/**
+ * The state half of leaving (or entering) selection, without the re-render —
+ * for callers like navTo that are about to redraw everything anyway.
+ */
+function exitSelectMode(on = false) {
+  selectMode = on;
+  selectedEntryIds.clear();
+  document.body.classList.toggle("selecting", on);
+  for (const toggle of [todaySelectToggle, weekSelectToggle]) {
+    toggle.textContent = on ? "Done" : "Select";
+  }
+  renderSelectBar();
+}
+
+function toggleEntrySelected(id) {
+  if (selectedEntryIds.has(id)) selectedEntryIds.delete(id);
+  else selectedEntryIds.add(id);
+  haptic();
+  renderSelectBar();
+  const row = document.querySelector(`.entry-row[data-id="${id}"]`);
+  if (row) row.classList.toggle("entry-row--picked", selectedEntryIds.has(id));
+}
+
+function renderSelectBar() {
+  const count = selectedEntryIds.size;
+  selectBar.hidden = !selectMode || count === 0;
+  selectCountEl.textContent = `${count} selected`;
+  // One item is a favourite, not a meal — the food library already covers
+  // re-logging a single thing in one tap.
+  selectSaveMealBtn.disabled = count < 2;
+  selectSaveMealBtn.title = count < 2 ? "Pick at least two items" : "";
+}
+
+todaySelectToggle.addEventListener("click", () => setSelectMode(!selectMode));
+weekSelectToggle.addEventListener("click", () => setSelectMode(!selectMode));
+selectCancelBtn.addEventListener("click", () => setSelectMode(false));
+
+// ── Naming it ──
+const saveMealSheet = document.getElementById("save-meal-sheet");
+const saveMealSummary = document.getElementById("save-meal-summary");
+const saveMealName = document.getElementById("save-meal-name");
+const saveMealKindTemplate = document.getElementById("save-meal-kind-template");
+const saveMealKindRecipe = document.getElementById("save-meal-kind-recipe");
+const saveMealKindNote = document.getElementById("save-meal-kind-note");
+const saveMealServingsRow = document.getElementById("save-meal-servings-row");
+const saveMealServings = document.getElementById("save-meal-servings");
+const saveMealError = document.getElementById("save-meal-error");
+const saveMealConfirm = document.getElementById("save-meal-confirm");
+const saveMealCancel = document.getElementById("save-meal-cancel");
+
+let saveMealKind = "template";
+
+function setSaveMealKind(kind) {
+  saveMealKind = kind;
+  saveMealKindTemplate.classList.toggle("meal-kind-btn--active", kind === "template");
+  saveMealKindRecipe.classList.toggle("meal-kind-btn--active", kind === "recipe");
+  saveMealKindNote.textContent = kind === "recipe"
+    ? "A recipe makes several portions, and logs one portion at a time."
+    : "A meal is eaten in one go and logs each item separately.";
+  saveMealServingsRow.hidden = kind !== "recipe";
+}
+
+saveMealKindTemplate.addEventListener("click", () => setSaveMealKind("template"));
+saveMealKindRecipe.addEventListener("click", () => setSaveMealKind("recipe"));
+saveMealCancel.addEventListener("click", () => setModalOpen(saveMealSheet, false));
+
+selectSaveMealBtn.addEventListener("click", () => {
+  if (selectedEntryIds.size < 2) return;
+  const rows = [...selectedEntryIds].map((id) => document.querySelector(`.entry-row[data-id="${id}"]`));
+  const names = rows
+    .map((row) => row?.querySelector(".entry-label")?.textContent?.trim())
+    .filter(Boolean);
+
+  saveMealError.hidden = true;
+  saveMealName.value = "";
+  setSaveMealKind("template");
+  saveMealSummary.textContent = names.length
+    ? `${selectedEntryIds.size} items: ${names.join(", ")}`
+    : `${selectedEntryIds.size} items`;
+  setModalOpen(saveMealSheet, true);
+  saveMealName.focus();
+});
+
+saveMealConfirm.addEventListener("click", async () => {
+  const name = saveMealName.value.trim();
+  if (!name) {
+    saveMealError.textContent = "Give it a name so you can find it later.";
+    saveMealError.hidden = false;
+    return;
+  }
+
+  saveMealConfirm.disabled = true;
+  try {
+    const res = await fetch("/api/meals/from-entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        kind: saveMealKind,
+        servings: saveMealKind === "recipe" ? Number(saveMealServings.value) || 1 : 1,
+        // Sorted, so the saved meal's items read in the order they were eaten
+        // rather than the order they were tapped.
+        entryIds: [...selectedEntryIds].sort((a, b) => a - b),
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(typeof body.error === "string" ? body.error : "Couldn't save that — please try again.");
+    }
+    setModalOpen(saveMealSheet, false);
+    haptic();
+    // Nothing was logged and nothing was removed — the entries stay exactly
+    // where they are, and a re-loggable copy now exists alongside them.
+    showToast(`Saved "${name}" — find it under Quick add`);
+    setSelectMode(false);
+    // Both, so the meal is there in the strip on Today and in the list under
+    // Food without waiting for a reload.
+    loadQuickAdd();
+    loadMeals();
+  } catch (error) {
+    saveMealError.textContent = error.message;
+    saveMealError.hidden = false;
+  } finally {
+    saveMealConfirm.disabled = false;
+  }
+});
+
 // ── Where the calories go ───────────────────────────────────────────────────
 //
 // Tagging meals only earns its taps if it answers something. A day that lands
@@ -8957,6 +9136,9 @@ function renderTodayEntries(entries) {
   todayEntryCount.textContent = entries.length === 0
     ? ""
     : `${entries.length} ${entries.length === 1 ? "item" : "items"}`;
+  // Two is the floor: one item is a favourite, which the food library already
+  // re-logs in a tap.
+  todaySelectToggle.hidden = entries.length < 2;
 
   if (entries.length === 0) {
     const empty = document.createElement("p");

@@ -85,9 +85,17 @@ vi.mock("../src/db", () => {
       }),
     },
     entry: {
-      findMany: vi.fn(async ({ where }: any) => {
+      findMany: vi.fn(async ({ where, orderBy }: any) => {
         const ids: number[] | undefined = where?.id?.in;
-        return state.entries.filter((e) => (ids ? ids.includes(e.id) : true));
+        const rows = state.entries.filter((e) => (ids ? ids.includes(e.id) : true));
+        // Honoured rather than ignored: the route orders by timestamp so a
+        // meal built from entries reads in the order they were eaten, and a
+        // mock that returned insertion order would let that regress unseen.
+        if (orderBy?.timestamp) {
+          const dir = orderBy.timestamp === "desc" ? -1 : 1;
+          rows.sort((a, b) => (a.timestamp.getTime() - b.timestamp.getTime()) * dir);
+        }
+        return rows;
       }),
       create: vi.fn(async ({ data }: any) => {
         const entry = { id: state.nextEntryId++, createdAt: new Date(), updatedAt: new Date(), ...data };
@@ -369,6 +377,72 @@ describe("POST /api/meals/from-entries", () => {
     const meal = await jsonOf<MealBody>(res);
     expect(meal.items.map((i: any) => i.label)).toEqual(["Chicken salad", "Flapjack"]);
     expect(meal.totalKcal).toBe(660);
+  });
+
+  it("leaves the entries where they are — nothing is consumed", async () => {
+    // Clumping four things into "usual breakfast" must not remove them from
+    // the day they were eaten on. It makes a re-loggable copy, nothing else.
+    const cookie = await signUp("alice");
+    state.entries.push(
+      { id: 1, label: "Porridge", kcal: 320, timestamp: new Date("2026-01-01T07:40:00Z") },
+      { id: 2, label: "Greek yoghurt", kcal: 140, timestamp: new Date("2026-01-01T07:42:00Z") },
+    );
+    state.nextEntryId = 3;
+
+    await post("/api/meals/from-entries", cookie, { name: "Usual breakfast", entryIds: [1, 2] });
+
+    expect(state.entries.map((e: any) => e.id)).toEqual([1, 2]);
+  });
+
+  it("keeps the items in the order they were eaten, not the order they were picked", async () => {
+    const cookie = await signUp("alice");
+    state.entries.push(
+      { id: 1, label: "Coffee", kcal: 4, timestamp: new Date("2026-01-01T07:45:00Z") },
+      { id: 2, label: "Porridge", kcal: 320, timestamp: new Date("2026-01-01T07:40:00Z") },
+    );
+    state.nextEntryId = 3;
+
+    const res = await post("/api/meals/from-entries", cookie, {
+      name: "Usual breakfast",
+      entryIds: [1, 2],
+    });
+    const meal = await jsonOf<MealBody>(res);
+    expect(meal.items.map((i: any) => i.label)).toEqual(["Porridge", "Coffee"]);
+  });
+
+  it("makes a recipe that divides into portions", async () => {
+    const cookie = await signUp("alice");
+    state.entries.push(
+      { id: 1, label: "Mince", kcal: 800, timestamp: new Date("2026-01-01T18:00:00Z") },
+      { id: 2, label: "Pasta", kcal: 600, timestamp: new Date("2026-01-01T18:01:00Z") },
+    );
+    state.nextEntryId = 3;
+
+    const res = await post("/api/meals/from-entries", cookie, {
+      name: "Bolognese",
+      kind: "recipe",
+      servings: 4,
+      entryIds: [1, 2],
+    });
+    const meal = await jsonOf<MealBody>(res);
+    expect(meal.totalKcal).toBe(1400);
+    expect(meal.kcalPerServing).toBe(350);
+  });
+
+  it("refuses a name already in use rather than making a second one", async () => {
+    const cookie = await signUp("alice");
+    state.entries.push(
+      { id: 1, label: "Porridge", kcal: 320, timestamp: new Date("2026-01-01T07:40:00Z") },
+      { id: 2, label: "Coffee", kcal: 4, timestamp: new Date("2026-01-01T07:45:00Z") },
+    );
+    state.nextEntryId = 3;
+
+    await post("/api/meals/from-entries", cookie, { name: "Usual breakfast", entryIds: [1, 2] });
+    const second = await post("/api/meals/from-entries", cookie, {
+      name: "Usual breakfast",
+      entryIds: [1, 2],
+    });
+    expect(second.status).toBe(409);
   });
 });
 

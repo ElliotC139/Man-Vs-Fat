@@ -303,7 +303,10 @@
         <section id="today-entries-section" data-module="today:entries" data-module-name="What you logged">
           <div class="section-header">
             <h2 id="today-entries-heading">Logged today</h2>
-            <span id="today-entry-count" class="muted"></span>
+            <div class="section-header-side">
+              <span id="today-entry-count" class="muted"></span>
+              <button type="button" id="today-select-toggle" class="ghost-sm" hidden>Select</button>
+            </div>
           </div>
           <div id="today-entry-list"></div>
         </section>
@@ -407,7 +410,10 @@
         <section>
           <div class="section-header">
             <h2>Food diary</h2>
-            <button type="button" id="copy-day-toggle" class="ghost-sm">Copy a day</button>
+            <div class="section-header-side">
+              <button type="button" id="week-select-toggle" class="ghost-sm" hidden>Select</button>
+              <button type="button" id="copy-day-toggle" class="ghost-sm">Copy a day</button>
+            </div>
           </div>
 
           <form id="copy-day-form" class="card copy-day-form" hidden>
@@ -1635,6 +1641,47 @@
           <button type="button" id="confirm-save">Log it</button>
           <button type="button" id="confirm-discard" class="ghost">Discard</button>
           <button type="button" id="confirm-alt" class="ghost" hidden>Scan again</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="select-bar" class="select-bar" hidden>
+      <span id="select-count" class="select-count"></span>
+      <div class="select-bar-actions">
+        <button type="button" id="select-cancel" class="ghost-sm">Cancel</button>
+        <button type="button" id="select-save-meal">Save as meal</button>
+      </div>
+    </div>
+
+    <div id="save-meal-sheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="save-meal-title">
+      <div class="sheet-panel">
+        <div class="sheet-head">
+          <h2 id="save-meal-title" class="sheet-title">Save as a meal</h2>
+        </div>
+        <p id="save-meal-summary" class="muted sheet-note"></p>
+
+        <label for="save-meal-name">Name</label>
+        <input type="text" id="save-meal-name" maxlength="80" placeholder="e.g. Usual breakfast" />
+
+        <span class="field-label">Type</span>
+        <div class="meal-kind-btns">
+          <button type="button" id="save-meal-kind-template" class="meal-kind-btn meal-kind-btn--active">Meal</button>
+          <button type="button" id="save-meal-kind-recipe" class="meal-kind-btn">Recipe</button>
+        </div>
+        <p id="save-meal-kind-note" class="muted meal-kind-note">
+          A meal is eaten in one go and logs each item separately.
+        </p>
+
+        <div id="save-meal-servings-row" class="meal-servings-row" hidden>
+          <label for="save-meal-servings">Portions this makes</label>
+          <input type="number" id="save-meal-servings" min="0.5" step="0.5" value="4" />
+        </div>
+
+        <p id="save-meal-error" class="error" hidden></p>
+
+        <div class="sheet-actions">
+          <button type="button" id="save-meal-confirm">Save</button>
+          <button type="button" id="save-meal-cancel" class="ghost">Cancel</button>
         </div>
       </div>
     </div>

@@ -3474,6 +3474,14 @@ tr.has-tooltip:active {
     border-radius: var(--radius-lg);
     padding: 8px;
   }
+  /* The selection bar follows it up and in, so the two stay stacked rather
+     than the bar stretching the full width above a centred tab bar. */
+  .select-bar {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: min(560px, calc(100% - 32px));
+  }
 }
 
 /* ── Today ─────────────────────────────────────────────────────────────── */
@@ -4459,6 +4467,83 @@ body.modal-open {
 }
 #confirm-meal-row .log-week-btns {
   flex-wrap: wrap;
+}
+
+/* ── Picking entries to clump into a meal ── */
+.section-header-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* While selecting, the whole row is the target — a checkbox beside a row is a
+   fiddle to hit on a phone, and the row is already the thing being chosen. */
+.entry-row--pick {
+  cursor: pointer;
+  user-select: none;
+}
+.entry-pick {
+  flex: 0 0 auto;
+  order: -1;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--hairline);
+  color: transparent;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+.entry-pick .icon {
+  width: 15px;
+  height: 15px;
+}
+.entry-row--picked .entry-pick {
+  background: var(--pitch);
+  border-color: var(--pitch);
+  color: #fff;
+}
+.entry-row--picked {
+  border: 1px solid var(--pitch);
+}
+
+/* Sits above the tab bar rather than in the page, so it stays reachable
+   however far down the list the last item was picked. */
+.select-bar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  /* 84px is the app's own figure for the tab bar — it is what main already
+     pads its bottom by, so the bar clears it by construction rather than by a
+     number guessed to look right. */
+  bottom: calc(92px + env(safe-area-inset-bottom));
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px 10px 16px;
+  background: var(--card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: fadeInUp 0.2s var(--ease);
+}
+.select-count {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.select-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.select-bar-actions button {
+  width: auto;
+  min-height: 40px;
+  padding: 6px 14px;
+}
+.select-bar-actions button:disabled {
+  opacity: 0.5;
 }
 
 /* ── Where the calories go ── */
