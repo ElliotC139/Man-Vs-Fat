@@ -156,7 +156,7 @@ mealsRouter.post("/from-entries", async (req, res) => {
   const entries = await prisma.entry.findMany({
     where: { id: { in: entryIds }, matchWeek: { userId: req.userId! } },
     orderBy: { timestamp: "asc" },
-    select: { label: true, kcal: true, proteinG: true, carbsG: true, fatG: true },
+    select: { id: true, label: true, kcal: true, proteinG: true, carbsG: true, fatG: true },
   });
   if (entries.length === 0) {
     res.status(404).json({ error: "None of those entries were found." });
@@ -188,6 +188,19 @@ mealsRouter.post("/from-entries", async (req, res) => {
     },
     include: { items: true },
   });
+
+  // Saying "these four things were one meal" is a statement about the diary as
+  // much as about the library, so the rows it was built from now sit together
+  // under that name, exactly as they would had the meal been logged in one tap.
+  // The name is copied rather than referenced: renaming the saved meal later
+  // must not rewrite what the diary says happened, same as logging one.
+  if (entries.length > 1) {
+    await prisma.entry.updateMany({
+      where: { id: { in: entries.map((e) => e.id) } },
+      data: { mealGroupId: randomUUID(), mealGroupName: name },
+    });
+  }
+
   res.status(201).json(present(meal));
 });
 

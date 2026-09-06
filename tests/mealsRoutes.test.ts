@@ -102,6 +102,12 @@ vi.mock("../src/db", () => {
         state.entries.push(entry);
         return entry;
       }),
+      updateMany: vi.fn(async ({ where, data }: any) => {
+        const ids: number[] = where?.id?.in ?? [];
+        const rows = state.entries.filter((e) => ids.includes(e.id));
+        for (const row of rows) Object.assign(row, data);
+        return { count: rows.length };
+      }),
     },
     savedMeal: {
       findMany: vi.fn(async ({ where }: any) =>
@@ -443,6 +449,54 @@ describe("POST /api/meals/from-entries", () => {
       entryIds: [1, 2],
     });
     expect(second.status).toBe(409);
+  });
+
+  it("clumps the rows it was built from, so the day reads as one meal", async () => {
+    // Saying "these were one meal" is a statement about the diary too — the
+    // rows should collapse where they sit, not stay loose while a copy of them
+    // gains the ability to collapse.
+    const cookie = await signUp("alice");
+    state.entries.push(
+      { id: 1, label: "Porridge", kcal: 320, timestamp: new Date("2026-01-01T07:40:00Z") },
+      { id: 2, label: "Coffee", kcal: 4, timestamp: new Date("2026-01-01T07:45:00Z") },
+    );
+    state.nextEntryId = 3;
+
+    await post("/api/meals/from-entries", cookie, { name: "Usual breakfast", entryIds: [1, 2] });
+
+    const groupIds = new Set(state.entries.map((e: any) => e.mealGroupId));
+    expect(groupIds.size).toBe(1);
+    expect([...groupIds][0]).toBeTruthy();
+    expect(state.entries.every((e: any) => e.mealGroupName === "Usual breakfast")).toBe(true);
+  });
+
+  it("gives a second meal its own group rather than reusing the first's", async () => {
+    const cookie = await signUp("alice");
+    state.entries.push(
+      { id: 1, label: "Porridge", kcal: 320, timestamp: new Date("2026-01-01T07:40:00Z") },
+      { id: 2, label: "Coffee", kcal: 4, timestamp: new Date("2026-01-01T07:45:00Z") },
+      { id: 3, label: "Chicken salad", kcal: 400, timestamp: new Date("2026-01-01T12:00:00Z") },
+      { id: 4, label: "Flapjack", kcal: 260, timestamp: new Date("2026-01-01T12:05:00Z") },
+    );
+    state.nextEntryId = 5;
+
+    await post("/api/meals/from-entries", cookie, { name: "Usual breakfast", entryIds: [1, 2] });
+    await post("/api/meals/from-entries", cookie, { name: "Work lunch", entryIds: [3, 4] });
+
+    const groupOf = (id: number) => state.entries.find((e: any) => e.id === id)!.mealGroupId;
+    expect(groupOf(1)).toBe(groupOf(2));
+    expect(groupOf(3)).toBe(groupOf(4));
+    expect(groupOf(1)).not.toBe(groupOf(3));
+  });
+
+  it("leaves a single entry ungrouped — a chevron over one row says nothing", async () => {
+    const cookie = await signUp("alice");
+    state.entries.push({ id: 1, label: "Porridge", kcal: 320, timestamp: new Date("2026-01-01T07:40:00Z") });
+    state.nextEntryId = 2;
+
+    await post("/api/meals/from-entries", cookie, { name: "Porridge", entryIds: [1] });
+
+    expect(state.entries[0]!.mealGroupId).toBeUndefined();
   });
 });
 

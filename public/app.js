@@ -623,6 +623,21 @@ function renderMealGroup(group, container) {
   sub.textContent = `${group.entries.length} items`;
   main.append(label, sub);
 
+  // The same macro line an entry row gets, added up. A collapsed meal that
+  // showed only calories asked you to open it to answer "how much protein was
+  // breakfast?" — which is most of what collapsing was meant to save.
+  if (currentUser?.macroTargets && group.entries.some(hasMacros)) {
+    const macros = document.createElement("div");
+    macros.className = "entry-macros";
+    macros.textContent = macroLine(sumMacros(group.entries));
+    // A meal where one item was never given macros totals only the rest of it,
+    // and the row says so on hover rather than passing the sum off as whole.
+    if (!group.entries.every(hasMacros)) {
+      macros.title = "Adds up the items that have macros";
+    }
+    main.appendChild(macros);
+  }
+
   const kcal = document.createElement("div");
   kcal.className = "entry-kcal";
   // Only the rows that have a figure, and said so when one of them doesn't —
@@ -7145,6 +7160,21 @@ function gramsOrDash(value) {
 
 function macroLine(entry) {
   return `P ${gramsOrDash(entry.proteinG)} · C ${gramsOrDash(entry.carbsG)} · F ${gramsOrDash(entry.fatG)}`;
+}
+
+/**
+ * Adds several entries' macros into one, for a collapsed meal's header.
+ *
+ * A nutrient nobody recorded stays null so it prints as a dash: zero would be
+ * a claim that the meal had none of it, which is a different thing from not
+ * knowing.
+ */
+function sumMacros(entries) {
+  const total = (key) => {
+    const figures = entries.map((entry) => entry[key]).filter((g) => g !== null && g !== undefined);
+    return figures.length ? figures.reduce((sum, g) => sum + g, 0) : null;
+  };
+  return { proteinG: total("proteinG"), carbsG: total("carbsG"), fatG: total("fatG") };
 }
 
 function formatQuantity(quantity) {
