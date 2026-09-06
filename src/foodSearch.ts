@@ -26,6 +26,7 @@
  */
 
 import { normalizeLabel } from "./labelKey";
+import { normalizeUnit } from "./servingUnit";
 
 export type FoodSource = "library" | "off" | "nutritionix" | "usda";
 
@@ -80,6 +81,14 @@ export interface FoodSearchResult {
   servingLabel: string | null;
   /** One portion as the source describes it, when that's the honest unit. */
   portion: (FoodMacros & { kcal: number; label: string }) | null;
+  /**
+   * The source's own word for one of them — "biscuit", "medium", "slice".
+   *
+   * Kept apart from `servingLabel`, which is the whole phrase including the
+   * count and the weight ("2 biscuits (30 g)"). This is the noun on its own,
+   * which is what a diary row needs to say "2 biscuits" rather than "x2".
+   */
+  servingUnit: string | null;
   /** Set for the user's own foods — what POST /api/foods/log wants. */
   labelKey: string | null;
   /** How many times they've logged it. Only meaningful for their own foods. */
@@ -238,6 +247,9 @@ export function parseOffProducts(payload: unknown): FoodSearchResult[] {
       },
       servingGrams: num(p.serving_quantity) === null ? null : Math.round(num(p.serving_quantity)!),
       servingLabel: text(p.serving_size),
+      // Open Food Facts states a serving as free text ("30 g", "2 biscuits"),
+      // with no separate unit field to read.
+      servingUnit: null,
       portion: null,
       labelKey: null,
       timesLogged: 0,
@@ -304,6 +316,7 @@ export function parseNutritionixInstant(payload: unknown): FoodSearchResult[] {
         : null,
       servingGrams: grams === null ? null : Math.round(grams),
       servingLabel: servingLabel(item),
+      servingUnit: normalizeUnit(text(item.serving_unit)),
       portion: {
         label: servingLabel(item) ?? "1 serving",
         kcal: Math.round(kcal),
@@ -354,6 +367,7 @@ export function parseNutritionixInstant(payload: unknown): FoodSearchResult[] {
         : null,
       servingGrams: grams === null ? null : Math.round(grams),
       servingLabel: servingLabel(item),
+      servingUnit: normalizeUnit(text(item.serving_unit)),
       portion: {
         label: servingLabel(item) ?? "1 serving",
         kcal: Math.round(kcal),
@@ -453,6 +467,7 @@ export function parseUsdaSearch(payload: unknown): FoodSearchResult[] {
       },
       servingGrams: null,
       servingLabel: null,
+      servingUnit: null,
       portion: null,
       labelKey: null,
       timesLogged: 0,
@@ -511,6 +526,9 @@ export function searchLibrary(rows: LibraryRow[], query: string, limit: number):
       per100g: null,
       servingGrams: null,
       servingLabel: null,
+      // Their own past entry, logged however they logged it — there is no
+      // packet behind it to name a unit.
+      servingUnit: null,
       portion: {
         label: "as you logged it",
         kcal: row.kcal!,

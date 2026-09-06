@@ -211,6 +211,8 @@ foodsRouter.post("/log", async (req, res) => {
         proteinG: true,
         carbsG: true,
         fatG: true,
+        quantity: true,
+        unitLabel: true,
         fibreG: true,
         sugarG: true,
         satFatG: true,
@@ -243,6 +245,11 @@ foodsRouter.post("/log", async (req, res) => {
       rawInput: null,
       label: override?.label ?? match.label,
       kcal: override ? override.kcal : match.kcal,
+      // The amount comes with the food: kcal is the total for however much
+      // was logged, so re-logging it as "x1" would put a row in the diary
+      // saying one of something that was two.
+      quantity: match.quantity,
+      unitLabel: match.unitLabel,
       // These were being dropped: a one-tap re-log copied the calories but
       // left the macros null, so every quick add quietly landed as an entry
       // with no macro breakdown and the day's totals came up short.

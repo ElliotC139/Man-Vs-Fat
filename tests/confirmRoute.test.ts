@@ -208,6 +208,38 @@ describe("POST /api/entries/confirm", () => {
     });
   });
 
+  it("keeps the unit an amount was measured in", async () => {
+    // Without this the diary stores a number with nothing attached, and the
+    // only thing the edit form can honestly offer is a multiplier.
+    const cookie = await signUp();
+    await confirm(cookie, {
+      items: [{ label: "Seeded sourdough", kcal: 220, quantity: 2, unitLabel: "slice" }],
+      source: "database",
+    });
+
+    expect(state.entries[0]).toMatchObject({ quantity: 2, unitLabel: "slice" });
+  });
+
+  it("takes a serving in grams, which runs well past a count of slices", async () => {
+    const cookie = await signUp();
+    const res = await confirm(cookie, {
+      items: [{ label: "Porridge oats", kcal: 380, quantity: 100, unitLabel: "g" }],
+      source: "database",
+    });
+
+    expect(res.status).toBe(201);
+    expect(state.entries[0]).toMatchObject({ quantity: 100, unitLabel: "g" });
+  });
+
+  it("leaves an entry with no named unit as a plain multiple", async () => {
+    // Which is every estimate: the model is guessing at a plate of food, not
+    // reading a serving off a packet.
+    const cookie = await signUp();
+    await confirm(cookie, { items: [{ label: "Chilli", kcal: 600 }] });
+
+    expect(state.entries[0]).toMatchObject({ quantity: 1, unitLabel: null });
+  });
+
   it("saves every item in a multi-item meal", async () => {
     const cookie = await signUp();
     await confirm(cookie, {

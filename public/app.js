@@ -731,10 +731,11 @@ function renderEntryRow(entry) {
   const label = document.createElement("div");
   label.className = "entry-label";
   label.textContent = entry.label;
-  if (entry.quantity && entry.quantity !== 1) {
+  const amount = describeAmount(entry.quantity ?? 1, entry.unitLabel);
+  if (amount) {
     const qty = document.createElement("span");
     qty.className = "entry-qty";
-    qty.textContent = `×${formatQuantity(entry.quantity)}`;
+    qty.textContent = amount;
     label.appendChild(qty);
   }
 
@@ -827,10 +828,14 @@ function enterEditMode(row, entry) {
   kcalInput.min = "0";
   kcalInput.value = entry.kcal ?? "";
 
+  // Grams step by one and run into the hundreds; a count of slices steps by a
+  // quarter and rarely passes ten. Same box, different sensible increments.
+  const entryUnit = typeof entry.unitLabel === "string" ? entry.unitLabel.trim().toLowerCase() : "";
+  const byMass = MASS_UNITS.has(entryUnit);
   const qtyInput = document.createElement("input");
   qtyInput.type = "number";
-  qtyInput.min = "0.25";
-  qtyInput.step = "0.25";
+  qtyInput.min = byMass ? "1" : "0.25";
+  qtyInput.step = byMass ? "1" : "0.25";
   qtyInput.value = entry.quantity ?? 1;
 
   /**
@@ -989,7 +994,9 @@ function enterEditMode(row, entry) {
   editRow.append(
     editField("Item", labelInput, "full"),
     editField("Calories", kcalInput),
-    editField("How many", qtyInput),
+    // "How many" is the wrong caption for grams, and the whole point of this
+    // column is that the person editing can tell what the number means.
+    editField(entryUnit ? `How much (${entryUnit})` : "How many", qtyInput),
   );
   for (const key of ["protein", "carbs", "fat"]) {
     if (macroInputs[key]) editRow.appendChild(editField(`${MACRO_LABELS[key]} (g)`, macroInputs[key], "third"));
@@ -2331,7 +2338,11 @@ function openConfirmSheet({
   alt = null,
 }) {
   confirmState = {
-    items: items.map(normaliseConfirmItem),
+    items: items.map((item) => {
+      const normalised = normaliseConfirmItem(item);
+      captureConfirmBase(normalised);
+      return normalised;
+    }),
     imageUrl,
     rawInput,
     source,
@@ -2379,12 +2390,46 @@ function normaliseConfirmItem(item) {
     satFat: item.satFatG ?? item.satFat ?? null,
     salt: item.saltG ?? item.salt ?? null,
     quantity: item.quantity ?? 1,
+    // What one of them is — "g" off a packet, "slice" or "biscuit" off a
+    // database's own serving. Null leaves the row a plain multiple, which is
+    // what an estimate always is.
+    unitLabel: item.unitLabel ?? null,
     // Set only for packet items: per-100g figures plus the serving size, so
     // changing the grams rescales calories and macros off the real label
     // rather than an estimate.
     per100: item.per100 ?? null,
     grams: item.grams ?? null,
   };
+}
+
+/** The figures the sheet rescales: everything that is a total for the row. */
+const CONFIRM_FIGURES = ["kcal", "protein", "carbs", "fat", "fibre", "sugar", "satFat", "salt"];
+
+/**
+ * Remembers what one of something is, so the quantity box can rescale.
+ *
+ * Taken once when the row is built rather than divided out on every keystroke:
+ * repeatedly dividing and re-multiplying a rounded figure walks it away from
+ * where it started, and "2 then back to 1" should give back the number the
+ * estimate actually produced.
+ */
+function captureConfirmBase(item) {
+  const qty = item.quantity > 0 ? item.quantity : 1;
+  item.base = {};
+  for (const key of CONFIRM_FIGURES) {
+    item.base[key] = item[key] === null || item[key] === undefined ? null : item[key] / qty;
+  }
+}
+
+/** Recalculates a row's figures from its quantity. */
+function applyConfirmQuantity(item) {
+  if (!item.base) return;
+  const qty = item.quantity > 0 ? item.quantity : 1;
+  for (const key of CONFIRM_FIGURES) {
+    const base = item.base[key];
+    if (base === null) continue;
+    item[key] = key === "kcal" ? Math.round(base * qty) : Math.round(base * qty * 10) / 10;
+  }
 }
 
 function closeConfirmSheet() {
@@ -2394,7 +2439,13 @@ function closeConfirmSheet() {
   document.body.classList.remove("sheet-open");
 }
 
-/** Recalculates one packet row's figures from its serving size. */
+/**
+ * Recalculates one packet row's figures from its serving size.
+ *
+ * A packet row has no quantity box — its grams box is the same question in the
+ * unit the row is actually measured in — so `item.base` is never applied to it
+ * and doesn't need refreshing here.
+ */
 function applyPer100(item) {
   if (!item.per100 || item.grams === null) return;
   const scale = (value) => (value === null || value === undefined ? null : Math.round((value * item.grams) / 100 * 10) / 10);
@@ -2502,6 +2553,31 @@ function renderConfirmItems() {
       });
       servingRow.append(caption, gramsInput);
       row.appendChild(servingRow);
+    } else {
+      // The sheet's note has long said "change the quantity if you had more
+      // than one" about a control that wasn't there. This is it. A packet row
+      // already has the grams box above, which is the same question asked in
+      // the unit that row is measured in.
+      const qtyRow = document.createElement("label");
+      qtyRow.className = "confirm-serving";
+      const qtyCaption = document.createElement("span");
+      qtyCaption.textContent = item.unitLabel ? `How many (${item.unitLabel})` : "How many";
+      const qtyInput = document.createElement("input");
+      qtyInput.type = "number";
+      qtyInput.min = "0.25";
+      qtyInput.step = "0.25";
+      qtyInput.value = item.quantity ?? 1;
+      // Writes into the sibling fields rather than re-rendering, for the same
+      // reason the grams box does: rebuilding replaces the input being typed
+      // into, and iOS shuts the keyboard every time it happens.
+      qtyInput.addEventListener("input", () => {
+        const value = Number(qtyInput.value);
+        item.quantity = Number.isFinite(value) && value > 0 ? value : 1;
+        applyConfirmQuantity(item);
+        syncDerivedFields();
+      });
+      qtyRow.append(qtyCaption, qtyInput);
+      row.appendChild(qtyRow);
     }
 
     if (showMacros) {
@@ -2538,11 +2614,15 @@ function renderConfirmItems() {
 
 function renderConfirmTotal() {
   const items = confirmState?.items ?? [];
-  const kcal = items.reduce((sum, i) => sum + (i.kcal ?? 0) * (i.quantity ?? 1), 0);
+  // No multiplying by quantity here: a row's figures are the total for that
+  // row, rescaled as the quantity changes, which is also how they are stored.
+  // Multiplying again counted a doubled item twice, and the sheet's total
+  // would have disagreed with the diary the moment a quantity box existed.
+  const kcal = items.reduce((sum, i) => sum + (i.kcal ?? 0), 0);
   const parts = [`${Math.round(kcal)} kcal`];
   if (currentUser?.macroTargets) {
     for (const key of ["protein", "carbs", "fat"]) {
-      const total = items.reduce((sum, i) => sum + (i[key] ?? 0) * (i.quantity ?? 1), 0);
+      const total = items.reduce((sum, i) => sum + (i[key] ?? 0), 0);
       if (total > 0) parts.push(`${MACRO_LABELS[key]} ${Math.round(total)}g`);
     }
   }
@@ -2597,7 +2677,11 @@ confirmSaveBtn.addEventListener("click", async () => {
           sugarG: i.sugar,
           satFatG: i.satFat,
           saltG: i.salt,
-          quantity: i.quantity,
+          // A packet row's amount IS its serving size: kcal is already the
+          // total for those grams, so the grams are what the quantity has to
+          // be for the edit form to rescale from later.
+          quantity: i.per100 && i.grams ? i.grams : i.quantity,
+          unitLabel: i.per100 && i.grams ? "g" : i.unitLabel,
         })),
         imageUrl: confirmState.imageUrl,
         rawInput: confirmState.rawInput,
@@ -5419,6 +5503,9 @@ function openFoodResult(result) {
         protein: result.portion.protein,
         carbs: result.portion.carbs,
         fat: result.portion.fat,
+        // The database's own word for one of them, so a row can read
+        // "2 biscuits" rather than "x2".
+        unitLabel: result.servingUnit ?? null,
         fibre: result.portion.fibre ?? null,
         sugar: result.portion.sugar ?? null,
         satFat: result.portion.satFat ?? null,
@@ -7403,8 +7490,35 @@ function sumMacros(entries) {
 }
 
 function formatQuantity(quantity) {
-  // 2 rather than 2.0, but 1.5 keeps its half.
+  // 2 rather than 2.0, but 1.5 keeps its half and 32.5g keeps its point.
   return Number.isInteger(quantity) ? String(quantity) : String(+quantity.toFixed(2));
+}
+
+// ── How much of it ──────────────────────────────────────────────────────────
+//
+// Mirrors src/servingUnit.ts, which is the source of truth and carries the
+// reasoning. A quantity on its own is a multiplier; with a unit it is an
+// amount, which is the difference between "x2" and "40 g".
+
+const MASS_UNITS = new Set(["g", "kg", "ml", "l", "oz", "fl oz"]);
+
+function pluralizeUnit(unit) {
+  if (unit.endsWith("s") || unit.endsWith("ch") || unit.endsWith("sh")) return `${unit}es`;
+  if (unit.endsWith("y") && !"aeiou".includes(unit[unit.length - 2] ?? "")) {
+    return `${unit.slice(0, -1)}ies`;
+  }
+  return `${unit}s`;
+}
+
+/** How an entry's amount reads on a row, or null when there's nothing to say. */
+function describeAmount(quantity, unitLabel) {
+  const unit = typeof unitLabel === "string" ? unitLabel.trim().toLowerCase() : "";
+  if (!unit || unit === "serving" || unit === "servings") {
+    return quantity === 1 ? null : `×${formatQuantity(quantity)}`;
+  }
+  const amount = formatQuantity(quantity);
+  if (MASS_UNITS.has(unit)) return `${amount}${unit === "fl oz" ? " " : ""}${unit}`;
+  return `${amount} ${quantity === 1 ? unit : pluralizeUnit(unit)}`;
 }
 
 
