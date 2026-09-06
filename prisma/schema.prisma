@@ -107,6 +107,18 @@ model User {
   // week that hasn't been answered — see src/targetReview.ts. Null means never
   // asked, which is every account before this existed.
   targetReviewedWeek DateTime?
+  // Which ways into the diary the log form offers, as a JSON array
+  // ("photo", "scan", "search", "speak", "number"). Null means the four the
+  // form has always shown — the typed box is not in the list because it is the
+  // form itself, and a log screen with no way to log is not a preference.
+  //
+  // Number is off by default: it is the one that skips the estimate entirely,
+  // which is the right tool occasionally and the wrong default always.
+  logMethods         String?
+  // Whether the week screen offers a team table at all. Off by default: most
+  // people using this are one person with a diary, and a card asking them to
+  // create a league is a card in the way.
+  teamsEnabled       Boolean              @default(false)
   nutrientsShown     String?
   // "net" reads a carb figure as carbohydrate minus fibre — the number a keto
   // or low-carb diet actually counts. Null or "total" is the label's own

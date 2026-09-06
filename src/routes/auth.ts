@@ -22,6 +22,7 @@ import { consume, reset as resetRateLimit, LOGIN_BURST, RESET_BURST } from "../r
 import { MACRO_MODES, MACRO_OPS, resolveMacroTargets } from "../macros";
 import { DIARY_FIELDS, readDiaryFields, resolveNutrientTargets, writeDiaryFields } from "../nutrients";
 import { readMealReminders, writeMealReminders } from "../mealReminders";
+import { LOG_METHODS, readLogMethods, writeLogMethods } from "../logMethods";
 import { refileMatchWeeks } from "../refileMatchWeeks";
 
 export const authRouter = Router();
@@ -62,6 +63,11 @@ const settingsSchema = z.object({
   proteinPct: z.number().int().min(0).max(100).nullable().optional(),
   carbsPct: z.number().int().min(0).max(100).nullable().optional(),
   fatPct: z.number().int().min(0).max(100).nullable().optional(),
+  // Which ways in the log form offers. Sent as the list, like the figures
+  // below — the client never has to know the encoding.
+  logMethods: z.array(z.enum(LOG_METHODS)).nullable().optional(),
+  // Whether the week screen offers a team table at all.
+  teamsEnabled: z.boolean().optional(),
   // Which figures the diary shows under an entry. Sent as the list itself
   // rather than as stored JSON, so the client never has to know the encoding
   // — anything unrecognised is dropped on the way in (see writeDiaryFields).
@@ -178,6 +184,8 @@ function toPublicUser(user: {
   proteinPct?: number | null;
   carbsPct?: number | null;
   fatPct?: number | null;
+  logMethods?: string | null;
+  teamsEnabled?: boolean | null;
   nutrientsShown?: string | null;
   carbMode?: string | null;
   fibreTargetG?: number | null;
@@ -232,6 +240,8 @@ function toPublicUser(user: {
     macroTargets: resolveMacroTargets(user),
     // Sent as the list, never as the stored JSON — see nutrientsShown in the
     // update schema for why the encoding stays on this side of the wire.
+    logMethods: readLogMethods(user),
+    teamsEnabled: user.teamsEnabled ?? false,
     nutrientsShown: readDiaryFields(user),
     carbMode: user.carbMode === "net" ? "net" : "total",
     fibreTargetG: user.fibreTargetG ?? null,
@@ -456,12 +466,18 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
   // The layout, the meal tag names and the chosen figures are the fields that
   // aren't stored as they arrive: SQLite has no JSON column, so they go in as
   // text.
-  const { layout, mealTagNames, nutrientsShown, mealReminders, ...fields } = parsed.data;
+  const { layout, mealTagNames, nutrientsShown, mealReminders, logMethods, ...fields } = parsed.data;
   const data: Record<string, unknown> = { ...fields };
   if (layout !== undefined) data.layout = layout === null ? null : JSON.stringify(layout);
   // Null clears the choice back to the three the diary has always shown,
   // rather than to nothing — a diary with no figures under an entry is a bug,
   // not a preference somebody could hold.
+  // Null clears the choice back to the four the form has always shown. An
+  // empty list is a different thing and is kept: someone who only ever types
+  // can legitimately want every button gone.
+  if (logMethods !== undefined) {
+    data.logMethods = logMethods === null ? null : writeLogMethods(logMethods);
+  }
   if (nutrientsShown !== undefined) {
     data.nutrientsShown = nutrientsShown === null ? null : writeDiaryFields(nutrientsShown);
   }

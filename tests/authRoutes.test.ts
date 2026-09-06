@@ -197,6 +197,11 @@ describe("POST /api/auth/signup", () => {
       macroTargets: null,
       // A fresh account shows the three figures the diary has always shown,
       // counts total carbohydrate, and has no nutrient target set.
+      // The four ways in the form has always shown. Number is deliberately
+      // absent: it skips the estimate, which is occasionally right and never a
+      // sensible default.
+      logMethods: ["photo", "scan", "search", "speak"],
+      teamsEnabled: false,
       nutrientsShown: ["protein", "carbs", "fat"],
       carbMode: "total",
       fibreTargetG: null,
