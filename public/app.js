@@ -558,11 +558,110 @@ function renderEntries(entries) {
     group.appendChild(noteText);
     applyDayNote(group, dayKeyIso);
 
-    for (const entry of dayEntries) {
-      group.appendChild(renderEntryRow(entry));
-    }
+    appendEntries(dayEntries, group);
 
     entryListEl.appendChild(group);
+  }
+}
+
+// ── Meals logged as one thing ───────────────────────────────────────────────
+//
+// Logging a saved "meal" writes each of its items as its own entry, which is
+// right — they are separate foods and stay separately editable — but it buries
+// the day under four rows where the person did one thing. Those rows are drawn
+// as one line that opens instead.
+//
+// Which groups are open lives here rather than on the server: it is a way of
+// looking at the list, not a fact about the food, and it should not survive
+// into somebody's data.
+const openMealGroups = new Set();
+
+/**
+ * Splits a list into meal groups and loose entries, keeping the original
+ * order — a group sits where its first item was.
+ */
+function groupEntriesByMeal(entries) {
+  const out = [];
+  const byGroup = new Map();
+  for (const entry of entries) {
+    if (!entry.mealGroupId) {
+      out.push({ kind: "entry", entry });
+      continue;
+    }
+    const existing = byGroup.get(entry.mealGroupId);
+    if (existing) {
+      existing.entries.push(entry);
+      continue;
+    }
+    const group = { kind: "group", id: entry.mealGroupId, name: entry.mealGroupName, entries: [entry] };
+    byGroup.set(entry.mealGroupId, group);
+    out.push(group);
+  }
+  // A group that ended up with one row — the rest deleted, say — is just an
+  // entry again; a chevron over a single item is a lie about what is under it.
+  return out.map((node) =>
+    node.kind === "group" && node.entries.length === 1 ? { kind: "entry", entry: node.entries[0] } : node,
+  );
+}
+
+/** The collapsed header for one meal, and its rows when open. */
+function renderMealGroup(group, container) {
+  const open = openMealGroups.has(group.id);
+
+  const head = document.createElement("div");
+  head.className = "entry-row meal-group-row";
+  head.setAttribute("role", "button");
+  head.setAttribute("aria-expanded", String(open));
+
+  const main = document.createElement("div");
+  main.className = "entry-main";
+  const label = document.createElement("div");
+  label.className = "entry-label";
+  label.textContent = group.name || "Meal";
+  const sub = document.createElement("div");
+  sub.className = "entry-time";
+  sub.textContent = `${group.entries.length} items`;
+  main.append(label, sub);
+
+  const kcal = document.createElement("div");
+  kcal.className = "entry-kcal";
+  // Only the rows that have a figure, and said so when one of them doesn't —
+  // a total that quietly omits an un-estimated item is worse than no total.
+  const anyUnknown = group.entries.some((entry) => entry.kcal === null);
+  const total = group.entries.reduce((sum, entry) => sum + (entry.kcal ?? 0), 0);
+  kcal.textContent = anyUnknown ? `${total} kcal +` : `${total} kcal`;
+  if (anyUnknown) kcal.title = "One item in this meal has no calorie figure yet";
+
+  const chevron = document.createElement("span");
+  chevron.className = "meal-group-chevron";
+  chevron.setAttribute("aria-hidden", "true");
+  chevron.innerHTML = open ? ICONS.chevronUp : ICONS.chevronDown;
+
+  head.append(main, kcal, chevron);
+  head.addEventListener("click", () => {
+    if (open) openMealGroups.delete(group.id);
+    else openMealGroups.add(group.id);
+    haptic();
+    refreshCurrentView();
+  });
+  container.appendChild(head);
+
+  if (!open) return;
+  for (const entry of group.entries) {
+    const row = renderEntryRow(entry);
+    row.classList.add("entry-row--in-group");
+    container.appendChild(row);
+  }
+}
+
+/** Draws a list of entries, collapsing any that were logged as one meal. */
+function appendEntries(entries, container) {
+  for (const node of groupEntriesByMeal(entries)) {
+    // Selecting is about individual rows, so a group opens out flat for it —
+    // otherwise the items inside one would be unpickable.
+    if (node.kind === "group" && !selectMode) renderMealGroup(node, container);
+    else if (node.kind === "group") for (const entry of node.entries) container.appendChild(renderEntryRow(entry));
+    else container.appendChild(renderEntryRow(node.entry));
   }
 }
 
@@ -4876,6 +4975,16 @@ function addMealItemRow(item = { label: "", kcal: null }) {
   const row = document.createElement("div");
   row.className = "meal-item-row";
 
+  // The row shows a name and a calorie figure, but an item can carry macros —
+  // from a scanned recipe, or from the meal as it was saved. They ride along
+  // on the row so the submit below can send them back: rebuilding items from
+  // the visible fields alone silently wiped the macros off every meal that
+  // was ever edited.
+  const carry = (value) => (value === null || value === undefined ? "" : String(value));
+  row.dataset.protein = carry(item.proteinG);
+  row.dataset.carbs = carry(item.carbsG);
+  row.dataset.fat = carry(item.fatG);
+
   const label = document.createElement("input");
   label.type = "text";
   label.className = "meal-item-label";
@@ -4905,6 +5014,60 @@ function addMealItemRow(item = { label: "", kcal: null }) {
   mealItemsEl.appendChild(row);
   return label;
 }
+
+// ── Reading a recipe off a photo ────────────────────────────────────────────
+//
+// Typing a recipe in is the reason most people never save one: a dozen
+// ingredients, each with a figure to look up. A photo of the page is the whole
+// thing in one tap.
+//
+// What comes back opens the editor already filled in rather than saving
+// anything — it is a draft to check, the same rule the diary applies to every
+// other guess the app makes.
+const mealScanPhoto = document.getElementById("meal-scan-photo");
+const mealScanLabel = document.getElementById("meal-scan-label");
+const mealScanStatus = document.getElementById("meal-scan-status");
+const mealScanError = document.getElementById("meal-scan-error");
+
+mealScanPhoto.addEventListener("change", async () => {
+  const file = mealScanPhoto.files?.[0];
+  if (!file) return;
+
+  mealScanError.hidden = true;
+  mealScanStatus.textContent = "Reading the recipe…";
+  mealScanStatus.hidden = false;
+  mealScanLabel.classList.add("is-busy");
+
+  try {
+    const body = new FormData();
+    body.append("photo", file, file.name || "recipe.jpg");
+    const res = await fetch("/api/meals/scan", { method: "POST", body });
+    if (!res.ok) {
+      const payload = await res.json().catch(() => ({}));
+      throw new Error(typeof payload.error === "string" ? payload.error : "Couldn't read that photo.");
+    }
+    const draft = await res.json();
+
+    // Opened as a recipe, because that is what a page of ingredients making
+    // several portions is — the kind can still be changed in the editor.
+    openMealEditor({
+      name: draft.name,
+      kind: "recipe",
+      servings: draft.servings,
+      items: draft.items,
+    });
+    haptic();
+    showToast(`Read ${draft.items.length} ingredients — check them before saving`);
+  } catch (error) {
+    mealScanError.textContent = error.message;
+    mealScanError.hidden = false;
+  } finally {
+    mealScanStatus.hidden = true;
+    mealScanLabel.classList.remove("is-busy");
+    // Cleared so picking the same photo twice fires the change event again.
+    mealScanPhoto.value = "";
+  }
+});
 
 function openMealEditor(meal = null) {
   editingMealId = meal?.id ?? null;
@@ -4954,7 +5117,14 @@ mealEditor.addEventListener("submit", async (event) => {
     const label = row.querySelector(".meal-item-label").value.trim();
     if (!label) continue;
     const raw = row.querySelector(".meal-item-kcal").value.trim();
-    items.push({ label, kcal: raw === "" ? null : Math.round(Number(raw)) });
+    const macro = (value) => (value === "" || value === undefined ? null : Number(value));
+    items.push({
+      label,
+      kcal: raw === "" ? null : Math.round(Number(raw)),
+      proteinG: macro(row.dataset.protein),
+      carbsG: macro(row.dataset.carbs),
+      fatG: macro(row.dataset.fat),
+    });
   }
   if (items.length === 0) {
     mealEditorError.textContent = "Add at least one item.";
@@ -9430,7 +9600,7 @@ function renderTodayEntries(entries) {
   // under their own heading, so nothing is hidden by not having a tag.
   if (!mealTagsOn()) {
     todayEntryList.classList.remove("meal-grouped");
-    for (const entry of entries) todayEntryList.appendChild(renderEntryRow(entry));
+    appendEntries(entries, todayEntryList);
     return;
   }
   // Grouped, so each row's own tag would only repeat the heading above it.
@@ -9455,7 +9625,7 @@ function renderTodayEntries(entries) {
     heading.append(name, total);
     todayEntryList.appendChild(heading);
 
-    for (const entry of inSlot) todayEntryList.appendChild(renderEntryRow(entry));
+    appendEntries(inSlot, todayEntryList);
   }
 }
 

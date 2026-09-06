@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { prisma } from "../db";
 import { config } from "../config";
@@ -7,6 +8,13 @@ import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart } from "../match
 import { MEAL_TYPES, inferMealType, type MealType } from "../mealType";
 import { timestampOnLocalDay } from "../entryTiming";
 import { scaleMacros, sumMacros } from "../macros";
+import multer from "multer";
+import { estimateRecipeFromPhoto } from "../estimateRecipe";
+import { normalizeUploadedImage } from "../lib/imageProcessing";
+import { consumeAll, AI_BURST, AI_DAILY } from "../rateLimit";
+
+// Same ceiling as a meal photo: an un-normalized phone original is large.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 export const mealsRouter = Router();
 mealsRouter.use(requireAuth);
@@ -183,6 +191,50 @@ mealsRouter.post("/from-entries", async (req, res) => {
   res.status(201).json(present(meal));
 });
 
+/**
+ * Reads a recipe out of a photograph, without saving anything.
+ *
+ * A draft, deliberately: it goes back to the editor the user already knows so
+ * they can check the ingredients and the portions before deciding to keep it.
+ * Nothing the app guessed should reach their food library unlooked at.
+ */
+mealsRouter.post("/scan", upload.single("photo"), async (req, res) => {
+  if (!req.file) {
+    res.status(400).json({ error: "Add a photo of the recipe." });
+    return;
+  }
+
+  // Reading a page of a cookbook costs a vision call, so it is metered like
+  // every other estimate rather than being a free door into the model.
+  const verdict = consumeAll(`ai:${req.userId!}`, [AI_BURST, AI_DAILY]);
+  if (!verdict.allowed) {
+    res.status(429)
+      .set("Retry-After", String(verdict.retryAfterSec))
+      .json({ error: "That's a lot of scanning at once — give it a minute and try again." });
+    return;
+  }
+
+  let photo: { buffer: Buffer; mimeType: "image/jpeg" };
+  try {
+    photo = await normalizeUploadedImage(req.file.buffer, req.file.mimetype);
+  } catch (error) {
+    console.error("Recipe photo processing failed:", error);
+    res.status(400).json({ error: "Couldn't process that photo — please try a different one." });
+    return;
+  }
+
+  try {
+    const draft = await estimateRecipeFromPhoto(photo.buffer.toString("base64"), photo.mimeType);
+    if (draft.items.length === 0) {
+      res.status(422).json({ error: "Couldn't find a recipe in that photo — try a clearer shot of the ingredients." });
+      return;
+    }
+    res.json(draft);
+  } catch (error) {
+    res.status(502).json({ error: error instanceof Error ? error.message : "Couldn't read that photo." });
+  }
+});
+
 mealsRouter.patch("/:id", async (req, res) => {
   const id = Number(req.params.id);
   const parsed = saveSchema.partial().safeParse(req.body);
@@ -308,6 +360,11 @@ mealsRouter.post("/:id/log", async (req, res) => {
           ...scaleMacros(i, eaten),
         }));
 
+  // Only worth grouping when there is more than one row to group: a recipe
+  // already collapses to a single "two portions of chilli" entry, and marking
+  // that as a group of one would put a chevron on a row with nothing under it.
+  const groupId = rows.length > 1 ? randomUUID() : null;
+
   const created = await prisma.$transaction(
     rows.map((row) =>
       prisma.entry.create({
@@ -323,6 +380,10 @@ mealsRouter.post("/:id/log", async (req, res) => {
           mealType,
           mealTypeSet,
           source: "meal",
+          mealGroupId: groupId,
+          // The name as it was when logged: renaming the saved meal later
+          // must not rewrite what the diary says happened.
+          mealGroupName: groupId ? meal.name : null,
           matchWeekId: matchWeek.id,
         },
       }),
