@@ -1,0 +1,30 @@
+-- AlterTable
+ALTER TABLE "Entry" ADD COLUMN "fibreG" REAL;
+ALTER TABLE "Entry" ADD COLUMN "saltG" REAL;
+ALTER TABLE "Entry" ADD COLUMN "satFatG" REAL;
+ALTER TABLE "Entry" ADD COLUMN "sugarG" REAL;
+
+-- AlterTable
+ALTER TABLE "FoodOverride" ADD COLUMN "fibreG" REAL;
+ALTER TABLE "FoodOverride" ADD COLUMN "saltG" REAL;
+ALTER TABLE "FoodOverride" ADD COLUMN "satFatG" REAL;
+ALTER TABLE "FoodOverride" ADD COLUMN "sugarG" REAL;
+
+-- AlterTable
+ALTER TABLE "SavedMealItem" ADD COLUMN "fibreG" REAL;
+ALTER TABLE "SavedMealItem" ADD COLUMN "saltG" REAL;
+ALTER TABLE "SavedMealItem" ADD COLUMN "satFatG" REAL;
+ALTER TABLE "SavedMealItem" ADD COLUMN "sugarG" REAL;
+
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN "carbMode" TEXT;
+ALTER TABLE "User" ADD COLUMN "fibreOp" TEXT;
+ALTER TABLE "User" ADD COLUMN "fibreTargetG" INTEGER;
+ALTER TABLE "User" ADD COLUMN "nutrientsShown" TEXT;
+ALTER TABLE "User" ADD COLUMN "saltOp" TEXT;
+ALTER TABLE "User" ADD COLUMN "saltTargetG" REAL;
+ALTER TABLE "User" ADD COLUMN "satFatOp" TEXT;
+ALTER TABLE "User" ADD COLUMN "satFatTargetG" INTEGER;
+ALTER TABLE "User" ADD COLUMN "sugarOp" TEXT;
+ALTER TABLE "User" ADD COLUMN "sugarTargetG" INTEGER;
+

@@ -20,6 +20,13 @@ import { latestWeightKg, weightRate } from "../weightStats";
 import { computeDeficitStreak, type DayVerdict } from "../deficitStreak";
 import { recordError } from "../errorLog";
 import { MACRO_KEYS, resolveMacroTargets, sumMacros, type MacroKey } from "../macros";
+import {
+  isNetCarbs,
+  netCarbsOf,
+  readDiaryFields,
+  resolveNutrientTargets,
+  sumNutrients,
+} from "../nutrients";
 import { expectedBurnToday, macroRoom, whatCanIStillEat, type WhatNowFood, type WhatNowMeal } from "../whatNow";
 import { normalizeLabel } from "./foods";
 import { effectiveMealType, readMealTagNames } from "../mealTags";
@@ -758,6 +765,7 @@ statsRouter.get("/today", async (req, res) => {
 
   const macroTargets = user ? resolveMacroTargets(user) : null;
   const macrosEaten = sumMacros(entriesToday);
+  const nutrientsEaten = sumNutrients(entriesToday);
 
   // What a normal day looks like, for the "ahead of / behind your usual"
   // read. Excludes today itself, which is only part-finished.
@@ -826,6 +834,24 @@ statsRouter.get("/today", async (req, res) => {
         carbs: macrosEaten.carbs,
         fat: macrosEaten.fat,
         unknownEntries: macrosEaten.unknownEntries,
+      },
+    },
+    // The rest of the label, alongside the macros rather than folded into
+    // them: none of these are energy, so mixing them into a structure the
+    // card reads as "what the calories are made of" would be a lie about
+    // both. netCarbs is derived here so the client never has to know the
+    // rule, and is null when the carbs themselves are unknown.
+    nutrients: {
+      shown: readDiaryFields(user),
+      netCarbMode: isNetCarbs(user),
+      targets: resolveNutrientTargets(user),
+      eaten: {
+        fibre: nutrientsEaten.fibre,
+        sugar: nutrientsEaten.sugar,
+        satFat: nutrientsEaten.satFat,
+        salt: nutrientsEaten.salt,
+        netCarbs: netCarbsOf(macrosEaten.carbs, nutrientsEaten.knownEntries > 0 ? nutrientsEaten.fibre : null),
+        unknownEntries: nutrientsEaten.unknownEntries,
       },
     },
     entries: entriesToday,

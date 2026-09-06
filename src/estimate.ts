@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config";
 import { recordError } from "./errorLog";
 import { clampMacrosToKcal } from "./macros";
+import { clampNutrients } from "./nutrients";
 import { statesExplicitQuantity } from "./quantity";
 import { bufferMultiplier, resolveBuffer, type BufferSettings, type ResolvedBuffer } from "./kcalBuffer";
 import type { EstimateReference } from "./estimateGrounding";
@@ -56,6 +57,14 @@ Rules:
   Guess them for vague input the same way you guess the calories — a typical \
   example of that food is the right basis. Use 0 where a macro genuinely \
   isn't present (black coffee is 0/0/0); never omit a field or return null.
+- Also give fibre, sugar, saturated fat and salt, which are the rest of a \
+  nutrition label. Three of them are parts of figures you have already given: \
+  sugar and fibre are both carbohydrate, so neither can exceed the carbs, and \
+  saturated fat is part of the fat, so it cannot exceed the fat. Salt is in \
+  GRAMS OF SALT, not milligrams of sodium — a whole day's food is single \
+  figures, one slice of bread is around 0.4, so anything in the hundreds is \
+  sodium in milligrams and wrong. Where a reference figure gives any of these, \
+  scale it like the others rather than guessing.
 - Keep the macros roughly consistent with the calories you gave, at 4 kcal \
   per gram of protein and carbs and 9 per gram of fat. They will not \
   reconcile exactly and that is fine — but they should not imply far more \
@@ -66,7 +75,8 @@ Rules:
   "Chicken stir fry with rice" or "Small handful of crisps".
 - Respond with ONLY a JSON object, no markdown fences, no commentary: \
   {"items": [{"label": "...", "kcal": 000, "protein": 00, "carbs": 00, \
-  "fat": 00, "quantified": true}]}`;
+  "fat": 00, "fibre": 00, "sugar": 00, "satFat": 00, "salt": 0.0, \
+  "quantified": true}]}`;
 
 export interface EstimateInput {
   text?: string;
@@ -92,6 +102,10 @@ export interface EstimateItem {
   proteinG: number | null;
   carbsG: number | null;
   fatG: number | null;
+  fibreG: number | null;
+  sugarG: number | null;
+  satFatG: number | null;
+  saltG: number | null;
 }
 
 export type EstimateResult = EstimateItem[];
@@ -210,6 +224,10 @@ function parseEstimateResponse(raw: string, textHasQuantity: boolean, bufferSett
       protein?: unknown;
       carbs?: unknown;
       fat?: unknown;
+      fibre?: unknown;
+      sugar?: unknown;
+      satFat?: unknown;
+      salt?: unknown;
       quantified?: unknown;
     };
     const label = typeof candidate.label === "string" && candidate.label.trim() ? candidate.label.trim() : "Unlabelled meal";
@@ -231,12 +249,28 @@ function parseEstimateResponse(raw: string, textHasQuantity: boolean, bufferSett
       kcal,
     );
 
+    // Capped against the macros they are part of, so a 12g-of-fat item can't
+    // come back claiming 20g of it saturated. See clampNutrients.
+    const nutrients = clampNutrients(
+      {
+        fibreG: macro(candidate.fibre),
+        sugarG: macro(candidate.sugar),
+        satFatG: macro(candidate.satFat),
+        saltG: macro(candidate.salt),
+      },
+      { carbs: clamped.carbs, fat: clamped.fat },
+    );
+
     return {
       label,
       kcal,
       proteinG: round1(clamped.protein),
       carbsG: round1(clamped.carbs),
       fatG: round1(clamped.fat),
+      fibreG: nutrients.fibreG ?? null,
+      sugarG: nutrients.sugarG ?? null,
+      satFatG: nutrients.satFatG ?? null,
+      saltG: nutrients.saltG ?? null,
     };
   });
 
@@ -269,9 +303,9 @@ export async function estimateMeal(input: EstimateInput): Promise<EstimateResult
     try {
       const message = await client.messages.create({
         model: config.ANTHROPIC_MODEL,
-        // Room for the extra per-item field and for the handful of items a
+        // Room for eight figures per item and for the handful of items a
         // grounded entry can legitimately split into.
-        max_tokens: 500,
+        max_tokens: 900,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: buildUserContent(input) }],
       });
@@ -302,6 +336,10 @@ export async function estimateMeal(input: EstimateInput): Promise<EstimateResult
       proteinG: null,
       carbsG: null,
       fatG: null,
+      fibreG: null,
+      sugarG: null,
+      satFatG: null,
+      saltG: null,
     },
   ];
 }

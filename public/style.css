@@ -5077,3 +5077,51 @@ body.hide-entry-times .entry-time {
   margin: 4px 0 0;
   font-size: 0.8rem;
 }
+
+/* ── Choosing what a row says ──────────────────────────────────────────────
+   A wrapping row of toggles rather than a list of checkboxes: there are eight
+   of them, they are all one or two words, and a column of eight would push
+   everything below it off the screen. */
+.nutrient-show-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+/* Same on/off language as the meal-kind buttons, so a toggle looks like a
+   toggle wherever it appears in settings. */
+.nutrient-show-btn {
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 7px 13px;
+  min-height: 0;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--card);
+  background-image: none;
+  box-shadow: none;
+  color: var(--muted);
+  cursor: pointer;
+  width: auto;
+  margin: 0;
+  transition: color 0.12s var(--ease), border-color 0.12s var(--ease), background 0.12s var(--ease);
+}
+.nutrient-show-btn--on {
+  border-color: var(--pitch);
+  background: rgba(31, 157, 82, 0.08);
+  color: var(--pitch-dark);
+}
+/* Separates the macro targets above from the rest of the label below — they
+   are two different questions inside one settings section. */
+.settings-rule {
+  border: none;
+  border-top: 1px solid var(--hairline);
+  margin: 20px 0 16px;
+}
+
+/* The four label nutrients have longer names than "Protein" — "Saturated fat"
+   wrapped to two lines in the macro rows' 62px name column. */
+.macro-targets--nutrients .macro-target-row {
+  grid-template-columns: 88px 1fr 88px;
+}

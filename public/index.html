@@ -141,6 +141,10 @@
                 <span class="macro-delta"></span>
               </span>
             </div>
+            <!-- The nutrients that aren't energy get their rows built from
+                 whichever ones have a target, so an account tracking only
+                 salt gets one row rather than four empty ones. -->
+            <div id="nutrient-today-rows"></div>
             <p id="macro-today-note" class="macro-today-note" hidden></p>
           </div>
           <button
@@ -916,6 +920,83 @@
 
             <p id="macro-summary" class="muted" hidden></p>
             <p id="macro-warning" class="error" hidden></p>
+
+            <hr class="settings-rule" />
+
+            <span class="field-label">Show under each entry</span>
+            <p class="muted">
+              What appears on a logged item and adds up on Today. Protein, carbs and fat
+              unless you say otherwise.
+            </p>
+            <div id="nutrient-show-row" class="nutrient-show-row"></div>
+
+            <span class="field-label">Count carbs as</span>
+            <div class="meal-kind-btns">
+              <button type="button" id="carb-mode-total" class="meal-kind-btn meal-kind-btn--active">
+                Total
+              </button>
+              <button type="button" id="carb-mode-net" class="meal-kind-btn">Net (minus fibre)</button>
+            </div>
+            <p class="muted">
+              Net carbs is what a keto or low-carb diet counts. An item logged without a fibre
+              figure keeps its full carbs rather than being assumed to have none.
+            </p>
+
+            <span class="field-label">The rest of the label</span>
+            <p class="muted">
+              Leave any blank and it isn't tracked. UK guidance, for reference: 30g of fibre a
+              day, at most 6g of salt, at most 30g of saturated fat.
+            </p>
+            <div class="macro-targets macro-targets--nutrients">
+              <div class="macro-target-row">
+                <label class="macro-target-name" for="nutrient-fibre-g">Fibre</label>
+                <select id="nutrient-fibre-op" aria-label="How to read the fibre target">
+                  <option value="min">at least</option>
+                  <option value="max">at most</option>
+                  <option value="eq">about</option>
+                </select>
+                <div class="macro-target-value">
+                  <input type="number" id="nutrient-fibre-g" min="0" max="200" step="1" placeholder="30" />
+                  <span>g</span>
+                </div>
+              </div>
+              <div class="macro-target-row">
+                <label class="macro-target-name" for="nutrient-sugar-g">Sugar</label>
+                <select id="nutrient-sugar-op" aria-label="How to read the sugar target">
+                  <option value="min">at least</option>
+                  <option value="max">at most</option>
+                  <option value="eq">about</option>
+                </select>
+                <div class="macro-target-value">
+                  <input type="number" id="nutrient-sugar-g" min="0" max="600" step="1" placeholder="30" />
+                  <span>g</span>
+                </div>
+              </div>
+              <div class="macro-target-row">
+                <label class="macro-target-name" for="nutrient-satfat-g">Saturated fat</label>
+                <select id="nutrient-satfat-op" aria-label="How to read the saturated fat target">
+                  <option value="min">at least</option>
+                  <option value="max">at most</option>
+                  <option value="eq">about</option>
+                </select>
+                <div class="macro-target-value">
+                  <input type="number" id="nutrient-satfat-g" min="0" max="300" step="1" placeholder="30" />
+                  <span>g</span>
+                </div>
+              </div>
+              <div class="macro-target-row">
+                <label class="macro-target-name" for="nutrient-salt-g">Salt</label>
+                <select id="nutrient-salt-op" aria-label="How to read the salt target">
+                  <option value="min">at least</option>
+                  <option value="max">at most</option>
+                  <option value="eq">about</option>
+                </select>
+                <div class="macro-target-value">
+                  <input type="number" id="nutrient-salt-g" min="0" max="50" step="0.1" placeholder="6" />
+                  <span>g</span>
+                </div>
+              </div>
+            </div>
           </div>
           </section>
 

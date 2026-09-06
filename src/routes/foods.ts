@@ -25,7 +25,10 @@ foodsRouter.get("/", async (req, res) => {
     prisma.entry.findMany({
       where: { matchWeek: { userId: req.userId! } },
       orderBy: { timestamp: "desc" },
-      select: { label: true, kcal: true, proteinG: true, carbsG: true, fatG: true, timestamp: true },
+      select: {
+        label: true, kcal: true, proteinG: true, carbsG: true, fatG: true,
+        fibreG: true, sugarG: true, satFatG: true, saltG: true, timestamp: true,
+      },
     }),
     prisma.foodFavorite.findMany({ where: { userId: req.userId! } }),
     prisma.foodTag.findMany({ where: { userId: req.userId! }, orderBy: { tag: "asc" } }),
@@ -53,6 +56,10 @@ foodsRouter.get("/", async (req, res) => {
       proteinG: number | null;
       carbsG: number | null;
       fatG: number | null;
+      fibreG: number | null;
+      sugarG: number | null;
+      satFatG: number | null;
+      saltG: number | null;
       count: number;
       lastLoggedAt: Date;
     }
@@ -71,6 +78,10 @@ foodsRouter.get("/", async (req, res) => {
         proteinG: entry.proteinG,
         carbsG: entry.carbsG,
         fatG: entry.fatG,
+        fibreG: entry.fibreG,
+        sugarG: entry.sugarG,
+        satFatG: entry.satFatG,
+        saltG: entry.saltG,
         count: 1,
         lastLoggedAt: entry.timestamp,
       });
@@ -88,6 +99,10 @@ foodsRouter.get("/", async (req, res) => {
       proteinG: fix ? fix.proteinG : f.proteinG,
       carbsG: fix ? fix.carbsG : f.carbsG,
       fatG: fix ? fix.fatG : f.fatG,
+      fibreG: fix ? fix.fibreG : f.fibreG,
+      sugarG: fix ? fix.sugarG : f.sugarG,
+      satFatG: fix ? fix.satFatG : f.satFatG,
+      saltG: fix ? fix.saltG : f.saltG,
       edited: Boolean(fix),
       favorite: favoriteKeys.has(f.labelKey),
       tags: tagsByKey.get(f.labelKey) ?? [],
@@ -196,6 +211,10 @@ foodsRouter.post("/log", async (req, res) => {
         proteinG: true,
         carbsG: true,
         fatG: true,
+        fibreG: true,
+        sugarG: true,
+        satFatG: true,
+        saltG: true,
         imageUrl: true,
         source: true,
       },
@@ -230,6 +249,10 @@ foodsRouter.post("/log", async (req, res) => {
       proteinG: override ? override.proteinG : match.proteinG,
       carbsG: override ? override.carbsG : match.carbsG,
       fatG: override ? override.fatG : match.fatG,
+      fibreG: override ? override.fibreG : match.fibreG,
+      sugarG: override ? override.sugarG : match.sugarG,
+      satFatG: override ? override.satFatG : match.satFatG,
+      saltG: override ? override.saltG : match.saltG,
       imageUrl: match.imageUrl,
       mealType,
       mealTypeSet,
@@ -249,6 +272,10 @@ const editSchema = z.object({
   proteinG: z.number().min(0).max(1000).nullable().optional(),
   carbsG: z.number().min(0).max(1000).nullable().optional(),
   fatG: z.number().min(0).max(1000).nullable().optional(),
+  fibreG: z.number().min(0).max(1000).nullable().optional(),
+  sugarG: z.number().min(0).max(1000).nullable().optional(),
+  satFatG: z.number().min(0).max(1000).nullable().optional(),
+  saltG: z.number().min(0).max(100).nullable().optional(),
 });
 
 /**
@@ -265,13 +292,24 @@ foodsRouter.put("/edit", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const { labelKey, label, kcal, proteinG, carbsG, fatG } = parsed.data;
+  const { labelKey, label, kcal, proteinG, carbsG, fatG, ...rest } = parsed.data;
+
+  // The rest of the label is only sent by a form that offered it, and an
+  // absent field means "leave it alone" rather than "clear it". The editor
+  // only shows the figures the diary is showing, so treating absence as null
+  // would let hiding fibre in settings silently wipe every fibre correction
+  // the user had made. An explicit null still clears one.
+  const presentRest = Object.fromEntries(
+    Object.entries(rest).filter(([, value]) => value !== undefined),
+  );
+
   const data = {
     label,
     kcal,
     proteinG: proteinG ?? null,
     carbsG: carbsG ?? null,
     fatG: fatG ?? null,
+    ...presentRest,
   };
 
   const override = await prisma.foodOverride.upsert({

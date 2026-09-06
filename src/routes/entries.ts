@@ -7,6 +7,7 @@ import { requireAuth } from "../auth";
 import { estimateMeal, type EstimateItem } from "../estimate";
 import { findReferences } from "../estimateGrounding";
 import { scaleMacros } from "../macros";
+import { scaleNutrients } from "../nutrients";
 import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart, localDayKey, zonedTimeToUtc } from "../matchWeek";
 import { MEAL_TYPES, MEAL_TYPE_DEFAULT_HOUR, inferMealType, type MealType } from "../mealType";
 import { timestampOnLocalDay } from "../entryTiming";
@@ -52,6 +53,13 @@ const createEntrySchema = z.object({
   directProteinG: z.coerce.number().min(0).max(1000).optional(),
   directCarbsG: z.coerce.number().min(0).max(1000).optional(),
   directFatG: z.coerce.number().min(0).max(1000).optional(),
+  directFibreG: z.coerce.number().min(0).max(1000).optional(),
+  directSugarG: z.coerce.number().min(0).max(1000).optional(),
+  directSatFatG: z.coerce.number().min(0).max(1000).optional(),
+  // Salt is grams and a whole day is single figures, so the ceiling is far
+  // lower than the macros' — a three-figure salt value is sodium in
+  // milligrams that escaped conversion, and should be rejected, not stored.
+  directSaltG: z.coerce.number().min(0).max(100).optional(),
 });
 
 /**
@@ -75,7 +83,11 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
     return;
   }
 
-  const { text, timestamp, lastWeek, date, mealType: chosenMeal, directKcal, directProteinG, directCarbsG, directFatG } = parsed.data;
+  const {
+    text, timestamp, lastWeek, date, mealType: chosenMeal,
+    directKcal, directProteinG, directCarbsG, directFatG,
+    directFibreG, directSugarG, directSatFatG, directSaltG,
+  } = parsed.data;
   const rawPhoto = req.file;
 
   if (!text?.trim() && !rawPhoto) {
@@ -139,6 +151,10 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
           proteinG: directProteinG ?? null,
           carbsG: directCarbsG ?? null,
           fatG: directFatG ?? null,
+          fibreG: directFibreG ?? null,
+          sugarG: directSugarG ?? null,
+          satFatG: directSatFatG ?? null,
+          saltG: directSaltG ?? null,
         },
       ]
     : await estimateMeal({
@@ -167,6 +183,10 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
           proteinG: item.proteinG,
           carbsG: item.carbsG,
           fatG: item.fatG,
+          fibreG: item.fibreG,
+          sugarG: item.sugarG,
+          satFatG: item.satFatG,
+          saltG: item.saltG,
           imageUrl,
           mealType,
           mealTypeSet,
@@ -244,6 +264,10 @@ const confirmSchema = z.object({
         proteinG: z.number().min(0).max(1000).nullable().optional(),
         carbsG: z.number().min(0).max(1000).nullable().optional(),
         fatG: z.number().min(0).max(1000).nullable().optional(),
+        fibreG: z.number().min(0).max(1000).nullable().optional(),
+        sugarG: z.number().min(0).max(1000).nullable().optional(),
+        satFatG: z.number().min(0).max(1000).nullable().optional(),
+        saltG: z.number().min(0).max(100).nullable().optional(),
         quantity: z.number().min(0.25).max(50).optional(),
       }),
     )
@@ -302,6 +326,10 @@ entriesRouter.post("/confirm", async (req, res) => {
           proteinG: item.proteinG ?? null,
           carbsG: item.carbsG ?? null,
           fatG: item.fatG ?? null,
+          fibreG: item.fibreG ?? null,
+          sugarG: item.sugarG ?? null,
+          satFatG: item.satFatG ?? null,
+          saltG: item.saltG ?? null,
           imageUrl: safeImageUrl,
           mealType,
           mealTypeSet,
@@ -334,6 +362,10 @@ const updateEntrySchema = z.object({
   proteinG: z.number().min(0).max(1000).nullable().optional(),
   carbsG: z.number().min(0).max(1000).nullable().optional(),
   fatG: z.number().min(0).max(1000).nullable().optional(),
+  fibreG: z.number().min(0).max(1000).nullable().optional(),
+  sugarG: z.number().min(0).max(1000).nullable().optional(),
+  satFatG: z.number().min(0).max(1000).nullable().optional(),
+  saltG: z.number().min(0).max(100).nullable().optional(),
 });
 
 entriesRouter.patch("/:id", async (req, res) => {
@@ -369,6 +401,10 @@ entriesRouter.patch("/:id", async (req, res) => {
       proteinG?: number | null;
       carbsG?: number | null;
       fatG?: number | null;
+      fibreG?: number | null;
+      sugarG?: number | null;
+      satFatG?: number | null;
+      saltG?: number | null;
       mealTypeSet?: boolean;
     } = {
       ...rest,
@@ -400,6 +436,13 @@ entriesRouter.patch("/:id", async (req, res) => {
         if (rest.proteinG === undefined) data.proteinG = scaled.proteinG;
         if (rest.carbsG === undefined) data.carbsG = scaled.carbsG;
         if (rest.fatG === undefined) data.fatG = scaled.fatG;
+        // The rest of the label scales for exactly the same reason: they are
+        // totals for the whole entry, not per unit.
+        const scaledNutrients = scaleNutrients(existing, factor);
+        if (rest.fibreG === undefined) data.fibreG = scaledNutrients.fibreG;
+        if (rest.sugarG === undefined) data.sugarG = scaledNutrients.sugarG;
+        if (rest.satFatG === undefined) data.satFatG = scaledNutrients.satFatG;
+        if (rest.saltG === undefined) data.saltG = scaledNutrients.saltG;
       }
     }
 
@@ -477,6 +520,10 @@ entriesRouter.post("/:id/repeat", async (req, res) => {
       quantity: existing.quantity,
       proteinG: existing.proteinG,
       carbsG: existing.carbsG,
+      fibreG: existing.fibreG,
+      sugarG: existing.sugarG,
+      satFatG: existing.satFatG,
+      saltG: existing.saltG,
       fatG: existing.fatG,
       imageUrl: existing.imageUrl,
       mealType,
@@ -554,6 +601,10 @@ entriesRouter.post("/copy-day", async (req, res) => {
           proteinG: entry.proteinG,
           carbsG: entry.carbsG,
           fatG: entry.fatG,
+          fibreG: entry.fibreG,
+          sugarG: entry.sugarG,
+          satFatG: entry.satFatG,
+          saltG: entry.saltG,
           // The photo is left behind on purpose: it is a picture of a meal
           // eaten on the original day, and carrying it over would make the
           // copy claim to be evidence of something that didn't happen.

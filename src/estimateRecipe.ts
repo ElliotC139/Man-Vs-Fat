@@ -14,6 +14,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config";
 import { recordError } from "./errorLog";
+import { clampNutrients } from "./nutrients";
 
 const client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
 
@@ -29,6 +30,10 @@ Rules:
 - Every line gets whole-number kcal and grams of protein, carbohydrate and fat \
   FOR THE AMOUNT IN THE LABEL, not per 100g. Two tablespoons of oil is the \
   figure for two tablespoons.
+- Also give fibre, sugar, saturated fat and salt for that same amount. Sugar \
+  and fibre are both carbohydrate so neither can exceed the carbs; saturated \
+  fat is part of the fat and cannot exceed it. Salt is GRAMS OF SALT, not \
+  milligrams of sodium — a whole recipe is single figures.
 - Work out the amount before the calories, exactly as you would for a meal: \
   the weight or volume stated, times the food's per-100g figures.
 - "servings" is how many portions the whole recipe makes, as the page states \
@@ -42,7 +47,8 @@ Rules:
   {"items": []} and nothing else. Do not invent a recipe to fill the gap.
 - Respond with ONLY a JSON object, no markdown fences, no commentary: \
   {"name": "...", "servings": 4, "items": [{"label": "...", "kcal": 000, \
-  "protein": 00, "carbs": 00, "fat": 00}]}`;
+  "protein": 00, "carbs": 00, "fat": 00, "fibre": 00, "sugar": 00, \
+  "satFat": 00, "salt": 0.0}]}`;
 
 export interface RecipeDraftItem {
   label: string;
@@ -50,6 +56,10 @@ export interface RecipeDraftItem {
   proteinG: number | null;
   carbsG: number | null;
   fatG: number | null;
+  fibreG: number | null;
+  sugarG: number | null;
+  satFatG: number | null;
+  saltG: number | null;
 }
 
 export interface RecipeDraft {
@@ -84,12 +94,29 @@ function parseDraft(raw: string): RecipeDraft {
       // A line with no name is not an ingredient, whatever figures came with
       // it — dropped rather than shown as "Unlabelled" for the user to decode.
       if (!label) return null;
+      const carbs = num(candidate.carbs);
+      const fat = num(candidate.fat);
+      // Capped against the figures they are part of, same as an estimate —
+      // see clampNutrients.
+      const nutrients = clampNutrients(
+        {
+          fibreG: num(candidate.fibre),
+          sugarG: num(candidate.sugar),
+          satFatG: num(candidate.satFat),
+          saltG: num(candidate.salt),
+        },
+        { carbs, fat },
+      );
       return {
         label: label.slice(0, 200),
         kcal: num(candidate.kcal) === null ? null : Math.round(num(candidate.kcal)!),
         proteinG: num(candidate.protein),
-        carbsG: num(candidate.carbs),
-        fatG: num(candidate.fat),
+        carbsG: carbs,
+        fatG: fat,
+        fibreG: nutrients.fibreG ?? null,
+        sugarG: nutrients.sugarG ?? null,
+        satFatG: nutrients.satFatG ?? null,
+        saltG: nutrients.saltG ?? null,
       };
     })
     .filter((item): item is RecipeDraftItem => item !== null)

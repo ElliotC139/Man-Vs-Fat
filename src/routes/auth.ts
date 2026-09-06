@@ -20,6 +20,7 @@ import { deleteAccount } from "../deleteAccount";
 import { canSendMail, sendMail } from "../mailer";
 import { consume, reset as resetRateLimit, LOGIN_BURST, RESET_BURST } from "../rateLimit";
 import { MACRO_MODES, MACRO_OPS, resolveMacroTargets } from "../macros";
+import { DIARY_FIELDS, readDiaryFields, resolveNutrientTargets, writeDiaryFields } from "../nutrients";
 import { refileMatchWeeks } from "../refileMatchWeeks";
 
 export const authRouter = Router();
@@ -60,6 +61,23 @@ const settingsSchema = z.object({
   proteinPct: z.number().int().min(0).max(100).nullable().optional(),
   carbsPct: z.number().int().min(0).max(100).nullable().optional(),
   fatPct: z.number().int().min(0).max(100).nullable().optional(),
+  // Which figures the diary shows under an entry. Sent as the list itself
+  // rather than as stored JSON, so the client never has to know the encoding
+  // — anything unrecognised is dropped on the way in (see writeDiaryFields).
+  nutrientsShown: z.array(z.enum(DIARY_FIELDS)).nullable().optional(),
+  // "net" counts carbohydrate minus fibre. Null or "total" is the label's own
+  // figure, which is what the diary has always meant.
+  carbMode: z.enum(["total", "net"]).nullable().optional(),
+  fibreTargetG: z.number().int().min(0).max(200).nullable().optional(),
+  sugarTargetG: z.number().int().min(0).max(600).nullable().optional(),
+  satFatTargetG: z.number().int().min(0).max(300).nullable().optional(),
+  // Grams of salt. A whole day is single figures, so anything past 50 is
+  // sodium in milligrams that has come through unconverted.
+  saltTargetG: z.number().min(0).max(50).nullable().optional(),
+  fibreOp: z.enum(MACRO_OPS).nullable().optional(),
+  sugarOp: z.enum(MACRO_OPS).nullable().optional(),
+  satFatOp: z.enum(MACRO_OPS).nullable().optional(),
+  saltOp: z.enum(MACRO_OPS).nullable().optional(),
   // Null turns the daily reminder off entirely.
   reminderHour: z.number().int().min(0).max(23).nullable().optional(),
   // Which figure the Today card calls the day's burn. Null means measured.
@@ -145,6 +163,16 @@ function toPublicUser(user: {
   proteinPct?: number | null;
   carbsPct?: number | null;
   fatPct?: number | null;
+  nutrientsShown?: string | null;
+  carbMode?: string | null;
+  fibreTargetG?: number | null;
+  sugarTargetG?: number | null;
+  satFatTargetG?: number | null;
+  saltTargetG?: number | null;
+  fibreOp?: string | null;
+  sugarOp?: string | null;
+  satFatOp?: string | null;
+  saltOp?: string | null;
   reminderHour?: number | null;
   layout?: string | null;
   burnSource?: string | null;
@@ -185,6 +213,21 @@ function toPublicUser(user: {
     // Resolved server-side so the diary and the settings screen can't drift
     // apart on how a percentage becomes grams.
     macroTargets: resolveMacroTargets(user),
+    // Sent as the list, never as the stored JSON — see nutrientsShown in the
+    // update schema for why the encoding stays on this side of the wire.
+    nutrientsShown: readDiaryFields(user),
+    carbMode: user.carbMode === "net" ? "net" : "total",
+    fibreTargetG: user.fibreTargetG ?? null,
+    sugarTargetG: user.sugarTargetG ?? null,
+    satFatTargetG: user.satFatTargetG ?? null,
+    saltTargetG: user.saltTargetG ?? null,
+    fibreOp: user.fibreOp ?? null,
+    sugarOp: user.sugarOp ?? null,
+    satFatOp: user.satFatOp ?? null,
+    saltOp: user.saltOp ?? null,
+    // Resolved here too, so the Today card and the settings screen can't
+    // disagree about what an unset comparison defaults to.
+    nutrientTargets: resolveNutrientTargets(user),
     reminderHour: user.reminderHour ?? null,
     // Stored as a string, since SQLite has no JSON column. A row that somehow
     // holds unparseable text reads as no layout at all rather than breaking
@@ -390,11 +433,18 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
     return;
   }
 
-  // The layout and the meal tag names are the fields that aren't stored as
-  // they arrive: SQLite has no JSON column, so they go in as text.
-  const { layout, mealTagNames, ...fields } = parsed.data;
+  // The layout, the meal tag names and the chosen figures are the fields that
+  // aren't stored as they arrive: SQLite has no JSON column, so they go in as
+  // text.
+  const { layout, mealTagNames, nutrientsShown, ...fields } = parsed.data;
   const data: Record<string, unknown> = { ...fields };
   if (layout !== undefined) data.layout = layout === null ? null : JSON.stringify(layout);
+  // Null clears the choice back to the three the diary has always shown,
+  // rather than to nothing — a diary with no figures under an entry is a bug,
+  // not a preference somebody could hold.
+  if (nutrientsShown !== undefined) {
+    data.nutrientsShown = nutrientsShown === null ? null : writeDiaryFields(nutrientsShown);
+  }
   // writeMealTagNames drops anything that matches the built-in name, so
   // renaming a slot and changing your mind back leaves a clean row rather than
   // a frozen copy of the defaults.

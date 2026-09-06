@@ -8,6 +8,7 @@ import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart } from "../match
 import { MEAL_TYPES, inferMealType, type MealType } from "../mealType";
 import { timestampOnLocalDay } from "../entryTiming";
 import { scaleMacros, sumMacros } from "../macros";
+import { scaleNutrients, sumNutrients } from "../nutrients";
 import multer from "multer";
 import { estimateRecipeFromPhoto } from "../estimateRecipe";
 import { normalizeUploadedImage } from "../lib/imageProcessing";
@@ -27,6 +28,10 @@ const itemSchema = z.object({
   proteinG: z.number().min(0).max(1000).nullable().optional(),
   carbsG: z.number().min(0).max(1000).nullable().optional(),
   fatG: z.number().min(0).max(1000).nullable().optional(),
+  fibreG: z.number().min(0).max(1000).nullable().optional(),
+  sugarG: z.number().min(0).max(1000).nullable().optional(),
+  satFatG: z.number().min(0).max(100).nullable().optional(),
+  saltG: z.number().min(0).max(100).nullable().optional(),
 });
 
 const saveSchema = z.object({
@@ -53,6 +58,10 @@ function present(meal: {
     proteinG: number | null;
     carbsG: number | null;
     fatG: number | null;
+    fibreG: number | null;
+    sugarG: number | null;
+    satFatG: number | null;
+    saltG: number | null;
     sortOrder: number;
   }[];
 }) {
@@ -79,6 +88,10 @@ function present(meal: {
       proteinG: i.proteinG,
       carbsG: i.carbsG,
       fatG: i.fatG,
+      fibreG: i.fibreG,
+      sugarG: i.sugarG,
+      satFatG: i.satFatG,
+      saltG: i.saltG,
     })),
     totalKcal,
     kcalPerServing: totalKcal === null ? null : Math.round(totalKcal / meal.servings),
@@ -125,6 +138,10 @@ mealsRouter.post("/", async (req, res) => {
           proteinG: it.proteinG ?? null,
           carbsG: it.carbsG ?? null,
           fatG: it.fatG ?? null,
+          fibreG: it.fibreG ?? null,
+          sugarG: it.sugarG ?? null,
+          satFatG: it.satFatG ?? null,
+          saltG: it.saltG ?? null,
           sortOrder: i,
         })),
       },
@@ -156,7 +173,10 @@ mealsRouter.post("/from-entries", async (req, res) => {
   const entries = await prisma.entry.findMany({
     where: { id: { in: entryIds }, matchWeek: { userId: req.userId! } },
     orderBy: { timestamp: "asc" },
-    select: { id: true, label: true, kcal: true, proteinG: true, carbsG: true, fatG: true },
+    select: {
+      id: true, label: true, kcal: true, proteinG: true, carbsG: true, fatG: true,
+      fibreG: true, sugarG: true, satFatG: true, saltG: true,
+    },
   });
   if (entries.length === 0) {
     res.status(404).json({ error: "None of those entries were found." });
@@ -182,6 +202,10 @@ mealsRouter.post("/from-entries", async (req, res) => {
           proteinG: e.proteinG,
           carbsG: e.carbsG,
           fatG: e.fatG,
+          fibreG: e.fibreG,
+          sugarG: e.sugarG,
+          satFatG: e.satFatG,
+          saltG: e.saltG,
           sortOrder: i,
         })),
       },
@@ -278,6 +302,10 @@ mealsRouter.patch("/:id", async (req, res) => {
           proteinG: it.proteinG ?? null,
           carbsG: it.carbsG ?? null,
           fatG: it.fatG ?? null,
+          fibreG: it.fibreG ?? null,
+          sugarG: it.sugarG ?? null,
+          satFatG: it.satFatG ?? null,
+          saltG: it.saltG ?? null,
           sortOrder: i,
         })),
       });
@@ -365,12 +393,35 @@ mealsRouter.post("/:id/log", async (req, res) => {
                   eaten / meal.servings,
                 );
 
-          return [{ label: `${meal.name} (${portionLabel})`, kcal, ...perPortion }];
+          // The rest of the label divides the same way, and abstains the same
+          // way: an ingredient with no fibre figure means the portion's fibre
+          // is unknown, not that the batch contained none.
+          const nutrientTotals = sumNutrients(items);
+          const nutrientsPerPortion =
+            nutrientTotals.unknownEntries > 0
+              ? { fibreG: null, sugarG: null, satFatG: null, saltG: null }
+              : scaleNutrients(
+                  {
+                    fibreG: nutrientTotals.fibre,
+                    sugarG: nutrientTotals.sugar,
+                    satFatG: nutrientTotals.satFat,
+                    saltG: nutrientTotals.salt,
+                  },
+                  eaten / meal.servings,
+                );
+
+          return [{
+            label: `${meal.name} (${portionLabel})`,
+            kcal,
+            ...perPortion,
+            ...nutrientsPerPortion,
+          }];
         })()
       : items.map((i) => ({
           label: eaten === 1 ? i.label : `${i.label} (x${round2(eaten)})`,
           kcal: i.kcal === null ? null : Math.round(i.kcal * eaten),
           ...scaleMacros(i, eaten),
+          ...scaleNutrients(i, eaten),
         }));
 
   // Only worth grouping when there is more than one row to group: a recipe
@@ -389,6 +440,10 @@ mealsRouter.post("/:id/log", async (req, res) => {
           proteinG: row.proteinG ?? null,
           carbsG: row.carbsG ?? null,
           fatG: row.fatG ?? null,
+          fibreG: row.fibreG ?? null,
+          sugarG: row.sugarG ?? null,
+          satFatG: row.satFatG ?? null,
+          saltG: row.saltG ?? null,
           imageUrl: null,
           mealType,
           mealTypeSet,
