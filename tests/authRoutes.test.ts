@@ -209,6 +209,10 @@ describe("POST /api/auth/signup", () => {
       saltOp: null,
       nutrientTargets: { fibre: null, sugar: null, satFat: null, salt: null },
       reminderHour: null,
+      // No per-meal nudges and no eating window on a fresh account: both are
+      // opt-in, like every other notification the app can send.
+      mealReminders: {},
+      eatingWindowHours: null,
       sex: null,
       layout: null,
       // Meal tags are opt-in, and their names come back resolved rather than

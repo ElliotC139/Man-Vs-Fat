@@ -151,6 +151,21 @@ model User {
   // for no reminder at all. Off by default: an app that starts nagging
   // without being asked gets its notifications turned off for good.
   reminderHour       Int?
+  // Per-meal nudges, as JSON: {"breakfast":8,"lunch":13,"dinner":19,"snack":null}.
+  // Separate from reminderHour above, which is the one "you haven't logged
+  // anything today" nudge — these ask about one meal each, because logging at
+  // the meal beats reconstructing the day at 10pm. Null, or any missing key,
+  // means that slot doesn't nudge. See src/mealReminders.ts.
+  mealReminders      String?
+  // A target eating window in hours: 8 for 16:8, 6 for 18:6, and so on. The
+  // window opens at the first thing logged on a day and closes this many hours
+  // later — which is how time-restricted eating is actually practised, rather
+  // than against a clock time nobody's mornings obey.
+  //
+  // Null is off, which is every account. The app already computes the window
+  // that happened, retrospectively, on the Stats screen; this is the forward
+  // half of the same idea.
+  eatingWindowHours  Float?
   createdAt          DateTime             @default(now())
   matchWeeks         MatchWeek[]
   whoopConnection    WhoopConnection?

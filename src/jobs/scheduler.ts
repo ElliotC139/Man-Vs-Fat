@@ -1,7 +1,7 @@
 import cron from "node-cron";
 import { config } from "../config";
 import { closeMatchWeeksNeedingReport } from "./weeklyReport";
-import { sendDueReminders } from "./reminders";
+import { sendDueMealReminders, sendDueReminders } from "./reminders";
 import { syncAllConnectedUsers } from "../whoop/sync";
 import { runBackup } from "./backup";
 import { cleanupOrphanedUploads } from "./cleanupUploads";
@@ -38,11 +38,13 @@ export function startScheduler(): void {
   }, 10_000);
 
   // On the hour, so the check lines up with the whole-hour reminderHour each
-  // user picks. sendDueReminders is a no-op for anyone who hasn't set one.
+  // user picks. Both are a no-op for anyone who hasn't set one, and they run
+  // independently so a failure in either still lets the other send.
   cron.schedule(
     "0 * * * *",
     () => {
       sendDueReminders().catch((error) => console.error("Scheduled reminder run failed:", error));
+      sendDueMealReminders().catch((error) => console.error("Scheduled meal reminder run failed:", error));
     },
     { timezone: config.TIMEZONE },
   );

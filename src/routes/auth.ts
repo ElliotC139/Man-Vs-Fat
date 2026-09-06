@@ -21,6 +21,7 @@ import { canSendMail, sendMail } from "../mailer";
 import { consume, reset as resetRateLimit, LOGIN_BURST, RESET_BURST } from "../rateLimit";
 import { MACRO_MODES, MACRO_OPS, resolveMacroTargets } from "../macros";
 import { DIARY_FIELDS, readDiaryFields, resolveNutrientTargets, writeDiaryFields } from "../nutrients";
+import { readMealReminders, writeMealReminders } from "../mealReminders";
 import { refileMatchWeeks } from "../refileMatchWeeks";
 
 export const authRouter = Router();
@@ -80,6 +81,20 @@ const settingsSchema = z.object({
   saltOp: z.enum(MACRO_OPS).nullable().optional(),
   // Null turns the daily reminder off entirely.
   reminderHour: z.number().int().min(0).max(23).nullable().optional(),
+  // One hour per meal slot, each independently nullable. Sent as the object
+  // rather than as stored JSON, same as the meal tag names.
+  mealReminders: z
+    .object({
+      breakfast: z.number().int().min(0).max(23).nullable().optional(),
+      lunch: z.number().int().min(0).max(23).nullable().optional(),
+      dinner: z.number().int().min(0).max(23).nullable().optional(),
+      snack: z.number().int().min(0).max(23).nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+  // A target eating window in hours. Null is off. The floor is deliberately
+  // low but not zero — a window of no hours is fasting, not eating.
+  eatingWindowHours: z.number().min(1).max(24).nullable().optional(),
   // Which figure the Today card calls the day's burn. Null means measured.
   burnSource: z.enum(BURN_SOURCES).nullable().optional(),
   // How much the under-reporting buffer adds, and whether it varies per item.
@@ -174,6 +189,8 @@ function toPublicUser(user: {
   satFatOp?: string | null;
   saltOp?: string | null;
   reminderHour?: number | null;
+  mealReminders?: string | null;
+  eatingWindowHours?: number | null;
   layout?: string | null;
   burnSource?: string | null;
   mealTagsEnabled?: boolean | null;
@@ -229,6 +246,9 @@ function toPublicUser(user: {
     // disagree about what an unset comparison defaults to.
     nutrientTargets: resolveNutrientTargets(user),
     reminderHour: user.reminderHour ?? null,
+    // Sent as the object; the column is text only because SQLite has no JSON.
+    mealReminders: readMealReminders(user.mealReminders),
+    eatingWindowHours: user.eatingWindowHours ?? null,
     // Stored as a string, since SQLite has no JSON column. A row that somehow
     // holds unparseable text reads as no layout at all rather than breaking
     // every screen it touches.
@@ -436,7 +456,7 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
   // The layout, the meal tag names and the chosen figures are the fields that
   // aren't stored as they arrive: SQLite has no JSON column, so they go in as
   // text.
-  const { layout, mealTagNames, nutrientsShown, ...fields } = parsed.data;
+  const { layout, mealTagNames, nutrientsShown, mealReminders, ...fields } = parsed.data;
   const data: Record<string, unknown> = { ...fields };
   if (layout !== undefined) data.layout = layout === null ? null : JSON.stringify(layout);
   // Null clears the choice back to the three the diary has always shown,
@@ -449,6 +469,9 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
   // renaming a slot and changing your mind back leaves a clean row rather than
   // a frozen copy of the defaults.
   if (mealTagNames !== undefined) data.mealTagNames = writeMealTagNames(mealTagNames);
+  // writeMealReminders returns null when every slot is off, so turning them
+  // all off stores the same thing as never having set one.
+  if (mealReminders !== undefined) data.mealReminders = writeMealReminders(mealReminders);
 
   const user = await prisma.user.update({ where: { id: req.userId! }, data });
 

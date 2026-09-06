@@ -1598,8 +1598,18 @@ tr.has-tooltip:active {
 /* ── Capture shortcuts (scan / search / speak) ── */
 .capture-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 10px;
+}
+/* Four buttons don't fit across a 390px phone, so they go two-by-two rather
+   than shrinking until the labels clip. */
+.capture-row .capture-btn {
+  flex: 1 1 calc(50% - 4px);
+  min-width: 0;
+}
+@media (min-width: 560px) {
+  .capture-row .capture-btn { flex: 1 1 0; }
 }
 .capture-btn {
   flex: 1;
@@ -5158,3 +5168,47 @@ body.hide-entry-times .entry-time {
   min-height: 42px;
   font-size: 0.9rem;
 }
+
+/* ── The eating window ─────────────────────────────────────────────────────
+   A single line and a bar. The retrospective version of this figure already
+   has a card on Stats; this is the live one, and it only needs to answer
+   "how long have I got" at a glance. */
+.fasting-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fasting-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.fasting-state {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.fasting-detail {
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.fasting-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--hairline);
+  overflow: hidden;
+}
+.fasting-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--pitch);
+  transition: width 0.3s var(--ease);
+}
+/* Past the window: the same warning colour the macro bars use for a ceiling
+   that's been passed, so "over" means one thing across the screen. */
+.fasting-fill--over { background: var(--floodlight); }
+/* Before the first thing is eaten there is nothing to fill, and an empty
+   track reads better than a bar claiming zero progress. */
+.fasting-fill--waiting { background: var(--hairline); }
