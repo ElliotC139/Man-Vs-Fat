@@ -5284,3 +5284,67 @@ body.hide-entry-times .entry-time {
   font-weight: 400;
   color: var(--muted);
 }
+
+/* ── Eating out ────────────────────────────────────────────────────────────
+   A chain is picked before its menu is read, so the brand row is a heading
+   you tap rather than another result competing with the food. */
+.food-menu-back {
+  align-self: flex-start;
+  margin-bottom: 8px;
+}
+.food-menu-chains {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 10px;
+}
+.food-menu-chain {
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 7px 13px;
+  min-height: 0;
+  width: auto;
+  margin: 0;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--card);
+  background-image: none;
+  box-shadow: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.food-brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  padding: 12px 14px;
+  margin: 0 0 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  background-image: none;
+  box-shadow: none;
+  color: var(--ink);
+  cursor: pointer;
+}
+.food-brand-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.food-brand-meta {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+.food-brand-chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+}

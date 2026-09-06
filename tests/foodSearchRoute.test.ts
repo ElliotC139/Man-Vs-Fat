@@ -94,6 +94,15 @@ import { cacheClear } from "../src/foodSearch";
 let server: http.Server;
 let baseUrl: string;
 
+/**
+ * Distinct words for bulk fixtures. Numbering them wouldn't work: the deduper
+ * normalizes a name by dropping bare numbers, so "Chicken 1" and "Chicken 2"
+ * are the same food to it and forty rows would collapse to one.
+ */
+const WORDS = Array.from({ length: 130 }, (_, i) =>
+  `${["red", "blue", "green", "gold", "grey"][i % 5]}${["ash", "birch", "cedar", "dale", "elm", "fern"][i % 6]}${Math.floor(i / 30)}x`,
+);
+
 function remote(partial: Record<string, unknown>) {
   return {
     id: "x",
@@ -205,6 +214,46 @@ describe("GET /api/food-search", () => {
 
     const body = (await (await search(cookie, "burger", "&kind=restaurant")).json()) as any;
     expect(body.results.map((r: any) => r.name)).toEqual(["Big Mac"]);
+  });
+
+  it("hands back a page of 24 unless asked for more", async () => {
+    const cookie = await signUp();
+    for (let i = 0; i < 40; i++) {
+      state.nutritionix.push(remote({ id: `nix${i}`, name: `Chicken ${WORDS[i]}`, source: "nutritionix" }));
+    }
+    const body = (await (await search(cookie, "chicken")).json()) as any;
+    expect(body.results).toHaveLength(24);
+  });
+
+  it("hands back more for a menu, which is longer than a page of results", async () => {
+    // A Nando's has more than two dozen things on it, and a list that stopped
+    // at 24 would hide the rest of the menu rather than say so.
+    const cookie = await signUp();
+    for (let i = 0; i < 40; i++) {
+      state.nutritionix.push(
+        remote({ id: `nix${i}`, name: `Chicken ${WORDS[i]}`, source: "nutritionix", kind: "restaurant" }),
+      );
+    }
+    const body = (await (await search(cookie, "chicken", "&kind=restaurant&limit=80")).json()) as any;
+    expect(body.results).toHaveLength(40);
+  });
+
+  it("won't hand back an unbounded page however much is asked for", async () => {
+    const cookie = await signUp();
+    for (let i = 0; i < 120; i++) {
+      state.nutritionix.push(remote({ id: `nix${i}`, name: `Chicken ${WORDS[i]}`, source: "nutritionix" }));
+    }
+    const body = (await (await search(cookie, "chicken", "&limit=10000")).json()) as any;
+    expect(body.results).toHaveLength(80);
+  });
+
+  it("ignores a limit that isn't a number", async () => {
+    const cookie = await signUp();
+    for (let i = 0; i < 40; i++) {
+      state.nutritionix.push(remote({ id: `nix${i}`, name: `Chicken ${WORDS[i]}`, source: "nutritionix" }));
+    }
+    const body = (await (await search(cookie, "chicken", "&limit=lots")).json()) as any;
+    expect(body.results).toHaveLength(24);
   });
 
   it("asks the databases once for the same words", async () => {
