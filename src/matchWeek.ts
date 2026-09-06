@@ -265,6 +265,21 @@ export function weightedDaysLogged(loggedDayKeys: Iterable<string>, weekStart: D
   return total;
 }
 
+/**
+ * "31 Aug – 6 Sept", in the given timezone.
+ *
+ * The end instant is exclusive — a week ends the moment the next one begins —
+ * so the label steps back one second to name the last day actually inside it.
+ *
+ * Lives here rather than in a route because two screens now show a week's
+ * range, the diary's and a team's table, and they must not disagree about
+ * which dates a week covers.
+ */
+export function weekRangeLabel(start: Date, end: Date, timeZone: string): string {
+  const fmt = new Intl.DateTimeFormat("en-GB", { timeZone, day: "numeric", month: "short" });
+  return `${fmt.format(start)} – ${fmt.format(new Date(end.getTime() - 1000))}`;
+}
+
 /** Local calendar-day key (YYYY-MM-DD) for grouping entries in a timezone-correct way. */
 export function localDayKey(date: Date, timeZone: string): string {
   const { year, month, day } = getLocalParts(date, timeZone);

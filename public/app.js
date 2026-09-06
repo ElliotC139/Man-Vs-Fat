@@ -342,9 +342,226 @@ async function loadWeek() {
   renderEntries(week.entries);
   renderExercises(week.exercises ?? []);
   renderBudgetWidget(week);
+  loadTeamTable();
   // After renderEntries, since the notes attach to day headings it creates.
   loadDayNotes();
 }
+
+
+// ── The team table ─────────────────────────────────────────────────────────
+//
+// The app is named after a league, and a league is a table. Everything a table
+// needs has been here for months — accounts, per-user weeks, weighted days
+// logged — and nothing joined people together.
+//
+// What crosses is narrow and said out loud before anyone joins: a name, days
+// logged, and weight change as a percentage. Percentage rather than kilos
+// because a table ranked on kilos is a table ranked on starting weight, which
+// the heaviest person wins every week for no effort. See src/teamTable.ts.
+
+const teamCard = document.getElementById("team-card");
+const teamTitle = document.getElementById("team-title");
+const teamRange = document.getElementById("team-range");
+const teamSetup = document.getElementById("team-setup");
+const teamBody = document.getElementById("team-body");
+const teamRowsEl = document.getElementById("team-rows");
+const teamEmpty = document.getElementById("team-empty");
+const teamNameInput = document.getElementById("team-name");
+const teamCodeInput = document.getElementById("team-code");
+const teamCreateBtn = document.getElementById("team-create");
+const teamJoinBtn = document.getElementById("team-join");
+const teamShareCodeBtn = document.getElementById("team-share-code");
+const teamSwitchBtn = document.getElementById("team-switch");
+const teamLeaveBtn = document.getElementById("team-leave");
+const teamError = document.getElementById("team-error");
+
+let myTeams = [];
+let currentTeamId = null;
+
+async function loadTeamTable() {
+  try {
+    const res = await fetch("/api/teams");
+    if (!res.ok) throw new Error();
+    myTeams = await res.json();
+  } catch {
+    // A table that can't be fetched is a card that shows its setup form, not
+    // an error on a screen that is mostly about something else.
+    myTeams = [];
+  }
+
+  if (myTeams.length === 0) {
+    currentTeamId = null;
+    teamTitle.textContent = "Your team";
+    teamRange.textContent = "";
+    teamSetup.hidden = false;
+    teamBody.hidden = true;
+    return;
+  }
+
+  // Stays on the team being looked at across a week change, and falls back to
+  // the first when the current one has been left.
+  if (!myTeams.some((team) => team.id === currentTeamId)) currentTeamId = myTeams[0].id;
+  teamSetup.hidden = true;
+  teamBody.hidden = false;
+  teamSwitchBtn.hidden = myTeams.length < 2;
+
+  try {
+    const res = await fetch(`/api/teams/${currentTeamId}/table?weeksAgo=${weeksAgo}`);
+    if (!res.ok) throw new Error("Couldn't load that table.");
+    renderTeamTable(await res.json());
+  } catch (error) {
+    teamError.textContent = error.message;
+    teamError.hidden = false;
+  }
+}
+
+function renderTeamTable(data) {
+  teamError.hidden = true;
+  teamTitle.textContent = data.team.name;
+  teamRange.textContent = data.rangeLabel;
+  teamShareCodeBtn.textContent = `Code: ${data.team.joinCode}`;
+  teamLeaveBtn.textContent = data.team.memberCount === 1 ? "Delete team" : "Leave";
+
+  teamRowsEl.innerHTML = "";
+  teamEmpty.hidden = data.rows.length > 0;
+  if (data.rows.length === 0) {
+    teamEmpty.textContent = "Nobody's in this yet — share the code.";
+    return;
+  }
+
+  for (const row of data.rows) {
+    const el = document.createElement("div");
+    el.className = "team-row";
+    if (row.userId === currentUser?.id) el.classList.add("team-row--you");
+
+    const pos = document.createElement("span");
+    pos.className = "team-pos";
+    pos.textContent = row.position;
+
+    const name = document.createElement("span");
+    name.className = "team-name";
+    name.textContent = row.name;
+    const days = document.createElement("span");
+    days.className = "team-days";
+    days.textContent = `${formatQuantity(row.daysLogged)} ${row.daysLogged === 1 ? "day" : "days"} logged`;
+    name.appendChild(days);
+
+    const change = document.createElement("span");
+    change.className = "team-change";
+    if (row.changePct === null) {
+      // No weigh-ins is a different thing from no change, and the row says so
+      // rather than showing a zero nobody claimed.
+      change.classList.add("team-change--none");
+      change.textContent = "—";
+    } else {
+      change.classList.add(row.changePct < 0 ? "team-change--down" : "team-change--up");
+      // A typographic minus, to match the kilos underneath it — a hyphen and
+      // a minus sitting one above the other read as two different signs.
+      change.textContent =
+        `${row.changePct > 0 ? "+" : "−"}${Math.abs(row.changePct).toFixed(1)}%`;
+      const kg = document.createElement("span");
+      kg.className = "team-change-kg";
+      // The kilos are shown in the viewer's own units — a table is compared
+      // in percentages, but the figure beside it should read the way the rest
+      // of their app does.
+      kg.textContent =
+        `${row.changeKg > 0 ? "+" : "−"}${kgToDisplay(Math.abs(row.changeKg))} ${weightUnit()}`;
+      change.appendChild(kg);
+    }
+
+    el.append(pos, name, change);
+    teamRowsEl.appendChild(el);
+  }
+}
+
+async function teamRequest(path, options, onDone) {
+  teamError.hidden = true;
+  try {
+    const res = await fetch(path, {
+      headers: { "Content-Type": "application/json" },
+      ...options,
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : "That didn't work.");
+    haptic();
+    onDone?.(body);
+    await loadTeamTable();
+  } catch (error) {
+    teamError.textContent = error.message;
+    teamError.hidden = false;
+  }
+}
+
+teamCreateBtn.addEventListener("click", () => {
+  const name = teamNameInput.value.trim();
+  if (!name) {
+    teamError.textContent = "Give the team a name.";
+    teamError.hidden = false;
+    return;
+  }
+  teamRequest("/api/teams", { method: "POST", body: JSON.stringify({ name }) }, (team) => {
+    teamNameInput.value = "";
+    currentTeamId = team.id;
+    showToast(`${team.name} created — share the code ${team.joinCode}`);
+  });
+});
+
+teamJoinBtn.addEventListener("click", () => {
+  const code = teamCodeInput.value.trim();
+  if (!code) {
+    teamError.textContent = "Type the code you were given.";
+    teamError.hidden = false;
+    return;
+  }
+  teamRequest("/api/teams/join", { method: "POST", body: JSON.stringify({ code }) }, (team) => {
+    teamCodeInput.value = "";
+    currentTeamId = team.id;
+    showToast(`Joined ${team.name}`);
+  });
+});
+
+teamShareCodeBtn.addEventListener("click", async () => {
+  const team = myTeams.find((t) => t.id === currentTeamId);
+  if (!team) return;
+  const text = `Join my team on Man Vs Fat with the code ${team.joinCode}`;
+  // The OS share sheet where there is one, the clipboard otherwise — same
+  // path a shared meal takes.
+  try {
+    if (navigator.share) await navigator.share({ text });
+    else {
+      await navigator.clipboard.writeText(team.joinCode);
+      showToast("Code copied");
+    }
+  } catch {
+    // A share the user backed out of is not a failure worth reporting.
+  }
+});
+
+teamSwitchBtn.addEventListener("click", () => {
+  if (myTeams.length < 2) return;
+  const index = myTeams.findIndex((t) => t.id === currentTeamId);
+  currentTeamId = myTeams[(index + 1) % myTeams.length].id;
+  loadTeamTable();
+});
+
+teamLeaveBtn.addEventListener("click", () => {
+  const team = myTeams.find((t) => t.id === currentTeamId);
+  if (!team) return;
+  const last = team.memberCount === 1;
+  const question = last
+    ? `Delete ${team.name}? You're the only one in it, so it goes for good.`
+    : `Leave ${team.name}?`;
+  if (!window.confirm(question)) return;
+
+  teamRequest(
+    `/api/teams/${team.id}/members/${currentUser.id}`,
+    { method: "DELETE" },
+    () => {
+      currentTeamId = null;
+      showToast(last ? "Team deleted" : `Left ${team.name}`);
+    },
+  );
+});
 
 /**
  * The week as a form guide.

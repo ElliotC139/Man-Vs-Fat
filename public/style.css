@@ -5212,3 +5212,75 @@ body.hide-entry-times .entry-time {
 /* Before the first thing is eaten there is nothing to fill, and an empty
    track reads better than a bar claiming zero progress. */
 .fasting-fill--waiting { background: var(--hairline); }
+
+/* ── The team table ────────────────────────────────────────────────────────
+   A league table, so it reads as rows of a table: a position, a name, and the
+   two figures that decide the order. */
+.team-setup-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.team-setup-row input {
+  flex: 1;
+  margin: 0;
+}
+.team-setup-row button {
+  flex: 0 0 auto;
+  align-self: stretch;
+}
+.team-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+.team-row {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--hairline);
+}
+.team-row:last-child { border-bottom: none; }
+/* The viewer's own row, so a table of twelve names can be read at a glance. */
+.team-row--you {
+  background: rgba(31, 157, 82, 0.06);
+  border-radius: var(--radius-sm);
+  border-bottom-color: transparent;
+}
+.team-pos {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.team-name {
+  font-size: 0.92rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.team-days {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+.team-change {
+  font-size: 0.92rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.team-change--down { color: var(--pitch-dark); }
+.team-change--up { color: var(--amber); }
+.team-change--none { color: var(--muted); font-weight: 400; }
+.team-change-kg {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted);
+}

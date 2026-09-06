@@ -387,6 +387,42 @@
           </div>
         </section>
 
+        <section id="team-card" class="card" data-module="week:team" data-module-name="Your team">
+          <div class="section-header">
+            <h2 id="team-title">Your team</h2>
+            <span id="team-range" class="muted averages-window"></span>
+          </div>
+
+          <!-- Nobody in a team sees this; nobody in one sees the setup. -->
+          <div id="team-setup">
+            <p class="muted">
+              A table for a group of you, over the same week. Everyone sees each other's
+              name, how many days they logged, and how much weight they changed as a
+              percentage. Nothing else crosses — not your food, not what you weigh, not
+              what you're aiming at.
+            </p>
+            <div class="team-setup-row">
+              <input type="text" id="team-name" maxlength="60" placeholder="Name your team" />
+              <button type="button" id="team-create" class="ghost-sm">Create</button>
+            </div>
+            <div class="team-setup-row">
+              <input type="text" id="team-code" maxlength="20" placeholder="Or type a join code" autocapitalize="characters" />
+              <button type="button" id="team-join" class="ghost-sm">Join</button>
+            </div>
+          </div>
+
+          <div id="team-body" hidden>
+            <div id="team-rows" class="team-rows"></div>
+            <p id="team-empty" class="muted" hidden></p>
+            <div class="export-row">
+              <button type="button" id="team-share-code" class="ghost-sm"></button>
+              <button type="button" id="team-switch" class="ghost-sm" hidden>Switch team</button>
+              <button type="button" id="team-leave" class="ghost-sm">Leave</button>
+            </div>
+          </div>
+          <p id="team-error" class="error" hidden></p>
+        </section>
+
         <section id="budget-widget" class="card budget-widget" data-module="week:budget" data-module-name="Calorie budget" hidden>
           <div class="budget-header">
             <span class="budget-title">Calorie balance</span>
