@@ -29,6 +29,7 @@ function result(partial: Partial<FoodSearchResult>): FoodSearchResult {
     name: partial.name ?? "Thing",
     brand: partial.brand ?? null,
     servingLabel: partial.servingLabel ?? null,
+    servingUnit: partial.servingUnit ?? null,
     barcode: partial.barcode ?? null,
     per100g: partial.per100g ?? null,
     servingGrams: partial.servingGrams ?? null,

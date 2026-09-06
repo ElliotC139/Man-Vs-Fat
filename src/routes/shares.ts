@@ -49,7 +49,10 @@ const shareItemSchema = z.object({
   proteinG: z.number().min(0).max(1000).nullable().optional(),
   carbsG: z.number().min(0).max(1000).nullable().optional(),
   fatG: z.number().min(0).max(1000).nullable().optional(),
-  quantity: z.number().min(0.25).max(50).optional(),
+  quantity: z.number().min(0.01).max(5000).optional(),
+  // What one of them is, so a shared "2 slices" arrives as two slices rather
+  // than as a number with nothing attached.
+  unitLabel: z.string().trim().max(20).nullable().optional(),
 });
 
 type ShareItem = z.infer<typeof shareItemSchema>;
@@ -73,7 +76,10 @@ sharesRouter.post("/", requireAuth, async (req, res) => {
   const entries = await prisma.entry.findMany({
     where: { id: { in: entryIds }, matchWeek: { userId: req.userId! } },
     orderBy: { timestamp: "asc" },
-    select: { label: true, kcal: true, proteinG: true, carbsG: true, fatG: true, quantity: true },
+    select: {
+      label: true, kcal: true, proteinG: true, carbsG: true, fatG: true,
+      quantity: true, unitLabel: true,
+    },
   });
   if (entries.length === 0) {
     res.status(404).json({ error: "None of those entries were found." });
@@ -87,6 +93,7 @@ sharesRouter.post("/", requireAuth, async (req, res) => {
     carbsG: entry.carbsG,
     fatG: entry.fatG,
     quantity: entry.quantity,
+    unitLabel: entry.unitLabel,
   }));
 
   const share = await prisma.foodShare.create({
@@ -177,6 +184,7 @@ sharesRouter.post("/:token/accept", requireAuth, async (req, res) => {
           label: item.label,
           kcal: item.kcal,
           quantity: item.quantity ?? 1,
+          unitLabel: item.unitLabel ?? null,
           proteinG: item.proteinG ?? null,
           carbsG: item.carbsG ?? null,
           fatG: item.fatG ?? null,

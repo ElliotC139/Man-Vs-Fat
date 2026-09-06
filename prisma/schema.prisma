@@ -544,6 +544,15 @@ model Entry {
   // or not anything ever sets a quantity, and changing it here rescales kcal
   // and the macros below proportionally (see routes/entries.ts).
   quantity    Float     @default(1)
+  // What one of those is: "g", "ml", "slice", "biscuit", "serving". Null means
+  // the entry is a plain multiple of itself, which is every row logged before
+  // this column existed and every estimate that never named a unit — those
+  // still read as "x2".
+  //
+  // This is what makes "make that 40g instead of 30g" answerable. Without it a
+  // quantity is a number with nothing attached, so the only honest thing the
+  // edit form could offer was "how many of these", never "how much".
+  unitLabel   String?
   // Grams for the whole entry, same convention as kcal. Null means "not
   // known" rather than zero, which matters: every entry logged before macros
   // existed has null here, and a day containing one of those can't honestly

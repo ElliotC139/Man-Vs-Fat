@@ -60,6 +60,8 @@ const createEntrySchema = z.object({
   // lower than the macros' — a three-figure salt value is sodium in
   // milligrams that escaped conversion, and should be rejected, not stored.
   directSaltG: z.coerce.number().min(0).max(100).optional(),
+  directQuantity: z.coerce.number().min(0.01).max(5000).optional(),
+  directUnitLabel: z.string().trim().max(20).optional(),
 });
 
 /**
@@ -87,6 +89,7 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
     text, timestamp, lastWeek, date, mealType: chosenMeal,
     directKcal, directProteinG, directCarbsG, directFatG,
     directFibreG, directSugarG, directSatFatG, directSaltG,
+    directQuantity, directUnitLabel,
   } = parsed.data;
   const rawPhoto = req.file;
 
@@ -143,7 +146,7 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
     }
   }
 
-  const items: EstimateItem[] = directKcal
+  const items: (EstimateItem & { quantity?: number; unitLabel?: string | null })[] = directKcal
     ? [
         {
           label: text?.trim() || "Scanned item",
@@ -155,6 +158,8 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
           sugarG: directSugarG ?? null,
           satFatG: directSatFatG ?? null,
           saltG: directSaltG ?? null,
+          quantity: directQuantity ?? 1,
+          unitLabel: directUnitLabel ?? null,
         },
       ]
     : await estimateMeal({
@@ -187,6 +192,8 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
           sugarG: item.sugarG,
           satFatG: item.satFatG,
           saltG: item.saltG,
+          quantity: item.quantity ?? 1,
+          unitLabel: item.unitLabel ?? null,
           imageUrl,
           mealType,
           mealTypeSet,
@@ -268,7 +275,10 @@ const confirmSchema = z.object({
         sugarG: z.number().min(0).max(1000).nullable().optional(),
         satFatG: z.number().min(0).max(1000).nullable().optional(),
         saltG: z.number().min(0).max(100).nullable().optional(),
-        quantity: z.number().min(0.25).max(50).optional(),
+        // Grams and millilitres run into the hundreds, so the ceiling has to
+        // be far higher than a count of slices ever needs.
+        quantity: z.number().min(0.01).max(5000).optional(),
+        unitLabel: z.string().trim().max(20).nullable().optional(),
       }),
     )
     .min(1)
@@ -323,6 +333,7 @@ entriesRouter.post("/confirm", async (req, res) => {
           label: item.label,
           kcal: item.kcal,
           quantity: item.quantity ?? 1,
+          unitLabel: item.unitLabel ?? null,
           proteinG: item.proteinG ?? null,
           carbsG: item.carbsG ?? null,
           fatG: item.fatG ?? null,
@@ -354,9 +365,12 @@ const updateEntrySchema = z.object({
   // edits because a meal slot alone doesn't say which side of the Monday 17:00
   // match-week boundary it falls on — a Monday snack could be either side of it.
   hour: z.number().int().min(0).max(23).optional(),
-  // How many were eaten. Changing this rescales kcal from the old quantity,
-  // so "two of those" is one tap rather than re-describing the food.
-  quantity: z.number().min(0.25).max(50).optional(),
+  // How much was eaten. Changing this rescales kcal from the old quantity, so
+  // "two of those" — or "40g rather than 30g" — is one tap rather than
+  // re-describing the food.
+  quantity: z.number().min(0.01).max(5000).optional(),
+  // What one of them is. Null clears it back to a bare multiplier.
+  unitLabel: z.string().trim().max(20).nullable().optional(),
   // Typed over an estimate the same way kcal can be. Null clears a figure
   // back to "not known" rather than setting it to zero.
   proteinG: z.number().min(0).max(1000).nullable().optional(),
@@ -518,6 +532,7 @@ entriesRouter.post("/:id/repeat", async (req, res) => {
       label: existing.label,
       kcal: existing.kcal,
       quantity: existing.quantity,
+      unitLabel: existing.unitLabel,
       proteinG: existing.proteinG,
       carbsG: existing.carbsG,
       fibreG: existing.fibreG,
@@ -598,6 +613,7 @@ entriesRouter.post("/copy-day", async (req, res) => {
           label: entry.label,
           kcal: entry.kcal,
           quantity: entry.quantity,
+          unitLabel: entry.unitLabel,
           proteinG: entry.proteinG,
           carbsG: entry.carbsG,
           fatG: entry.fatG,

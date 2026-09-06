@@ -21,6 +21,7 @@ function product(overrides: Partial<FoodSearchResult> = {}): FoodSearchResult {
     per100g: { kcal: 553, protein: 7.7, carbs: 57.6, fat: 32.2 },
     servingGrams: 30,
     servingLabel: "15 pieces (30 g)",
+    servingUnit: null,
     portion: null,
     labelKey: null,
     timesLogged: 0,
