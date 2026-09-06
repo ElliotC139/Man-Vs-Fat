@@ -446,6 +446,50 @@ describe("POST /api/meals/from-entries", () => {
   });
 });
 
+describe("logging a meal groups the rows it writes", () => {
+  it("tags a template's rows with one group id and the meal's name", async () => {
+    // A meal writes each item separately, which is right — but the diary needs
+    // to know they were one action so it can draw them as one line.
+    const cookie = await signUp("alice");
+    const meal = await jsonOf<MealBody>(await post("/api/meals", cookie, BREAKFAST));
+
+    await post(`/api/meals/${meal.id}/log`, cookie, {});
+
+    const groupIds = new Set(state.entries.map((e: any) => e.mealGroupId));
+    expect(groupIds.size).toBe(1);
+    expect([...groupIds][0]).toBeTruthy();
+    expect(state.entries.every((e: any) => e.mealGroupName === BREAKFAST.name)).toBe(true);
+  });
+
+  it("leaves a recipe ungrouped, since it is already one row", async () => {
+    // A chevron over a single item would be a lie about what is under it.
+    const cookie = await signUp("alice");
+    const meal = await jsonOf<MealBody>(
+      await post("/api/meals", cookie, { ...BREAKFAST, kind: "recipe", servings: 4 }),
+    );
+
+    await post(`/api/meals/${meal.id}/log`, cookie, {});
+
+    expect(state.entries).toHaveLength(1);
+    expect(state.entries[0]!.mealGroupId).toBeNull();
+  });
+
+  it("keeps the name it had when logged, not the one it has now", async () => {
+    const cookie = await signUp("alice");
+    const meal = await jsonOf<MealBody>(await post("/api/meals", cookie, BREAKFAST));
+    await post(`/api/meals/${meal.id}/log`, cookie, {});
+
+    await fetch(`${baseUrl}/api/meals/${meal.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ name: "Something else entirely" }),
+    });
+
+    // Renaming a saved meal must not rewrite what the diary says happened.
+    expect(state.entries.every((e: any) => e.mealGroupName === BREAKFAST.name)).toBe(true);
+  });
+});
+
 describe("PATCH /api/meals/:id", () => {
   it("replaces the item list wholesale rather than merging it", async () => {
     const cookie = await signUp("alice");

@@ -1185,8 +1185,16 @@
         <section id="meals-section">
           <div class="section-header">
             <h2>Meals &amp; recipes</h2>
-            <button type="button" id="meal-new-btn" class="ghost-sm">+ New</button>
+            <div class="section-header-side">
+              <label class="ghost-sm meal-scan-btn" id="meal-scan-label">
+                Scan a recipe
+                <input type="file" id="meal-scan-photo" accept="image/*" capture="environment" />
+              </label>
+              <button type="button" id="meal-new-btn" class="ghost-sm">+ New</button>
+            </div>
           </div>
+          <p id="meal-scan-status" class="muted" hidden></p>
+          <p id="meal-scan-error" class="error" hidden></p>
           <form id="meal-editor" class="card meal-editor" hidden>
             <label for="meal-name">Name</label>
             <input type="text" id="meal-name" maxlength="80" placeholder="e.g. Usual breakfast" />

@@ -474,6 +474,19 @@ model Entry {
   // number), "meal" (copied from a saved meal or recipe). Defaults to "ai"
   // because every row that predates this column was AI-estimated.
   source      String    @default("ai")
+  // Which logging of a saved meal produced this row, and what that meal was
+  // called at the time.
+  //
+  // A "meal" logs each of its items as its own entry, which is right — they
+  // are separate foods and stay separately editable — but it buries the day
+  // under four rows where the person did one thing. These two let the diary
+  // draw them as one collapsed line that opens.
+  //
+  // Self-contained rather than a foreign key: deleting or renaming the saved
+  // meal afterwards must not change what the diary says happened, and a row
+  // pointing at a deleted meal would have nothing to show.
+  mealGroupId   String?
+  mealGroupName String?
   edited      Boolean   @default(false)
   // How many of this item were eaten. kcal is always the *total* for the
   // whole entry, not one unit — so the diary keeps summing straight whether
