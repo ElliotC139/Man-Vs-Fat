@@ -156,6 +156,18 @@
           <p id="today-pending" class="error" hidden></p>
         </section>
 
+        <!-- Only ever present when there is a proposal to answer, so it isn't
+             a permanent fixture of the screen. -->
+        <section id="target-review-card" class="card target-review-card" hidden>
+          <h2 class="target-review-title">Your target could move</h2>
+          <p id="target-review-body" class="target-review-body"></p>
+          <div class="target-review-actions">
+            <button type="button" id="target-review-accept"></button>
+            <button type="button" id="target-review-decline" class="ghost">Keep mine</button>
+          </div>
+          <p id="target-review-error" class="error" hidden></p>
+        </section>
+
         <section id="what-now-card" class="card what-now-card" data-module="today:what-now" data-module-name="What still fits" hidden>
           <button
           type="button"
