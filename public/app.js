@@ -498,7 +498,7 @@ function renderDailyTotals(days, whoopDailyBurn) {
 
 function renderEntries(entries) {
   entryListEl.innerHTML = "";
-  weekSelectToggle.hidden = entries.length < 2;
+  weekSelectToggle.hidden = entries.length === 0;
 
   if (entries.length === 0) {
     // Left empty on purpose — the message is supplied by
@@ -1216,6 +1216,7 @@ function populateSettings(user) {
   currentBurnChoice = user.burnSource ?? "measured";
   renderBurnChoices();
   renderMealTagSettings(user);
+  renderBufferSettings(user);
   renderMealTagRow();
   settingsUsername.textContent = user.username;
   settingsReminderHour.value = user.reminderHour === null ? "" : String(user.reminderHour);
@@ -1288,6 +1289,10 @@ async function showApp(user, { firstRun = false } = {}) {
   refreshOfflineBanner();
   flushQueue();
   loadWater();
+  // Last, and only once there is a diary to add to: someone who followed a
+  // shared link straight into a sign-up lands on the sheet rather than losing
+  // the link to the redirect.
+  openPendingShare();
 }
 
 // WHOOP's OAuth callback redirects back to "/" with a query param — surface
@@ -5634,6 +5639,100 @@ function initSettingsSections() {
   }
 }
 
+// ── The estimate buffer ─────────────────────────────────────────────────────
+//
+// A guessed estimate gets a percentage added on top, because descriptions of
+// food run low. It was 12% for everyone; how far anyone's own logging misses
+// is a thing only they can know, so it is theirs to set — including varying it
+// per item, which is closer to how the error actually behaves.
+const bufferModeFixed = document.getElementById("buffer-mode-fixed");
+const bufferModeRandom = document.getElementById("buffer-mode-random");
+const bufferFixedRow = document.getElementById("buffer-fixed-row");
+const bufferRandomRow = document.getElementById("buffer-random-row");
+const bufferPct = document.getElementById("buffer-pct");
+const bufferMinPct = document.getElementById("buffer-min-pct");
+const bufferMaxPct = document.getElementById("buffer-max-pct");
+const bufferNote = document.getElementById("buffer-note");
+const bufferError = document.getElementById("buffer-error");
+
+let bufferMode = "fixed";
+
+function renderBufferSettings(user) {
+  const buffer = user.kcalBuffer ?? { mode: "fixed", pct: 12, minPct: 0, maxPct: 15 };
+  bufferMode = buffer.mode === "random" ? "random" : "fixed";
+  bufferPct.value = String(buffer.pct);
+  bufferMinPct.value = String(buffer.minPct);
+  bufferMaxPct.value = String(buffer.maxPct);
+  paintBufferMode();
+}
+
+function paintBufferMode() {
+  bufferModeFixed.classList.toggle("units-btn--active", bufferMode === "fixed");
+  bufferModeRandom.classList.toggle("units-btn--active", bufferMode === "random");
+  bufferFixedRow.hidden = bufferMode !== "fixed";
+  bufferRandomRow.hidden = bufferMode !== "random";
+
+  // Worked as an example rather than described, because "12%" means nothing
+  // until you see what it does to a number you recognise.
+  const example = 500;
+  if (bufferMode === "random") {
+    const lo = Math.round(example * (1 + Number(bufferMinPct.value || 0) / 100));
+    const hi = Math.round(example * (1 + Number(bufferMaxPct.value || 0) / 100));
+    bufferNote.textContent = `A 500 kcal guess would be logged as somewhere between ${lo} and ${hi}.`;
+  } else {
+    const pct = Number(bufferPct.value || 0);
+    bufferNote.textContent = pct === 0
+      ? "A 500 kcal guess would be logged as 500 — the buffer is off."
+      : `A 500 kcal guess would be logged as ${Math.round(example * (1 + pct / 100))}.`;
+  }
+}
+
+async function saveBufferSettings() {
+  bufferError.hidden = true;
+  const patch = {
+    kcalBufferMode: bufferMode,
+    kcalBufferPct: clampBufferInput(bufferPct, 12),
+    kcalBufferMinPct: clampBufferInput(bufferMinPct, 0),
+    kcalBufferMaxPct: clampBufferInput(bufferMaxPct, 15),
+  };
+  try {
+    const res = await fetch("/api/auth/me", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) throw new Error();
+    currentUser = await res.json();
+    renderBufferSettings(currentUser);
+  } catch {
+    bufferError.textContent = "Couldn't save that — please try again.";
+    bufferError.hidden = false;
+  }
+}
+
+/** Keeps a typo out of the diary: blank, negative and 900 all become sane. */
+function clampBufferInput(input, fallback) {
+  const value = Number(input.value);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(50, Math.max(0, Math.round(value)));
+}
+
+for (const [btn, mode] of [[bufferModeFixed, "fixed"], [bufferModeRandom, "random"]]) {
+  btn.addEventListener("click", () => {
+    bufferMode = mode;
+    paintBufferMode();
+    haptic();
+    saveBufferSettings();
+  });
+}
+
+for (const input of [bufferPct, bufferMinPct, bufferMaxPct]) {
+  // The worked example follows every keystroke; the save waits for blur, so
+  // typing "15" isn't three saves.
+  input.addEventListener("input", paintBufferMode);
+  input.addEventListener("blur", saveBufferSettings);
+}
+
 // ── The diary display settings ──────────────────────────────────────────────
 const settingShowTimes = document.getElementById("setting-show-times");
 const settingMealTags = document.getElementById("setting-meal-tags");
@@ -7584,6 +7683,8 @@ function renderSelectBar() {
   // re-logging a single thing in one tap.
   selectSaveMealBtn.disabled = count < 2;
   selectSaveMealBtn.title = count < 2 ? "Pick at least two items" : "";
+  // Sharing one thing is a perfectly ordinary thing to want to do, though.
+  selectShareBtn.disabled = count < 1;
 }
 
 todaySelectToggle.addEventListener("click", () => setSelectMode(!selectMode));
@@ -7677,6 +7778,180 @@ saveMealConfirm.addEventListener("click", async () => {
     saveMealError.hidden = false;
   } finally {
     saveMealConfirm.disabled = false;
+  }
+});
+
+// ── Sharing what you ate ────────────────────────────────────────────────────
+//
+// "Here's what I had, add it to yours" over WhatsApp used to mean typing it
+// out at the other end. Picking a few rows and sharing them makes a link;
+// whoever opens it sees the items and adds the lot to their own day in a tap.
+//
+// Only labels and figures cross — no photos, no notes, no times, no username.
+const selectShareBtn = document.getElementById("select-share");
+
+selectShareBtn.addEventListener("click", async () => {
+  if (selectedEntryIds.size === 0) return;
+  selectShareBtn.disabled = true;
+  try {
+    const res = await fetch("/api/shares", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entryIds: [...selectedEntryIds].sort((a, b) => a - b) }),
+    });
+    if (!res.ok) throw new Error();
+    const share = await res.json();
+
+    const text = `Here's what I had — tap to add it to your day: ${share.url}`;
+    // The OS share sheet is the whole point on a phone: it puts WhatsApp,
+    // Messages and the rest one tap away. Copying is the fallback for a
+    // desktop browser, or for someone who dismisses the sheet.
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Food from my diary", text });
+      } catch {
+        // Dismissing the OS sheet is a normal thing to do, not a failure —
+        // the link exists either way, so it goes to the clipboard instead.
+        await copyShareLink(share.url);
+      }
+    } else {
+      await copyShareLink(share.url);
+    }
+    setSelectMode(false);
+  } catch {
+    showToast("Couldn't make that link — please try again.");
+  } finally {
+    selectShareBtn.disabled = false;
+  }
+});
+
+async function copyShareLink(url) {
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast("Link copied — it works for 14 days");
+  } catch {
+    // Clipboard access is refused often enough (an insecure origin, a locked
+    // down browser) that failing silently would look like nothing happened.
+    showToast("Couldn't copy — the link is in the address bar");
+    window.prompt("Copy this link", url);
+  }
+}
+
+// ── Opening a link someone sent you ─────────────────────────────────────────
+const shareItemsSheet = document.getElementById("share-items-sheet");
+const shareItemsNote = document.getElementById("share-items-note");
+const shareItemsList = document.getElementById("share-items-list");
+const shareItemsTotal = document.getElementById("share-items-total");
+const shareItemsError = document.getElementById("share-items-error");
+const shareItemsAccept = document.getElementById("share-items-accept");
+const shareItemsDismiss = document.getElementById("share-items-dismiss");
+
+// Read once at startup: the token stays in hand across a sign-in, so someone
+// who follows a link without an account can sign up and still land on it.
+let pendingShareToken = shareTokenFromUrl();
+
+function shareTokenFromUrl() {
+  const match = window.location.pathname.match(/^\/s\/([A-Za-z0-9_-]+)$/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Shows a received share, once there is somebody to show it to.
+ *
+ * Called after sign-in rather than on load, because accepting writes to the
+ * recipient's own diary and there is no diary to write to until then.
+ */
+async function openPendingShare() {
+  if (!pendingShareToken) return;
+  const token = pendingShareToken;
+
+  try {
+    const res = await fetch(`/api/shares/${encodeURIComponent(token)}`);
+    if (!res.ok) throw new Error("That link has expired or doesn't exist.");
+    const share = await res.json();
+    if (!share.items?.length) throw new Error("There's nothing in that link.");
+
+    shareItemsError.hidden = true;
+    shareItemsNote.textContent = share.title
+      ? `${share.title} — ${share.items.length} ${share.items.length === 1 ? "item" : "items"}`
+      : `${share.items.length} ${share.items.length === 1 ? "item" : "items"} someone shared with you.`;
+
+    shareItemsList.innerHTML = "";
+    let total = 0;
+    for (const item of share.items) {
+      total += item.kcal ?? 0;
+      const row = document.createElement("div");
+      row.className = "entry-row";
+      const main = document.createElement("div");
+      main.className = "entry-main";
+      const label = document.createElement("div");
+      label.className = "entry-label";
+      label.textContent = item.label;
+      main.appendChild(label);
+      if (hasMacros({ proteinG: item.proteinG, carbsG: item.carbsG, fatG: item.fatG })) {
+        const macros = document.createElement("div");
+        macros.className = "entry-macros";
+        macros.textContent = macroLine({ proteinG: item.proteinG, carbsG: item.carbsG, fatG: item.fatG });
+        main.appendChild(macros);
+      }
+      const kcal = document.createElement("div");
+      kcal.className = "entry-kcal";
+      kcal.textContent = item.kcal === null ? "—" : `${item.kcal} kcal`;
+      row.append(main, kcal);
+      shareItemsList.appendChild(row);
+    }
+    shareItemsTotal.textContent = `Total: ${total.toLocaleString()} kcal`;
+    setModalOpen(shareItemsSheet, true);
+  } catch (error) {
+    showToast(error.message || "Couldn't open that link.");
+    clearPendingShare();
+  }
+}
+
+/** Takes the token out of the URL so a refresh doesn't reopen a sheet that
+ *  has already been answered. */
+function clearPendingShare() {
+  pendingShareToken = null;
+  if (window.location.pathname.startsWith("/s/")) {
+    window.history.replaceState({}, "", "/");
+  }
+}
+
+shareItemsDismiss.addEventListener("click", () => {
+  setModalOpen(shareItemsSheet, false);
+  clearPendingShare();
+});
+
+shareItemsAccept.addEventListener("click", async () => {
+  if (!pendingShareToken) return;
+  shareItemsAccept.disabled = true;
+  shareItemsError.hidden = true;
+  try {
+    const res = await fetch(`/api/shares/${encodeURIComponent(pendingShareToken)}/accept`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // Their day and their tag choice, not the sender's — this is their
+      // diary now.
+      body: JSON.stringify({ date: loggingDate() ?? undefined, mealType: chosenMealTag() }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(typeof body.error === "string" ? body.error : "Couldn't add those — please try again.");
+    }
+    const created = await res.json();
+    setModalOpen(shareItemsSheet, false);
+    clearPendingShare();
+    haptic();
+    showToast(
+      created.length === 1 ? "Added to your diary" : `${created.length} items added`,
+      { actionLabel: "Undo", onAction: () => undoEntries(created.map((e) => e.id)) },
+    );
+    refreshCurrentView();
+  } catch (error) {
+    shareItemsError.textContent = error.message;
+    shareItemsError.hidden = false;
+  } finally {
+    shareItemsAccept.disabled = false;
   }
 });
 
@@ -9136,9 +9411,9 @@ function renderTodayEntries(entries) {
   todayEntryCount.textContent = entries.length === 0
     ? ""
     : `${entries.length} ${entries.length === 1 ? "item" : "items"}`;
-  // Two is the floor: one item is a favourite, which the food library already
-  // re-logs in a tap.
-  todaySelectToggle.hidden = entries.length < 2;
+  // One item is enough to be worth sharing, even though it takes two to make
+  // a meal.
+  todaySelectToggle.hidden = entries.length === 0;
 
   if (entries.length === 0) {
     const empty = document.createElement("p");

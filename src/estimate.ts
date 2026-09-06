@@ -3,6 +3,7 @@ import { config } from "./config";
 import { recordError } from "./errorLog";
 import { clampMacrosToKcal } from "./macros";
 import { statesExplicitQuantity } from "./quantity";
+import { bufferMultiplier, resolveBuffer, type BufferSettings, type ResolvedBuffer } from "./kcalBuffer";
 import type { EstimateReference } from "./estimateGrounding";
 
 function round1(value: number | null): number | null {
@@ -78,6 +79,11 @@ export interface EstimateInput {
    * existed (see src/estimateGrounding.ts).
    */
   references?: EstimateReference[];
+  /**
+   * The account's under-reporting buffer settings. Absent reads as the fixed
+   * 12% the diary applied to everyone before this was a choice.
+   */
+  buffer?: BufferSettings | null;
 }
 
 export interface EstimateItem {
@@ -157,21 +163,22 @@ function referenceBlock(references: EstimateReference[]): string {
 }
 
 // Self-reported, casual food descriptions tend to skew low (portions rounded
-// down, sauces/oils/extras left unmentioned), so a fixed buffer is applied on
-// top of the model's raw guess rather than trusting it as a tight estimate.
+// down, sauces/oils/extras left unmentioned), so a buffer is applied on top of
+// the model's raw guess rather than trusting it as a tight estimate. How big
+// that buffer is, and whether it varies per item, is the user's own setting —
+// see kcalBuffer.ts.
 //
 // The same multiplier goes on the macros, not just the calories: the
 // under-reporting it corrects for is under-reported *food*, so the protein
 // and fat in that unmentioned splash of oil are missing too. Applying it to
 // one and not the other would also leave every entry's macros disagreeing
-// with its own calorie figure by 12%.
-const KCAL_BUFFER_MULTIPLIER = 1.12;
+// with its own calorie figure.
 
 // ...but only where there is under-reporting to correct. "10 pieces" and
 // "200g" are not portions rounded down, they are the amount, stated. Inflating
-// those by 12% isn't a correction for vagueness — it's a 12% error on the one
-// kind of entry the diary has no excuse for getting wrong, and it compounds
-// with any over-estimate the model has already made.
+// those isn't a correction for vagueness — it's an error on the one kind of
+// entry the diary has no excuse for getting wrong, and it compounds with any
+// over-estimate the model has already made.
 const NO_BUFFER = 1;
 
 /**
@@ -183,12 +190,15 @@ const NO_BUFFER = 1;
  * inside a black box, and the text check can't tell which item of several the
  * amount belonged to. Together they mean an entry only escapes the buffer when
  * a real quantity was written down and the model attached it to this item.
+ *
+ * Drawn per call rather than once per entry, so random mode gives three items
+ * logged together three different figures — which is the whole point of it.
  */
-function bufferFor(quantified: unknown, textHasQuantity: boolean): number {
-  return quantified === true && textHasQuantity ? NO_BUFFER : KCAL_BUFFER_MULTIPLIER;
+function bufferFor(quantified: unknown, textHasQuantity: boolean, buffer: ResolvedBuffer): number {
+  return quantified === true && textHasQuantity ? NO_BUFFER : bufferMultiplier(buffer);
 }
 
-function parseEstimateResponse(raw: string, textHasQuantity: boolean): EstimateResult {
+function parseEstimateResponse(raw: string, textHasQuantity: boolean, bufferSettings: ResolvedBuffer): EstimateResult {
   const cleaned = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   const parsed = JSON.parse(cleaned) as { items?: unknown };
 
@@ -203,7 +213,7 @@ function parseEstimateResponse(raw: string, textHasQuantity: boolean): EstimateR
       quantified?: unknown;
     };
     const label = typeof candidate.label === "string" && candidate.label.trim() ? candidate.label.trim() : "Unlabelled meal";
-    const buffer = bufferFor(candidate.quantified, textHasQuantity);
+    const buffer = bufferFor(candidate.quantified, textHasQuantity, bufferSettings);
     const kcalNumber = typeof candidate.kcal === "number" ? candidate.kcal : Number(candidate.kcal);
     const kcal = Number.isFinite(kcalNumber) ? Math.round(kcalNumber * buffer) : null;
 
@@ -252,6 +262,7 @@ export async function estimateMeal(input: EstimateInput): Promise<EstimateResult
 
   const attempts = ESTIMATE_RETRY_DELAYS_MS.length + 1;
   const textHasQuantity = statesExplicitQuantity(input.text);
+  const bufferSettings = resolveBuffer(input.buffer);
   let lastError: unknown;
 
   for (let attempt = 0; attempt < attempts; attempt++) {
@@ -269,7 +280,7 @@ export async function estimateMeal(input: EstimateInput): Promise<EstimateResult
       if (!textBlock || textBlock.type !== "text") {
         throw new Error("No text in model response");
       }
-      return parseEstimateResponse(textBlock.text, textHasQuantity);
+      return parseEstimateResponse(textBlock.text, textHasQuantity, bufferSettings);
     } catch (error) {
       lastError = error;
       console.error(`Estimate attempt ${attempt + 1}/${attempts} failed:`, error);

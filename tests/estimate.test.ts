@@ -174,6 +174,28 @@ describe("estimateMeal", () => {
     expect(content).toHaveLength(1);
   });
 
+  it("uses the account's own buffer rather than the old fixed 12%", async () => {
+    createMock.mockResolvedValueOnce(
+      textResponse({ items: [{ label: "Sandwich", kcal: 400, protein: 20, carbs: 45, fat: 14 }] }),
+    );
+
+    const result = await estimateMeal({ text: "a sandwich", buffer: { kcalBufferPct: 25 } });
+
+    // 400 * 1.25 = 500
+    expect(result[0]!.kcal).toBe(500);
+  });
+
+  it("applies nothing at all when the buffer is set to zero", async () => {
+    createMock.mockResolvedValueOnce(
+      textResponse({ items: [{ label: "Sandwich", kcal: 400, protein: 20, carbs: 45, fat: 14 }] }),
+    );
+
+    const result = await estimateMeal({ text: "a sandwich", buffer: { kcalBufferPct: 0 } });
+
+    expect(result[0]!.kcal).toBe(400);
+    expect(result[0]!.proteinG).toBe(20);
+  });
+
   it("only falls back to a manual-entry placeholder once every retry has failed", async () => {
     createMock.mockRejectedValue(new Error("ERR_STREAM_PREMATURE_CLOSE"));
 

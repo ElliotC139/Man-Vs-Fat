@@ -203,6 +203,9 @@ describe("POST /api/auth/signup", () => {
       // know what an unset slot falls back to.
       mealTagsEnabled: false,
       mealTagNames: { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner", snack: "Snack" },
+      // Resolved, not raw: a fresh account is running on the flat 12% the
+      // diary applied to everyone before the buffer was a setting.
+      kcalBuffer: { mode: "fixed", pct: 12, minPct: 0, maxPct: 15 },
       // Unset means measured, which is what the Today card did before this
       // became a choice.
       burnSource: "measured",
