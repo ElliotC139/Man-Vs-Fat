@@ -95,6 +95,33 @@ model User {
   //               rather than one "value" column plus a unit flag.
   // See resolveMacroTargets() in src/macros.ts, which is the only thing that
   // should read these.
+  // Which figures the diary shows under each entry and on the Today card, as
+  // a JSON array of keys ("protein", "fibre", "netCarbs"...). Null means the
+  // three the app has always shown, so an untouched account is unchanged.
+  //
+  // Deliberately separate from the targets below: wanting to *see* fibre and
+  // wanting to be *judged* on it are different asks, and tying them together
+  // meant the only way to watch a figure was to invent a target for it.
+  nutrientsShown     String?
+  // "net" reads a carb figure as carbohydrate minus fibre — the number a keto
+  // or low-carb diet actually counts. Null or "total" is the label's own
+  // figure, which is what every entry logged so far means.
+  carbMode           String?
+  // Gram targets for the nutrients that aren't energy macros, each with its
+  // own comparison. They are rarely wanted the same way round — fibre is a
+  // floor, salt and saturated fat are ceilings — so the op is per nutrient,
+  // same as the macros. Null means simply not tracked.
+  fibreTargetG       Int?
+  fibreOp            String?
+  sugarTargetG       Int?
+  sugarOp            String?
+  satFatTargetG      Int?
+  satFatOp           String?
+  // Grams of salt, not milligrams of sodium: UK labels state salt, and 6g is
+  // a number people recognise. Float because the target is small enough that
+  // whole grams would be a blunt instrument. Sodium is salt ÷ 2.5.
+  saltTargetG        Float?
+  saltOp             String?
   macroMode          String?
   // Null (or 0) means that macro simply isn't tracked, and it's left off the
   // diary entirely rather than shown against a target of nothing.
@@ -266,6 +293,10 @@ model FoodOverride {
   proteinG  Float?
   carbsG    Float?
   fatG      Float?
+  fibreG    Float?
+  sugarG    Float?
+  satFatG   Float?
+  saltG     Float?
   updatedAt DateTime @updatedAt
 
   @@unique([userId, labelKey])
@@ -501,6 +532,18 @@ model Entry {
   proteinG    Float?
   carbsG      Float?
   fatG        Float?
+  // The other half of a nutrition label, same convention as the macros above:
+  // grams for the whole entry, and null means "nobody worked it out" rather
+  // than zero. Every entry logged before these columns existed has null in all
+  // four, and the totals say so rather than quietly under-counting.
+  //
+  // Salt in grams (UK labels state salt, not sodium); saturated fat is part of
+  // fatG and sugar is part of carbsG, so none of these add to the calorie
+  // total — they are breakdowns of figures already there.
+  fibreG      Float?
+  sugarG      Float?
+  satFatG     Float?
+  saltG       Float?
   matchWeekId Int
   matchWeek   MatchWeek @relation(fields: [matchWeekId], references: [id])
   createdAt   DateTime  @default(now())
@@ -570,6 +613,10 @@ model SavedMealItem {
   proteinG    Float?
   carbsG      Float?
   fatG        Float?
+  fibreG      Float?
+  sugarG      Float?
+  satFatG     Float?
+  saltG       Float?
   sortOrder   Int       @default(0)
 
   @@index([savedMealId])

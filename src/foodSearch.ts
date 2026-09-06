@@ -40,6 +40,17 @@ export interface FoodMacros {
   protein: number | null;
   carbs: number | null;
   fat: number | null;
+  /**
+   * The rest of the label, where the source carries it. Optional rather than
+   * nullable-required: Open Food Facts publishes all four on most products,
+   * USDA publishes some, and the user's own library only has what was logged —
+   * "this source doesn't do fibre" and "this product has no fibre figure" are
+   * different facts and shouldn't collapse into the same null.
+   */
+  fibre?: number | null;
+  sugar?: number | null;
+  satFat?: number | null;
+  salt?: number | null;
 }
 
 export interface FoodSearchResult {
@@ -177,6 +188,19 @@ export function parseOffProduct(payload: unknown, barcode: string): FoodSearchRe
   return { ...result, id: `off:${barcode}`, barcode };
 }
 
+/**
+ * Milligrams of sodium to grams of salt.
+ *
+ * Salt is sodium chloride, of which sodium is roughly 39.3% by mass, so salt =
+ * sodium × 2.5. American sources report sodium in milligrams; UK labels state
+ * salt in grams, and that is the figure this app stores and shows, so the
+ * conversion happens once here rather than at every point of display.
+ */
+export function sodiumToSalt(sodiumMg: number | null | undefined): number | null {
+  if (sodiumMg === null || sodiumMg === undefined) return null;
+  return Math.round((sodiumMg / 1000) * 2.5 * 100) / 100;
+}
+
 /** Open Food Facts — packaged groceries, worldwide, keyed by barcode. */
 export function parseOffProducts(payload: unknown): FoodSearchResult[] {
   const products = (payload as { products?: unknown[] })?.products;
@@ -205,6 +229,12 @@ export function parseOffProducts(payload: unknown): FoodSearchResult[] {
         protein: num(nutriments["proteins_100g"]),
         carbs: num(nutriments["carbohydrates_100g"]),
         fat: num(nutriments["fat_100g"]),
+        fibre: num(nutriments["fiber_100g"]),
+        sugar: num(nutriments["sugars_100g"]),
+        satFat: num(nutriments["saturated-fat_100g"]),
+        // OFF publishes both; salt is what a UK label states, so it's
+        // preferred, with sodium converted where only that is present.
+        salt: num(nutriments["salt_100g"]) ?? sodiumToSalt(num(nutriments["sodium_100g"])),
       },
       servingGrams: num(p.serving_quantity) === null ? null : Math.round(num(p.serving_quantity)!),
       servingLabel: text(p.serving_size),
@@ -263,6 +293,13 @@ export function parseNutritionixInstant(payload: unknown): FoodSearchResult[] {
             protein: perHundred(num(item.nf_protein), grams),
             carbs: perHundred(num(item.nf_total_carbohydrate), grams),
             fat: perHundred(num(item.nf_total_fat), grams),
+            fibre: perHundred(num(item.nf_dietary_fiber), grams),
+            sugar: perHundred(num(item.nf_sugars), grams),
+            satFat: perHundred(num(item.nf_saturated_fat), grams),
+            // Nutritionix reports sodium in milligrams, the American
+            // convention. UK labels state salt, so it's converted once here
+            // rather than everywhere it's displayed.
+            salt: perHundred(sodiumToSalt(num(item.nf_sodium)), grams),
           }
         : null,
       servingGrams: grams === null ? null : Math.round(grams),
@@ -273,6 +310,10 @@ export function parseNutritionixInstant(payload: unknown): FoodSearchResult[] {
         protein: num(item.nf_protein),
         carbs: num(item.nf_total_carbohydrate),
         fat: num(item.nf_total_fat),
+        fibre: num(item.nf_dietary_fiber),
+        sugar: num(item.nf_sugars),
+        satFat: num(item.nf_saturated_fat),
+        salt: sodiumToSalt(num(item.nf_sodium)),
       },
       labelKey: null,
       timesLogged: 0,
@@ -302,6 +343,13 @@ export function parseNutritionixInstant(payload: unknown): FoodSearchResult[] {
             protein: perHundred(num(item.nf_protein), grams),
             carbs: perHundred(num(item.nf_total_carbohydrate), grams),
             fat: perHundred(num(item.nf_total_fat), grams),
+            fibre: perHundred(num(item.nf_dietary_fiber), grams),
+            sugar: perHundred(num(item.nf_sugars), grams),
+            satFat: perHundred(num(item.nf_saturated_fat), grams),
+            // Nutritionix reports sodium in milligrams, the American
+            // convention. UK labels state salt, so it's converted once here
+            // rather than everywhere it's displayed.
+            salt: perHundred(sodiumToSalt(num(item.nf_sodium)), grams),
           }
         : null,
       servingGrams: grams === null ? null : Math.round(grams),
@@ -312,6 +360,10 @@ export function parseNutritionixInstant(payload: unknown): FoodSearchResult[] {
         protein: num(item.nf_protein),
         carbs: num(item.nf_total_carbohydrate),
         fat: num(item.nf_total_fat),
+        fibre: num(item.nf_dietary_fiber),
+        sugar: num(item.nf_sugars),
+        satFat: num(item.nf_saturated_fat),
+        salt: sodiumToSalt(num(item.nf_sodium)),
       },
       labelKey: null,
       timesLogged: 0,
@@ -346,7 +398,18 @@ function round1(value: number): number {
  * standard numbers rather than by name, since the display names vary between
  * the datasets.
  */
-const USDA_NUTRIENTS = { kcal: "208", protein: "203", fat: "204", carbs: "205" };
+// USDA's own nutrient numbers, which are stable identifiers rather than names:
+// 291 fibre, 269 total sugars, 606 saturated fat, 307 sodium (mg).
+const USDA_NUTRIENTS = {
+  kcal: "208",
+  protein: "203",
+  fat: "204",
+  carbs: "205",
+  fibre: "291",
+  sugar: "269",
+  satFat: "606",
+  sodium: "307",
+};
 
 export function parseUsdaSearch(payload: unknown): FoodSearchResult[] {
   const foods = (payload as { foods?: unknown[] })?.foods;
@@ -383,6 +446,10 @@ export function parseUsdaSearch(payload: unknown): FoodSearchResult[] {
         protein: byNumber.get(USDA_NUTRIENTS.protein) ?? null,
         carbs: byNumber.get(USDA_NUTRIENTS.carbs) ?? null,
         fat: byNumber.get(USDA_NUTRIENTS.fat) ?? null,
+        fibre: byNumber.get(USDA_NUTRIENTS.fibre) ?? null,
+        sugar: byNumber.get(USDA_NUTRIENTS.sugar) ?? null,
+        satFat: byNumber.get(USDA_NUTRIENTS.satFat) ?? null,
+        salt: sodiumToSalt(byNumber.get(USDA_NUTRIENTS.sodium) ?? null),
       },
       servingGrams: null,
       servingLabel: null,
@@ -413,6 +480,10 @@ export interface LibraryRow {
   proteinG: number | null;
   carbsG: number | null;
   fatG: number | null;
+  fibreG?: number | null;
+  sugarG?: number | null;
+  satFatG?: number | null;
+  saltG?: number | null;
   count: number;
 }
 
@@ -446,6 +517,10 @@ export function searchLibrary(rows: LibraryRow[], query: string, limit: number):
         protein: row.proteinG,
         carbs: row.carbsG,
         fat: row.fatG,
+        fibre: row.fibreG ?? null,
+        sugar: row.sugarG ?? null,
+        satFat: row.satFatG ?? null,
+        salt: row.saltG ?? null,
       },
       labelKey: normalizeLabel(row.label),
       timesLogged: row.count,

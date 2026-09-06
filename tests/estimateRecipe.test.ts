@@ -14,6 +14,9 @@ vi.mock("../src/config", () => ({
 
 import { estimateRecipeFromPhoto } from "../src/estimateRecipe";
 
+/** What the rest of the label reads as when the photo's reply omits it. */
+const NO_NUTRIENTS = { fibreG: null, sugarG: null, satFatG: null, saltG: null };
+
 function textResponse(json: unknown) {
   return { content: [{ type: "text", text: JSON.stringify(json) }] };
 }
@@ -40,8 +43,8 @@ describe("estimateRecipeFromPhoto", () => {
     expect(draft.name).toBe("Chilli con carne");
     expect(draft.servings).toBe(4);
     expect(draft.items).toEqual([
-      { label: "500g beef mince", kcal: 1150, proteinG: 100, carbsG: 0, fatG: 82 },
-      { label: "400g tinned tomatoes", kcal: 76, proteinG: 4, carbsG: 12, fatG: 1 },
+      { label: "500g beef mince", kcal: 1150, proteinG: 100, carbsG: 0, fatG: 82, ...NO_NUTRIENTS },
+      { label: "400g tinned tomatoes", kcal: 76, proteinG: 4, carbsG: 12, fatG: 1, ...NO_NUTRIENTS },
     ]);
   });
 
@@ -69,6 +72,22 @@ describe("estimateRecipeFromPhoto", () => {
 
     const draft = await estimateRecipeFromPhoto("x");
     expect(draft.items.map((i) => i.label)).toEqual(["Carrots"]);
+  });
+
+  it("caps a saturated fat figure at the fat it is part of", async () => {
+    // Eight figures per line is more room to be inconsistent, and a line
+    // claiming more saturated fat than fat is not a thing a food can be.
+    createMock.mockResolvedValueOnce(
+      textResponse({
+        name: "Fry-up",
+        servings: 1,
+        items: [{ label: "Butter", kcal: 100, fat: 11, satFat: 20, carbs: 0, sugar: 5 }],
+      }),
+    );
+
+    const draft = await estimateRecipeFromPhoto("x");
+    expect(draft.items[0]!.satFatG).toBe(11);
+    expect(draft.items[0]!.sugarG).toBe(0);
   });
 
   it("returns no items when the photo isn't a recipe, rather than inventing one", async () => {

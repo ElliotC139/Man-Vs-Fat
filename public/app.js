@@ -626,7 +626,7 @@ function renderMealGroup(group, container) {
   // The same macro line an entry row gets, added up. A collapsed meal that
   // showed only calories asked you to open it to answer "how much protein was
   // breakfast?" — which is most of what collapsing was meant to save.
-  if (currentUser?.macroTargets && group.entries.some(hasMacros)) {
+  if (showsFigures() && group.entries.some(hasMacros)) {
     const macros = document.createElement("div");
     macros.className = "entry-macros";
     macros.textContent = macroLine(sumMacros(group.entries));
@@ -756,7 +756,7 @@ function renderEntryRow(entry) {
 
   // Only shown once macros are switched on, and only for entries that have
   // them — the back catalogue stays exactly as it looked before.
-  if (currentUser?.macroTargets && hasMacros(entry)) {
+  if (showsFigures() && hasMacros(entry)) {
     const macros = document.createElement("div");
     macros.className = "entry-macros";
     macros.textContent = macroLine(entry);
@@ -1302,6 +1302,7 @@ settingsSave.addEventListener("click", async () => {
         // unit system, unlike every other figure on this form.
         dailyCalorieTarget: settingsCalorieTarget.value === "" ? null : Number(settingsCalorieTarget.value),
         ...macroSettingsPayload(),
+        ...nutrientSettingsPayload(),
         reminderHour: settingsReminderHour.value === "" ? null : Number(settingsReminderHour.value),
       }),
     });
@@ -1376,6 +1377,7 @@ function populateSettings(user) {
   }
   settingsCalorieTarget.value = user.dailyCalorieTarget ?? "";
   populateMacroSettings(user);
+  populateNutrientSettings(user);
   settingsEmail.value = user.email ?? "";
   renderSecuritySection(user);
   deleteConfirmInput.value = "";
@@ -2186,6 +2188,10 @@ async function fetchBarcode(barcode) {
         protein: product.per100g?.protein ?? null,
         carbs: product.per100g?.carbs ?? null,
         fat: product.per100g?.fat ?? null,
+        fibre: product.per100g?.fibre ?? null,
+        sugar: product.per100g?.sugar ?? null,
+        satFat: product.per100g?.satFat ?? null,
+        salt: product.per100g?.salt ?? null,
       },
       defaultServing: product.servingGrams ?? null,
     };
@@ -2360,6 +2366,14 @@ function normaliseConfirmItem(item) {
     protein: item.proteinG ?? item.protein ?? null,
     carbs: item.carbsG ?? item.carbs ?? null,
     fat: item.fatG ?? item.fat ?? null,
+    // Carried rather than shown: the sheet only offers the three macros to
+    // edit, but the rest of the label came back with the estimate and has to
+    // reach the diary. Dropping them here is exactly how the meal tag and the
+    // logging date were once lost.
+    fibre: item.fibreG ?? item.fibre ?? null,
+    sugar: item.sugarG ?? item.sugar ?? null,
+    satFat: item.satFatG ?? item.satFat ?? null,
+    salt: item.saltG ?? item.salt ?? null,
     quantity: item.quantity ?? 1,
     // Set only for packet items: per-100g figures plus the serving size, so
     // changing the grams rescales calories and macros off the real label
@@ -2384,6 +2398,12 @@ function applyPer100(item) {
   item.protein = scale(item.per100.protein);
   item.carbs = scale(item.per100.carbs);
   item.fat = scale(item.per100.fat);
+  // The rest of the label rescales with everything else — a packet's fibre is
+  // per 100g the same way its protein is.
+  item.fibre = scale(item.per100.fibre ?? null);
+  item.sugar = scale(item.per100.sugar ?? null);
+  item.satFat = scale(item.per100.satFat ?? null);
+  item.salt = scale(item.per100.salt ?? null);
 }
 
 function renderConfirmItems() {
@@ -2391,7 +2411,7 @@ function renderConfirmItems() {
   // Macro fields would be pure clutter for someone tracking calories alone,
   // so they appear when macros are on or when there are figures to show.
   const anyMacros = confirmState.items.some((i) => i.protein !== null || i.carbs !== null || i.fat !== null);
-  const showMacros = Boolean(currentUser?.macroTargets) || anyMacros;
+  const showMacros = showsFigures() || anyMacros;
 
   confirmState.items.forEach((item, index) => {
     const row = document.createElement("div");
@@ -2569,6 +2589,10 @@ confirmSaveBtn.addEventListener("click", async () => {
           proteinG: i.protein,
           carbsG: i.carbs,
           fatG: i.fat,
+          fibreG: i.fibre,
+          sugarG: i.sugar,
+          satFatG: i.satFat,
+          saltG: i.salt,
           quantity: i.quantity,
         })),
         imageUrl: confirmState.imageUrl,
@@ -2628,6 +2652,10 @@ function openProductSheet(product) {
       protein: product.macrosPer100g?.protein ?? null,
       carbs: product.macrosPer100g?.carbs ?? null,
       fat: product.macrosPer100g?.fat ?? null,
+      fibre: product.macrosPer100g?.fibre ?? null,
+      sugar: product.macrosPer100g?.sugar ?? null,
+      satFat: product.macrosPer100g?.satFat ?? null,
+      salt: product.macrosPer100g?.salt ?? null,
     },
     grams,
   });
@@ -2912,6 +2940,16 @@ function openFoodEditor(row, food) {
   const proteinInput = field("Protein (g)", food.proteinG, { step: "0.1" });
   const carbsInput = field("Carbs (g)", food.carbsG, { step: "0.1" });
   const fatInput = field("Fat (g)", food.fatG, { step: "0.1" });
+  // Only offered for the figures being shown: someone tracking calories and
+  // protein has no use for four more boxes, and the correction form is
+  // already the longest thing on this screen.
+  const shown = shownFields();
+  const fibreInput = shown.includes("fibre") || shown.includes("netCarbs")
+    ? field("Fibre (g)", food.fibreG, { step: "0.1" })
+    : null;
+  const sugarInput = shown.includes("sugar") ? field("Sugar (g)", food.sugarG, { step: "0.1" }) : null;
+  const satFatInput = shown.includes("satFat") ? field("Sat fat (g)", food.satFatG, { step: "0.1" }) : null;
+  const saltInput = shown.includes("salt") ? field("Salt (g)", food.saltG, { step: "0.01" }) : null;
 
   const note = document.createElement("p");
   note.className = "muted food-editor-note";
@@ -2979,6 +3017,12 @@ function openFoodEditor(row, food) {
           proteinG: number(proteinInput),
           carbsG: number(carbsInput),
           fatG: number(fatInput),
+          // A field that wasn't offered sends undefined rather than null, so
+          // hiding it can't wipe a figure the food already had.
+          fibreG: fibreInput ? number(fibreInput) : undefined,
+          sugarG: sugarInput ? number(sugarInput) : undefined,
+          satFatG: satFatInput ? number(satFatInput) : undefined,
+          saltG: saltInput ? number(saltInput) : undefined,
         }),
       });
       if (!res.ok) throw new Error();
@@ -4999,6 +5043,10 @@ function addMealItemRow(item = { label: "", kcal: null }) {
   row.dataset.protein = carry(item.proteinG);
   row.dataset.carbs = carry(item.carbsG);
   row.dataset.fat = carry(item.fatG);
+  row.dataset.fibre = carry(item.fibreG);
+  row.dataset.sugar = carry(item.sugarG);
+  row.dataset.satfat = carry(item.satFatG);
+  row.dataset.salt = carry(item.saltG);
 
   const label = document.createElement("input");
   label.type = "text";
@@ -5139,6 +5187,10 @@ mealEditor.addEventListener("submit", async (event) => {
       proteinG: macro(row.dataset.protein),
       carbsG: macro(row.dataset.carbs),
       fatG: macro(row.dataset.fat),
+      fibreG: macro(row.dataset.fibre),
+      sugarG: macro(row.dataset.sugar),
+      satFatG: macro(row.dataset.satfat),
+      saltG: macro(row.dataset.salt),
     });
   }
   if (items.length === 0) {
@@ -5340,6 +5392,10 @@ function openFoodResult(result) {
         protein: result.per100g.protein,
         carbs: result.per100g.carbs,
         fat: result.per100g.fat,
+        fibre: result.per100g.fibre ?? null,
+        sugar: result.per100g.sugar ?? null,
+        satFat: result.per100g.satFat ?? null,
+        salt: result.per100g.salt ?? null,
       },
       defaultServing: result.servingGrams,
     });
@@ -5359,6 +5415,10 @@ function openFoodResult(result) {
         protein: result.portion.protein,
         carbs: result.portion.carbs,
         fat: result.portion.fat,
+        fibre: result.portion.fibre ?? null,
+        sugar: result.portion.sugar ?? null,
+        satFat: result.portion.satFat ?? null,
+        salt: result.portion.salt ?? null,
       }),
     ],
     // Their own past entry is theirs; anything else came off a database.
@@ -7150,22 +7210,120 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !photoModal.hidden) closePhotoModal();
 });
 
-function hasMacros(entry) {
-  return entry.proteinG !== null || entry.carbsG !== null || entry.fatG !== null;
+// ── What a row says about a food ────────────────────────────────────────────
+//
+// Mirrors src/nutrients.ts. Every figure the diary can show goes through here,
+// so the entry row, a collapsed meal's header, the confirm sheet, the meal
+// editor and the Today card all agree about which ones are on and what each
+// one is called — there is one list, not five.
+
+/** Every field, in the order a label reads. Mirrors DIARY_FIELDS. */
+const DIARY_FIELDS = ["protein", "carbs", "netCarbs", "fat", "satFat", "fibre", "sugar", "salt"];
+
+/** The column each field lives in. netCarbs has none — it's worked out. */
+const FIELD_COLUMNS = {
+  protein: "proteinG",
+  carbs: "carbsG",
+  fat: "fatG",
+  satFat: "satFatG",
+  fibre: "fibreG",
+  sugar: "sugarG",
+  salt: "saltG",
+};
+
+/** Short, for a row where space is scarce. */
+const FIELD_LABELS = {
+  protein: "P",
+  carbs: "C",
+  netCarbs: "Net C",
+  fat: "F",
+  satFat: "Sat",
+  fibre: "Fib",
+  sugar: "Sug",
+  salt: "Salt",
+};
+
+const FIELD_NAMES = {
+  protein: "Protein",
+  carbs: "Carbs",
+  netCarbs: "Net carbs",
+  fat: "Fat",
+  satFat: "Saturated fat",
+  fibre: "Fibre",
+  sugar: "Sugar",
+  salt: "Salt",
+};
+
+/**
+ * Whether entry rows carry a figures line at all.
+ *
+ * Macro targets used to be the only switch: turn them on and every row grew a
+ * "P 6g · C 0g · F 2g" line. Choosing which figures to show is now its own
+ * setting, so picking any of them turns the line on too — otherwise the only
+ * way to watch fibre would be to invent a macro target you don't want.
+ */
+function showsFigures() {
+  if (currentUser?.macroTargets) return true;
+  const chosen = currentUser?.nutrientsShown;
+  return Array.isArray(chosen) && chosen.length > 0 && !isDefaultFields(chosen);
 }
 
-function gramsOrDash(value) {
-  return value === null || value === undefined ? "—" : `${Math.round(value)}g`;
+function isDefaultFields(fields) {
+  return fields.length === 3
+    && fields.includes("protein")
+    && fields.includes("carbs")
+    && fields.includes("fat");
 }
 
-function macroLine(entry) {
-  return `P ${gramsOrDash(entry.proteinG)} · C ${gramsOrDash(entry.carbsG)} · F ${gramsOrDash(entry.fatG)}`;
+/** Which figures this account has asked to see. */
+function shownFields() {
+  const chosen = currentUser?.nutrientsShown;
+  if (!Array.isArray(chosen) || chosen.length === 0) return ["protein", "carbs", "fat"];
+  return DIARY_FIELDS.filter((field) => chosen.includes(field));
 }
 
 /**
- * Adds several entries' macros into one, for a collapsed meal's header.
+ * One field's figure for an entry.
  *
- * A nutrient nobody recorded stays null so it prints as a dash: zero would be
+ * Net carbs is derived rather than stored, and abstains where fibre is
+ * unknown rather than assuming zero — see netCarbsOf in src/nutrients.ts for
+ * why that matters more than it looks.
+ */
+function fieldValue(entry, field) {
+  if (field === "netCarbs") {
+    const carbs = entry.carbsG;
+    if (carbs === null || carbs === undefined) return null;
+    const fibre = entry.fibreG;
+    if (fibre === null || fibre === undefined) return carbs;
+    return Math.max(0, carbs - fibre);
+  }
+  const value = entry[FIELD_COLUMNS[field]];
+  return value === null || value === undefined ? null : value;
+}
+
+/** True when this entry has any of the figures currently being shown. */
+function hasMacros(entry) {
+  return shownFields().some((field) => fieldValue(entry, field) !== null);
+}
+
+function gramsOrDash(value, field) {
+  if (value === null || value === undefined) return "—";
+  // Salt is measured in single figures, so whole grams would round a slice of
+  // bread's 0.4g to nothing. Everything else reads better rounded.
+  if (field === "salt") return `${Math.round(value * 10) / 10}g`;
+  return `${Math.round(value)}g`;
+}
+
+function macroLine(entry) {
+  return shownFields()
+    .map((field) => `${FIELD_LABELS[field]} ${gramsOrDash(fieldValue(entry, field), field)}`)
+    .join(" · ");
+}
+
+/**
+ * Adds several entries' figures into one, for a collapsed meal's header.
+ *
+ * A figure nobody recorded stays null so it prints as a dash: zero would be
  * a claim that the meal had none of it, which is a different thing from not
  * knowing.
  */
@@ -7174,7 +7332,9 @@ function sumMacros(entries) {
     const figures = entries.map((entry) => entry[key]).filter((g) => g !== null && g !== undefined);
     return figures.length ? figures.reduce((sum, g) => sum + g, 0) : null;
   };
-  return { proteinG: total("proteinG"), carbsG: total("carbsG"), fatG: total("fatG") };
+  const summed = {};
+  for (const column of Object.values(FIELD_COLUMNS)) summed[column] = total(column);
+  return summed;
 }
 
 function formatQuantity(quantity) {
@@ -7260,6 +7420,7 @@ const suggestTargetNote = document.getElementById("suggest-target-note");
 // and a separate tab would only ever be seen afterwards.
 const macroToday = document.getElementById("macro-today");
 const macroTodayNote = document.getElementById("macro-today-note");
+const nutrientTodayRows = document.getElementById("nutrient-today-rows");
 
 const MACRO_LABELS = { protein: "Protein", carbs: "Carbs", fat: "Fat" };
 const MACRO_OP_WORDS = { min: "at least", max: "at most", eq: "about" };
@@ -7311,8 +7472,11 @@ function macroDeltaText(progress, op) {
 }
 
 /** Where the day stands, in the same eaten/target shape as the calorie row. */
-function macroTotalText(eaten, target) {
-  return `${Math.round(eaten)} / ${target.grams}g`;
+function macroTotalText(eaten, target, field) {
+  // Salt is single figures, so whole grams would round most days to nothing
+  // useful. Everything else reads better without a decimal.
+  const value = field === "salt" ? Math.round(eaten * 10) / 10 : Math.round(eaten);
+  return `${value} / ${target.grams}g`;
 }
 
 function describeTarget(key, target) {
@@ -7326,7 +7490,9 @@ function describeTarget(key, target) {
  */
 function renderMacroToday(today) {
   const targets = currentUser?.macroTargets ?? null;
-  if (!targets || !today) {
+  const nutrientTargets = currentUser?.nutrientTargets ?? null;
+  const anyNutrient = nutrientTargets && Object.values(nutrientTargets).some((t) => t !== null);
+  if ((!targets && !anyNutrient) || !today) {
     macroToday.hidden = true;
     return;
   }
@@ -7338,7 +7504,7 @@ function renderMacroToday(today) {
     const row = macroToday.querySelector(`[data-macro="${key}"]`);
     if (!row) continue;
 
-    const target = targets.targets?.[key] ?? null;
+    const target = targets?.targets?.[key] ?? null;
     const fill = row.querySelector(".macro-fill");
     const figures = row.querySelector(".macro-figures");
     const totalEl = row.querySelector(".macro-total");
@@ -7348,7 +7514,17 @@ function renderMacroToday(today) {
     row.hidden = target === null;
     if (target === null) continue;
 
-    const value = eaten[key] ?? 0;
+    if (key === "carbs") {
+      row.querySelector(".macro-name").textContent =
+        today.nutrients?.netCarbMode ? FIELD_NAMES.netCarbs : FIELD_NAMES.carbs;
+    }
+
+    // In net-carb mode the carbs bar counts carbohydrate minus fibre, which is
+    // the figure that mode exists to track. No separate row for it: two bars
+    // both labelled carbs, disagreeing, would be worse than one.
+    const value = key === "carbs" && today.nutrients?.netCarbMode && today.nutrients?.eaten?.netCarbs !== null
+      ? today.nutrients.eaten.netCarbs ?? 0
+      : eaten[key] ?? 0;
     const progress = macroProgress(target, value);
 
     fill.style.width = `${progress.percentOfTarget}%`;
@@ -7368,6 +7544,8 @@ function renderMacroToday(today) {
     figures.title = `${Math.round(value)}g eaten · target ${describeTarget(key, target)}`;
   }
 
+  renderNutrientToday(today);
+
   // The honest caveat: entries logged before macros existed have none, so a
   // day mixing old and new rows can't claim a complete total.
   if (eaten.unknownEntries > 0) {
@@ -7376,6 +7554,67 @@ function renderMacroToday(today) {
     macroTodayNote.hidden = false;
   } else {
     macroTodayNote.hidden = true;
+  }
+}
+
+/**
+ * A bar per nutrient with a target, drawn the same way the macro bars are.
+ *
+ * Built rather than declared in the markup because most accounts track none of
+ * these and one tracks only salt — four permanently hidden rows in the HTML
+ * would be four things to keep in step for no one's benefit.
+ *
+ * Carbs get a second reading here rather than a row of their own: in net-carb
+ * mode the macro bar above already counts carbohydrate minus fibre, so a
+ * separate "net carbs" bar would be the same figure twice.
+ */
+function renderNutrientToday(today) {
+  nutrientTodayRows.innerHTML = "";
+  const targets = currentUser?.nutrientTargets ?? null;
+  if (!targets) return;
+
+  const eaten = today?.nutrients?.eaten ?? {};
+
+  for (const key of ["fibre", "sugar", "satFat", "salt"]) {
+    const target = targets[key];
+    if (!target) continue;
+
+    const value = eaten[key] ?? 0;
+    const progress = macroProgress(target, value);
+
+    const row = document.createElement("div");
+    row.className = "macro-row";
+    row.dataset.macro = key;
+
+    const name = document.createElement("span");
+    name.className = "macro-name";
+    name.textContent = FIELD_NAMES[key];
+
+    const track = document.createElement("div");
+    track.className = "macro-track";
+    const fill = document.createElement("div");
+    fill.className = "macro-fill";
+    fill.style.width = `${progress.percentOfTarget}%`;
+    // Same rule as the macros: the colour says which side of the target the
+    // day is on, which is not the same as whether the bar is full.
+    fill.classList.toggle("macro-fill--good", progress.isGood);
+    fill.classList.toggle("macro-fill--over", progress.verdict === "over");
+    track.appendChild(fill);
+
+    const figures = document.createElement("span");
+    figures.className = "macro-figures";
+    const total = document.createElement("span");
+    total.className = "macro-total";
+    total.textContent = macroTotalText(value, target, key);
+    const delta = document.createElement("span");
+    delta.className = "macro-delta";
+    delta.textContent = `(${macroDeltaText(progress, target.op)})`;
+    delta.classList.toggle("macro-delta--good", progress.isGood);
+    delta.classList.toggle("macro-delta--over", progress.verdict === "over");
+    figures.append(total, delta);
+
+    row.append(name, track, figures);
+    nutrientTodayRows.appendChild(row);
   }
 }
 
@@ -8088,10 +8327,10 @@ async function openPendingShare() {
       label.className = "entry-label";
       label.textContent = item.label;
       main.appendChild(label);
-      if (hasMacros({ proteinG: item.proteinG, carbsG: item.carbsG, fatG: item.fatG })) {
+      if (hasMacros(item)) {
         const macros = document.createElement("div");
         macros.className = "entry-macros";
-        macros.textContent = macroLine({ proteinG: item.proteinG, carbsG: item.carbsG, fatG: item.fatG });
+        macros.textContent = macroLine(item);
         main.appendChild(macros);
       }
       const kcal = document.createElement("div");
@@ -8834,6 +9073,116 @@ function macroSettingsPayload() {
     proteinOp: macroOpInputs.protein.value,
     carbsOp: macroOpInputs.carbs.value,
     fatOp: macroOpInputs.fat.value,
+  };
+}
+
+
+// ── The rest of the label ──────────────────────────────────────────────────
+//
+// Three settings that belong together: which figures a row shows, whether a
+// carb figure means total or net, and targets for the four nutrients that
+// aren't energy macros. See src/nutrients.ts for why those four can't just
+// join the macros.
+
+const nutrientShowRow = document.getElementById("nutrient-show-row");
+const carbModeTotalBtn = document.getElementById("carb-mode-total");
+const carbModeNetBtn = document.getElementById("carb-mode-net");
+
+const nutrientGramInputs = {
+  fibre: document.getElementById("nutrient-fibre-g"),
+  sugar: document.getElementById("nutrient-sugar-g"),
+  satFat: document.getElementById("nutrient-satfat-g"),
+  salt: document.getElementById("nutrient-salt-g"),
+};
+const nutrientOpInputs = {
+  fibre: document.getElementById("nutrient-fibre-op"),
+  sugar: document.getElementById("nutrient-sugar-op"),
+  satFat: document.getElementById("nutrient-satfat-op"),
+  salt: document.getElementById("nutrient-salt-op"),
+};
+
+let chosenShowFields = ["protein", "carbs", "fat"];
+let carbMode = "total";
+
+function setCarbMode(mode) {
+  carbMode = mode === "net" ? "net" : "total";
+  carbModeTotalBtn.classList.toggle("meal-kind-btn--active", carbMode === "total");
+  carbModeNetBtn.classList.toggle("meal-kind-btn--active", carbMode === "net");
+  renderNutrientShowRow();
+}
+
+carbModeTotalBtn.addEventListener("click", () => setCarbMode("total"));
+carbModeNetBtn.addEventListener("click", () => setCarbMode("net"));
+
+/**
+ * The toggles for what a row shows.
+ *
+ * Turning the last one off is refused rather than allowed: a row with no
+ * figures under it is what "off" already looks like, and an empty diary line
+ * would read as a bug. Net carbs is only offered in net mode — outside it the
+ * figure would be a column nobody asked to count.
+ */
+function renderNutrientShowRow() {
+  nutrientShowRow.innerHTML = "";
+  const offered = DIARY_FIELDS.filter((field) => field !== "netCarbs" || carbMode === "net");
+
+  for (const field of offered) {
+    const on = chosenShowFields.includes(field);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `nutrient-show-btn${on ? " nutrient-show-btn--on" : ""}`;
+    btn.textContent = FIELD_NAMES[field];
+    btn.setAttribute("aria-pressed", String(on));
+    btn.addEventListener("click", () => {
+      if (on) {
+        if (chosenShowFields.length === 1) {
+          showToast("Keep at least one — that's what turning them all off would look like.");
+          return;
+        }
+        chosenShowFields = chosenShowFields.filter((f) => f !== field);
+      } else {
+        chosenShowFields = DIARY_FIELDS.filter((f) => f === field || chosenShowFields.includes(f));
+      }
+      renderNutrientShowRow();
+    });
+    nutrientShowRow.appendChild(btn);
+  }
+}
+
+function populateNutrientSettings(user) {
+  chosenShowFields = Array.isArray(user.nutrientsShown) && user.nutrientsShown.length > 0
+    ? DIARY_FIELDS.filter((field) => user.nutrientsShown.includes(field))
+    : ["protein", "carbs", "fat"];
+  setCarbMode(user.carbMode ?? "total");
+
+  // A stored 0 means untracked, same as the macro targets, so it shows blank.
+  nutrientGramInputs.fibre.value = user.fibreTargetG || "";
+  nutrientGramInputs.sugar.value = user.sugarTargetG || "";
+  nutrientGramInputs.satFat.value = user.satFatTargetG || "";
+  nutrientGramInputs.salt.value = user.saltTargetG || "";
+  // Fibre is the only one of the four anybody is trying to reach.
+  nutrientOpInputs.fibre.value = user.fibreOp ?? "min";
+  nutrientOpInputs.sugar.value = user.sugarOp ?? "max";
+  nutrientOpInputs.satFat.value = user.satFatOp ?? "max";
+  nutrientOpInputs.salt.value = user.saltOp ?? "max";
+}
+
+/** The nutrient fields of the settings PATCH body. */
+function nutrientSettingsPayload() {
+  const grams = (key) =>
+    nutrientGramInputs[key].value === "" ? null : Number(nutrientGramInputs[key].value) || null;
+
+  return {
+    nutrientsShown: chosenShowFields,
+    carbMode,
+    fibreTargetG: grams("fibre"),
+    sugarTargetG: grams("sugar"),
+    satFatTargetG: grams("satFat"),
+    saltTargetG: grams("salt"),
+    fibreOp: nutrientOpInputs.fibre.value,
+    sugarOp: nutrientOpInputs.sugar.value,
+    satFatOp: nutrientOpInputs.satFat.value,
+    saltOp: nutrientOpInputs.salt.value,
   };
 }
 

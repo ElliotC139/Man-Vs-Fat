@@ -195,6 +195,19 @@ describe("POST /api/auth/signup", () => {
       // Null rather than an empty object: macros are off until asked for, and
       // the diary shows calories only.
       macroTargets: null,
+      // A fresh account shows the three figures the diary has always shown,
+      // counts total carbohydrate, and has no nutrient target set.
+      nutrientsShown: ["protein", "carbs", "fat"],
+      carbMode: "total",
+      fibreTargetG: null,
+      sugarTargetG: null,
+      satFatTargetG: null,
+      saltTargetG: null,
+      fibreOp: null,
+      sugarOp: null,
+      satFatOp: null,
+      saltOp: null,
+      nutrientTargets: { fibre: null, sugar: null, satFat: null, salt: null },
       reminderHour: null,
       sex: null,
       layout: null,

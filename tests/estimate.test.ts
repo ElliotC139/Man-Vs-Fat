@@ -14,6 +14,14 @@ vi.mock("../src/config", () => ({
 
 import { estimateMeal } from "../src/estimate";
 
+/**
+ * What the four label figures come back as when the model's reply doesn't
+ * carry them — null, never zero. Spread into the expectations rather than
+ * loosened to toMatchObject, because the exact shape is the point: these
+ * assertions exist to catch a figure quietly becoming 0.
+ */
+const NO_NUTRIENTS = { fibreG: null, sugarG: null, satFatG: null, saltG: null };
+
 function textResponse(json: unknown) {
   return { content: [{ type: "text", text: JSON.stringify(json) }] };
 }
@@ -36,7 +44,7 @@ describe("estimateMeal", () => {
     // The buffer goes on the macros as well as the calories, so an entry's
     // four figures stay consistent with each other.
     expect(result).toEqual([
-      { label: "Chicken stir fry with rice", kcal: 728, proteinG: 44.8, carbsG: 78.4, fatG: 20.2 },
+      { label: "Chicken stir fry with rice", kcal: 728, proteinG: 44.8, carbsG: 78.4, fatG: 20.2, ...NO_NUTRIENTS },
     ]);
     expect(createMock).toHaveBeenCalledTimes(1);
   });
@@ -57,8 +65,8 @@ describe("estimateMeal", () => {
 
     // 650 * 1.12 = 728, 120 * 1.12 = 134.4 -> rounds to 134
     expect(result).toEqual([
-      { label: "Chicken stir fry with rice", kcal: 728, proteinG: 44.8, carbsG: 78.4, fatG: 20.2 },
-      { label: "Small handful of crisps", kcal: 134, proteinG: 1.1, carbsG: 14.6, fatG: 7.8 },
+      { label: "Chicken stir fry with rice", kcal: 728, proteinG: 44.8, carbsG: 78.4, fatG: 20.2, ...NO_NUTRIENTS },
+      { label: "Small handful of crisps", kcal: 134, proteinG: 1.1, carbsG: 14.6, fatG: 7.8, ...NO_NUTRIENTS },
     ]);
   });
 
@@ -72,7 +80,7 @@ describe("estimateMeal", () => {
     const result = await estimateMeal({ text: "a sandwich" });
 
     // 400 * 1.12 = 448
-    expect(result).toEqual([{ label: "Sandwich", kcal: 448, proteinG: 22.4, carbsG: 50.4, fatG: 15.7 }]);
+    expect(result).toEqual([{ label: "Sandwich", kcal: 448, proteinG: 22.4, carbsG: 50.4, fatG: 15.7, ...NO_NUTRIENTS }]);
     expect(createMock).toHaveBeenCalledTimes(2);
   });
 
@@ -94,7 +102,7 @@ describe("estimateMeal", () => {
     });
 
     expect(result).toEqual([
-      { label: "Milkybar Giant Buttons", kcal: 122, proteinG: 2, carbsG: 13, fatG: 7 },
+      { label: "Milkybar Giant Buttons", kcal: 122, proteinG: 2, carbsG: 13, fatG: 7, ...NO_NUTRIENTS },
     ]);
   });
 
@@ -110,7 +118,7 @@ describe("estimateMeal", () => {
     const result = await estimateMeal({ text: "just a sandwich" });
 
     // 400 * 1.12 = 448 — the buffer stands.
-    expect(result).toEqual([{ label: "Sandwich", kcal: 448, proteinG: 22.4, carbsG: 50.4, fatG: 15.7 }]);
+    expect(result).toEqual([{ label: "Sandwich", kcal: 448, proteinG: 22.4, carbsG: 50.4, fatG: 15.7, ...NO_NUTRIENTS }]);
   });
 
   it("buffers each item on its own, not the whole entry", async () => {
@@ -127,7 +135,7 @@ describe("estimateMeal", () => {
 
     // The weighed chicken is left alone; the unmeasured chips still get the
     // buffer (300 * 1.12 = 336).
-    expect(result[0]).toEqual({ label: "Chicken breast", kcal: 330, proteinG: 62, carbsG: 0, fatG: 7 });
+    expect(result[0]).toEqual({ label: "Chicken breast", kcal: 330, proteinG: 62, carbsG: 0, fatG: 7, ...NO_NUTRIENTS });
     expect(result[1]!.kcal).toBe(336);
   });
 
@@ -205,7 +213,7 @@ describe("estimateMeal", () => {
     // Nulls, not zeroes: nobody worked these out, which is a different thing
     // from the food containing none of them.
     expect(result).toEqual([
-      { label: "mystery meal", kcal: null, proteinG: null, carbsG: null, fatG: null },
+      { label: "mystery meal", kcal: null, proteinG: null, carbsG: null, fatG: null, ...NO_NUTRIENTS },
     ]);
   }, 15000);
 });
