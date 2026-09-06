@@ -16,6 +16,12 @@ foodSearchRouter.use(requireAuth);
 
 const MIN_QUERY_LENGTH = 2;
 const MAX_RESULTS = 24;
+/**
+ * Browsing a chain's menu is a different job from searching for one food: a
+ * Nando's has more than two dozen things on it, and a list that stops at 24
+ * would silently hide the rest of the menu rather than say so.
+ */
+const MAX_MENU_RESULTS = 80;
 const LIBRARY_LIMIT = 6;
 
 /**
@@ -35,6 +41,12 @@ foodSearchRouter.get("/", async (req, res) => {
   }
 
   const kinds = typeof req.query.kind === "string" ? req.query.kind.split(",").filter(Boolean) : [];
+  // A caller can ask for more, up to the menu ceiling — nothing can ask for an
+  // unbounded page.
+  const requested = Number(req.query.limit);
+  const limit = Number.isFinite(requested) && requested > 0
+    ? Math.min(MAX_MENU_RESULTS, Math.floor(requested))
+    : MAX_RESULTS;
 
   // Only the remote half is cached. Their own foods change every time they log
   // something, and are cheap to read anyway.
@@ -52,7 +64,7 @@ foodSearchRouter.get("/", async (req, res) => {
 
   res.json({
     query,
-    results: rankResults(filtered, query, MAX_RESULTS),
+    results: rankResults(filtered, query, limit),
     sources: configuredSources(),
   });
 });

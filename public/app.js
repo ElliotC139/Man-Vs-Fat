@@ -5552,11 +5552,171 @@ const foodSearchStatus = document.getElementById("food-search-status");
 const foodSearchResults = document.getElementById("food-search-results");
 const foodSearchEstimate = document.getElementById("food-search-estimate");
 
+const foodSearchModes = document.getElementById("food-search-modes");
+const foodModeAll = document.getElementById("food-mode-all");
+const foodModeMenu = document.getElementById("food-mode-menu");
+const foodMenuBack = document.getElementById("food-menu-back");
+const foodMenuChains = document.getElementById("food-menu-chains");
+
 let dbSearchTimer = null;
 // Bumped on every keystroke so a slow earlier response can't overwrite the
 // results for what's actually in the box now.
 let foodSearchSeq = 0;
 let foodSearchLastQuery = "";
+
+// ── Eating out ──────────────────────────────────────────────────────────────
+//
+// Restaurant meals are the acknowledged black hole of calorie tracking, and
+// free-texting "half a chicken and chips" at an estimator is a worse answer
+// than the chain's own published figures. Those figures have been reachable
+// all along — Nutritionix returns restaurant rows, the parser already marks
+// them kind "restaurant", and the search route already accepts a kind filter.
+// Nothing ever offered a way in.
+//
+// The way in is brand first, because that is the order the question arrives
+// in: you are in a Nando's, and then you decide what to have. Searching food
+// first buries one chain's menu among five others'.
+
+let foodSearchMode = "all";
+/** The chain being read, or null while the list of chains is showing. */
+let menuBrand = null;
+
+/**
+ * Somewhere to start. These are prefilled searches, not data — tapping one
+ * types its name into the box — because an empty search field under a tab
+ * called "Eating out" is a dead end, and nobody's first instinct is to guess
+ * which chains a database happens to carry.
+ */
+const MENU_SUGGESTIONS = [
+  "Nando's",
+  "Greggs",
+  "McDonald's",
+  "Pret",
+  "Subway",
+  "Costa",
+  "Wagamama",
+  "Domino's",
+  "KFC",
+  "Pizza Express",
+];
+
+function setFoodSearchMode(mode) {
+  foodSearchMode = mode;
+  menuBrand = null;
+  foodModeAll.classList.toggle("meal-kind-btn--active", mode === "all");
+  foodModeMenu.classList.toggle("meal-kind-btn--active", mode === "menu");
+  foodSearchQuery.placeholder = mode === "menu"
+    ? "Which place? e.g. Nando's, Greggs"
+    : "e.g. hobnobs, chicken breast, big mac…";
+  foodMenuBack.hidden = true;
+  foodSearchResults.innerHTML = "";
+  foodSearchEstimate.hidden = true;
+  foodSearchStatus.hidden = true;
+  renderMenuSuggestions();
+
+  const q = foodSearchQuery.value.trim();
+  if (q.length >= 2) runFoodSearch(q);
+}
+
+function renderMenuSuggestions() {
+  // Only worth showing while there is nothing else on screen — once results
+  // are up, a row of other places to look is in the way.
+  const show = foodSearchMode === "menu" && foodSearchQuery.value.trim().length < 2;
+  foodMenuChains.hidden = !show;
+  if (!show) return;
+
+  foodMenuChains.innerHTML = "";
+  for (const name of MENU_SUGGESTIONS) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "food-menu-chain";
+    chip.textContent = name;
+    chip.addEventListener("click", () => {
+      foodSearchQuery.value = name;
+      renderMenuSuggestions();
+      runFoodSearch(name);
+    });
+    foodMenuChains.appendChild(chip);
+  }
+}
+
+foodModeAll.addEventListener("click", () => setFoodSearchMode("all"));
+foodModeMenu.addEventListener("click", () => setFoodSearchMode("menu"));
+
+foodMenuBack.addEventListener("click", () => {
+  menuBrand = null;
+  foodMenuBack.hidden = true;
+  // Re-rendered from what is already in hand rather than re-fetched: stepping
+  // back out of a menu should not cost another round trip to three databases.
+  renderFoodResults(lastMenuResults, foodSearchLastQuery);
+});
+
+/** Kept so the back button can redraw the chain list without a re-fetch. */
+let lastMenuResults = [];
+
+/**
+ * Groups menu rows by the chain they belong to.
+ *
+ * Ordered by how well the chain matched what was typed rather than by how many
+ * items it has: someone who typed "nandos" wants Nando's first, not whichever
+ * chain the database happens to carry most rows for.
+ */
+function groupByBrand(results, query) {
+  const q = query.trim().toLowerCase();
+  const byBrand = new Map();
+
+  for (const result of results) {
+    const brand = result.brand?.trim();
+    // A menu item with no restaurant on it can't be filed under one; it drops
+    // through to the flat list below rather than inventing a chain for it.
+    if (!brand) continue;
+    const group = byBrand.get(brand) ?? { brand, items: [] };
+    group.items.push(result);
+    byBrand.set(brand, group);
+  }
+
+  return [...byBrand.values()].sort((a, b) => {
+    const aMatch = a.brand.toLowerCase().includes(q) ? 1 : 0;
+    const bMatch = b.brand.toLowerCase().includes(q) ? 1 : 0;
+    if (aMatch !== bMatch) return bMatch - aMatch;
+    return b.items.length - a.items.length;
+  });
+}
+
+function foodBrandRow(group) {
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = "food-brand-row";
+
+  const info = document.createElement("span");
+  const name = document.createElement("span");
+  name.className = "food-brand-name";
+  name.textContent = group.brand;
+  const meta = document.createElement("span");
+  meta.className = "food-brand-meta";
+  const cheapest = group.items
+    .map((item) => item.portion?.kcal ?? item.per100g?.kcal ?? null)
+    .filter((kcal) => kcal !== null);
+  meta.textContent = cheapest.length > 0
+    ? `${group.items.length} ${group.items.length === 1 ? "item" : "items"} · from ${Math.round(Math.min(...cheapest))} kcal`
+    : `${group.items.length} ${group.items.length === 1 ? "item" : "items"}`;
+  info.append(name, meta);
+
+  const chevron = document.createElement("span");
+  chevron.className = "food-brand-chevron";
+  chevron.setAttribute("aria-hidden", "true");
+  chevron.textContent = "›";
+
+  row.append(info, chevron);
+  row.addEventListener("click", () => {
+    menuBrand = group.brand;
+    foodMenuBack.hidden = false;
+    foodMenuBack.textContent = `‹ All places`;
+    haptic();
+    renderFoodResults(lastMenuResults, foodSearchLastQuery);
+  });
+  return row;
+}
 
 foodSearchBtn.addEventListener("click", () => {
   const opening = foodSearchCard.hidden;
@@ -5566,6 +5726,9 @@ foodSearchBtn.addEventListener("click", () => {
     foodSearchResults.innerHTML = "";
     foodSearchStatus.hidden = true;
     foodSearchEstimate.hidden = true;
+    foodMenuBack.hidden = true;
+    menuBrand = null;
+    renderMenuSuggestions();
     foodSearchQuery.focus();
     if (foodSearchQuery.value) runFoodSearch(foodSearchQuery.value);
   }
@@ -5582,8 +5745,12 @@ foodSearchQuery.addEventListener("input", () => {
     foodSearchResults.innerHTML = "";
     foodSearchStatus.hidden = true;
     foodSearchEstimate.hidden = true;
+    foodMenuBack.hidden = true;
+    menuBrand = null;
+    renderMenuSuggestions();
     return;
   }
+  foodMenuChains.hidden = true;
   // Several databases are being asked at once behind this, so it waits for a
   // pause in typing rather than firing per keystroke.
   dbSearchTimer = setTimeout(() => runFoodSearch(q), 350);
@@ -5592,13 +5759,27 @@ foodSearchQuery.addEventListener("input", () => {
 async function runFoodSearch(query) {
   const seq = ++foodSearchSeq;
   foodSearchLastQuery = query;
+  // A new search is a new question, so it starts back at the list of places
+  // rather than inside whichever chain was last open.
+  menuBrand = null;
+  foodMenuBack.hidden = true;
   foodSearchStatus.textContent = "Searching…";
   foodSearchStatus.hidden = false;
   try {
-    const res = await fetch(`/api/food-search?q=${encodeURIComponent(query)}`);
+    // Restaurant rows only, and more of them: a chain's menu is longer than a
+    // page of search results, and the route caps what it will hand over.
+    const params = new URLSearchParams({ q: query });
+    if (foodSearchMode === "menu") {
+      params.set("kind", "restaurant");
+      params.set("limit", "80");
+    }
+    const res = await fetch(`/api/food-search?${params}`);
     if (!res.ok) throw new Error();
     const data = await res.json();
     if (seq !== foodSearchSeq) return;
+    // The provider layer says whether a menu database is configured at all.
+    // Without one the tab would be a promise the server can't keep.
+    foodSearchModes.hidden = !data.sources?.menus;
     renderFoodResults(data.results, query);
   } catch {
     if (seq !== foodSearchSeq) return;
@@ -5620,8 +5801,12 @@ const FOOD_KIND_BADGES = {
 
 function renderFoodResults(results, query) {
   foodSearchResults.innerHTML = "";
+  foodMenuChains.hidden = true;
+
   if (results.length === 0) {
-    foodSearchStatus.textContent = `Nothing found for "${query}".`;
+    foodSearchStatus.textContent = foodSearchMode === "menu"
+      ? `No menus found for "${query}". Not every place publishes its figures — describe the meal instead and it'll be estimated.`
+      : `Nothing found for "${query}".`;
     foodSearchStatus.hidden = false;
     showEstimateFallback(query);
     return;
@@ -5631,9 +5816,38 @@ function renderFoodResults(results, query) {
   // have a "chicken salad" in it and still not have the one they made.
   showEstimateFallback(query);
 
+  if (foodSearchMode === "menu") {
+    lastMenuResults = results;
+    renderMenuResults(results, query);
+    return;
+  }
+
   for (const result of results) {
     foodSearchResults.appendChild(foodResultRow(result));
   }
+}
+
+/** Either the list of chains, or the one chain that's open. */
+function renderMenuResults(results, query) {
+  if (menuBrand) {
+    const items = results.filter((r) => r.brand?.trim() === menuBrand);
+    foodMenuBack.hidden = false;
+    foodMenuBack.textContent = "‹ All places";
+    const heading = document.createElement("p");
+    heading.className = "muted";
+    heading.textContent = `${menuBrand} — ${items.length} ${items.length === 1 ? "item" : "items"}`;
+    foodSearchResults.appendChild(heading);
+    for (const item of items) foodSearchResults.appendChild(foodResultRow(item));
+    return;
+  }
+
+  const groups = groupByBrand(results, query);
+  for (const group of groups) foodSearchResults.appendChild(foodBrandRow(group));
+
+  // Anything the database gave no restaurant for still gets shown, rather than
+  // being dropped for not fitting the grouping.
+  const unbranded = results.filter((r) => !r.brand?.trim());
+  for (const result of unbranded) foodSearchResults.appendChild(foodResultRow(result));
 }
 
 function foodResultRow(result) {
@@ -5659,7 +5873,12 @@ function foodResultRow(result) {
 
   const meta = document.createElement("span");
   meta.className = "food-search-result-meta";
-  meta.textContent = [result.brand, foodResultFigures(result)].filter(Boolean).join(" · ");
+  // The brand is dropped inside an open menu: the heading above already says
+  // whose it is, and repeating it on every row is the same word four times.
+  const showBrand = menuBrand !== result.brand?.trim();
+  meta.textContent = [showBrand ? result.brand : null, foodResultFigures(result)]
+    .filter(Boolean)
+    .join(" · ");
   info.appendChild(meta);
 
   row.appendChild(info);

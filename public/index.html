@@ -295,7 +295,17 @@
         <span class="quick-add-title">Search foods</span>
         <button type="button" id="food-search-close" class="ghost-sm">Close</button>
         </div>
+        <!-- Only shown where a menu database is actually configured; the
+             capability flag comes back with the search results. -->
+        <div id="food-search-modes" class="meal-kind-btns" hidden>
+          <button type="button" id="food-mode-all" class="meal-kind-btn meal-kind-btn--active">All foods</button>
+          <button type="button" id="food-mode-menu" class="meal-kind-btn">Eating out</button>
+        </div>
+
         <input type="search" id="food-search-query" placeholder="e.g. hobnobs, chicken breast, big mac…" autocomplete="off" />
+
+        <div id="food-menu-chains" class="food-menu-chains" hidden></div>
+        <button type="button" id="food-menu-back" class="ghost-sm food-menu-back" hidden></button>
         <p id="food-search-status" class="muted" hidden></p>
         <div id="food-search-results" class="food-search-results"></div>
         <button type="button" id="food-search-estimate" class="ghost-sm food-search-estimate" hidden>
