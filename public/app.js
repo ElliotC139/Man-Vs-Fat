@@ -151,6 +151,7 @@ const streakBestCaption = document.getElementById("streak-best-caption");
 const streakNote = document.getElementById("streak-note");
 const insightsCard = document.getElementById("insights-card");
 const insightsList = document.getElementById("insights-list");
+const insightsMore = document.getElementById("insights-more");
 const balanceTrendCard = document.getElementById("balance-trend-card");
 const balanceTrendChart = document.getElementById("balance-trend-chart");
 const balanceTrendCaption = document.getElementById("balance-trend-caption");
@@ -205,6 +206,7 @@ const submitBtn = document.getElementById("submit-btn");
 const formError = document.getElementById("form-error");
 
 const scanBarcodeBtn = document.getElementById("scan-barcode-btn");
+const captureRowEl = document.querySelector(".capture-row");
 const scanModal = document.getElementById("scan-modal");
 const scanCloseBtn = document.getElementById("scan-close-btn");
 const scanVideo = document.getElementById("scan-video");
@@ -379,6 +381,14 @@ let myTeams = [];
 let currentTeamId = null;
 
 async function loadTeamTable() {
+  // Off by default, and off means gone rather than empty: most people using
+  // this are one person with a diary, and a card asking them to start a league
+  // is a card in the way.
+  if (!currentUser?.teamsEnabled) {
+    teamCard.hidden = true;
+    return;
+  }
+  teamCard.hidden = false;
   try {
     const res = await fetch("/api/teams");
     if (!res.ok) throw new Error();
@@ -1606,6 +1616,9 @@ function populateSettings(user) {
   settingsCalorieTarget.value = user.dailyCalorieTarget ?? "";
   populateMacroSettings(user);
   populateNutrientSettings(user);
+  renderLogMethodSettings(user);
+  applyLogMethods();
+  settingTeams.checked = Boolean(user.teamsEnabled);
   settingsEmail.value = user.email ?? "";
   renderSecuritySection(user);
   deleteConfirmInput.value = "";
@@ -4098,30 +4111,66 @@ window.addEventListener(
 );
 
 // ── Insights ─────────────────────────────────────────────────────────────
+//
+// They accumulate: every new thing the app learns to notice adds a paragraph,
+// and the card had grown into a wall of text at the top of Stats — the part of
+// the screen someone scrolls past to reach the charts. Three show, the rest
+// are a tap away.
+
+/** Kept so the show-more toggle can redraw without a re-fetch. */
+let lastInsights = null;
+let insightsExpanded = false;
+
 async function loadInsights() {
   try {
     const res = await fetch("/api/stats/insights");
     if (!res.ok) throw new Error();
-    renderInsights(await res.json());
+    const data = await res.json();
+    lastInsights = data;
+    // A fresh load starts collapsed, whatever was open last time: the card is
+    // read on arrival, not returned to.
+    insightsExpanded = false;
+    renderInsights(data);
   } catch {
     insightsCard.hidden = true;
   }
 }
 
+/** Enough to be worth reading, short enough to scroll past. */
+const INSIGHTS_SHOWN = 3;
+
 function renderInsights(data) {
   const insights = data.insights ?? [];
   if (insights.length === 0) {
     insightsCard.hidden = true;
+    insightsMore.hidden = true;
     return;
   }
   insightsCard.hidden = false;
   insightsList.innerHTML = "";
-  for (const insight of insights) {
+
+  const shown = insightsExpanded ? insights : insights.slice(0, INSIGHTS_SHOWN);
+  for (const insight of shown) {
     const li = document.createElement("li");
     li.textContent = insight.text;
     insightsList.appendChild(li);
   }
+
+  // Nothing to open when everything is already on screen, and no button for a
+  // single hidden line — "Show 1 more" costs the same tap as reading it.
+  const hidden = insights.length - INSIGHTS_SHOWN;
+  insightsMore.hidden = hidden < 1;
+  insightsMore.textContent = insightsExpanded ? "Show fewer" : `Show ${hidden} more`;
+  insightsMore.setAttribute("aria-expanded", String(insightsExpanded));
 }
+
+insightsMore.addEventListener("click", () => {
+  insightsExpanded = !insightsExpanded;
+  haptic();
+  // Re-rendered from what is already in hand: opening a list is not a reason
+  // to ask the server the same question again.
+  renderInsights(lastInsights ?? { insights: [] });
+});
 
 // ── Calorie balance trend ───────────────────────────────────────────────
 let balanceTrendRaw = null;
@@ -5978,10 +6027,18 @@ function showEstimateFallback(query) {
 const voiceBtn = document.getElementById("voice-btn");
 const voiceBtnLabel = document.getElementById("voice-btn-label");
 const SpeechRecognitionCtor = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+/**
+ * Whether this browser can dictate at all. The Ways to log setting asks: a
+ * device with no speech recognition keeps the button hidden however the
+ * setting reads, so turning it on can't produce a button that does nothing.
+ */
+const speechSupported = Boolean(SpeechRecognitionCtor);
 
 let recognition = null;
 
 if (SpeechRecognitionCtor) {
+  // applyLogMethods has the final say once a profile is loaded; this is the
+  // pre-profile state, matching the default (voice on).
   voiceBtn.hidden = false;
   voiceBtn.addEventListener("click", () => {
     if (recognition) {
@@ -6505,8 +6562,91 @@ for (const input of [bufferPct, bufferMinPct, bufferMaxPct]) {
   input.addEventListener("blur", saveBufferSettings);
 }
 
+// ── Ways to log ─────────────────────────────────────────────────────────────
+//
+// The log form grew a button at a time — a scanner, a search, a voice button,
+// a plain number — and four across a phone is a row of choices where most
+// people only ever use one. Mirrors src/logMethods.ts, which is the source of
+// truth for the list and the defaults.
+
+const LOG_METHODS = ["photo", "scan", "search", "speak", "number"];
+const LOG_METHOD_NAMES = {
+  photo: "Photo",
+  scan: "Barcode",
+  search: "Search",
+  speak: "Voice",
+  number: "Number",
+};
+const LOG_METHOD_NOTES = {
+  photo: "Attach a picture of the meal, or estimate from one.",
+  scan: "Read a packet's barcode and take its published figures.",
+  search: "Look a food up in the databases, including restaurant menus.",
+  speak: "Dictate instead of typing. Hidden anyway where the browser can't.",
+  number: "Log a calorie figure you already know, with no estimate at all.",
+};
+
+const logMethodToggles = document.getElementById("log-method-toggles");
+const logMethodInputs = {};
+const photoLabelEl = document.querySelector(".photo-label");
+
+function enabledLogMethods() {
+  const chosen = currentUser?.logMethods;
+  return Array.isArray(chosen) ? chosen : ["photo", "scan", "search", "speak"];
+}
+
+/** Shows and hides the buttons on the log form to match the setting. */
+function applyLogMethods() {
+  const on = new Set(enabledLogMethods());
+  if (photoLabelEl) photoLabelEl.hidden = !on.has("photo");
+  scanBarcodeBtn.hidden = !on.has("scan");
+  foodSearchBtn.hidden = !on.has("search");
+  quickKcalBtn.hidden = !on.has("number");
+  // Voice is the one the browser also gets a say in: a device with no speech
+  // recognition keeps it hidden however the setting reads, so turning it on
+  // can't produce a button that does nothing.
+  voiceBtn.hidden = !on.has("speak") || !speechSupported;
+  // A row with nothing in it would otherwise leave a gap above the log button.
+  captureRowEl.hidden = !["scan", "search", "speak", "number"].some((m) => on.has(m));
+  // Closing a panel whose button has just gone would otherwise strand it open.
+  if (!on.has("search")) foodSearchCard.hidden = true;
+}
+
+function renderLogMethodSettings(user) {
+  const on = new Set(Array.isArray(user.logMethods) ? user.logMethods : ["photo", "scan", "search", "speak"]);
+  logMethodToggles.innerHTML = "";
+
+  for (const method of LOG_METHODS) {
+    const wrap = document.createElement("label");
+    wrap.className = "setting-toggle";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = on.has(method);
+    input.addEventListener("change", () => {
+      const chosen = LOG_METHODS.filter((m) => logMethodInputs[m].checked);
+      haptic();
+      saveMealTagSettings({ logMethods: chosen });
+    });
+    logMethodInputs[method] = input;
+
+    const text = document.createElement("span");
+    text.className = "setting-toggle-text";
+    const label = document.createElement("span");
+    label.className = "setting-toggle-label";
+    label.textContent = LOG_METHOD_NAMES[method];
+    const note = document.createElement("span");
+    note.className = "setting-toggle-note";
+    note.textContent = LOG_METHOD_NOTES[method];
+    text.append(label, note);
+
+    wrap.append(input, text);
+    logMethodToggles.appendChild(wrap);
+  }
+}
+
+
 // ── The diary display settings ──────────────────────────────────────────────
 const settingShowTimes = document.getElementById("setting-show-times");
+const settingTeams = document.getElementById("setting-teams");
 const settingMealTags = document.getElementById("setting-meal-tags");
 const mealTagNamesBox = document.getElementById("meal-tag-names");
 const mealTagErrorEl = document.getElementById("meal-tag-error");
@@ -6542,6 +6682,8 @@ async function saveMealTagSettings(patch) {
     currentUser = await res.json();
     renderMealTagSettings(currentUser);
     renderMealTagRow();
+    renderLogMethodSettings(currentUser);
+    applyLogMethods();
     refreshCurrentView();
   } catch {
     mealTagErrorEl.textContent = "Couldn't save that — please try again.";
@@ -6564,6 +6706,11 @@ for (const slot of MEAL_TAG_SLOTS) {
     saveMealTagSettings({ mealTagNames: names });
   });
 }
+
+settingTeams.addEventListener("change", () => {
+  haptic();
+  saveMealTagSettings({ teamsEnabled: settingTeams.checked });
+});
 
 settingShowTimes.addEventListener("change", () => {
   applyShowTimes(settingShowTimes.checked);

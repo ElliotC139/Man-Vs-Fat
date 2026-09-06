@@ -397,7 +397,7 @@
           </div>
         </section>
 
-        <section id="team-card" class="card" data-module="week:team" data-module-name="Your team">
+        <section id="team-card" class="card" data-module="week:team" data-module-name="Your team" hidden>
           <div class="section-header">
             <h2 id="team-title">Your team</h2>
             <span id="team-range" class="muted averages-window"></span>
@@ -745,6 +745,13 @@
                 clock time — so a late start moves the whole window with it.
               </p>
 
+              <span class="field-label">Ways to log</span>
+              <p class="muted">
+                Which buttons the log form offers. Typing a description is always there —
+                it's the form itself.
+              </p>
+              <div id="log-method-toggles"></div>
+
               <label class="setting-toggle">
                 <input type="checkbox" id="setting-show-times" />
                 <span class="setting-toggle-text">
@@ -1087,6 +1094,26 @@
               </div>
             </div>
           </div>
+          </section>
+
+          <section class="settings-section" data-settings-section>
+            <button type="button" class="settings-section-head" aria-expanded="false">
+              <span class="settings-section-title">Teams</span>
+              <span class="settings-section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="settings-section-body" hidden>
+              <label class="setting-toggle">
+                <input type="checkbox" id="setting-teams" />
+                <span class="setting-toggle-text">
+                  <span class="setting-toggle-label">Show a team table on My Week</span>
+                  <span class="setting-toggle-note">
+                    A league table for a group of you over the same week. Everyone in it sees
+                    each other's name, days logged, and weight change as a percentage — not
+                    your food, not what you weigh, not your targets.
+                  </span>
+                </span>
+              </label>
+            </div>
           </section>
 
           <section class="settings-section" data-settings-section>
@@ -1434,6 +1461,7 @@
         <section id="insights-card" class="card" hidden>
           <h2>Insights</h2>
           <ul id="insights-list" class="insights-list"></ul>
+          <button type="button" id="insights-more" class="ghost-sm" hidden></button>
         </section>
 
         <nav class="stats-tabs" aria-label="Stats categories">

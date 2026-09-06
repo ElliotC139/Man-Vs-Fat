@@ -2225,11 +2225,32 @@ tr.has-tooltip:active {
   transform: scale(0.94);
 }
 
-.meal-editor .field-label {
+/* Was scoped to the meal editor, so everywhere else in settings this was an
+   unstyled span: a heading with no weight and no space under it, which ran
+   "How much to add" straight into the buttons below it and made a whole
+   settings block read as one clump. */
+.field-label {
   display: block;
   font-size: 0.85rem;
   font-weight: 600;
-  margin-bottom: 6px;
+  margin: 18px 0 6px;
+}
+/* Nothing to separate from at the top of a section. */
+.settings-section-body > .field-label:first-child,
+.meal-editor .field-label:first-child {
+  margin-top: 0;
+}
+/* A caption belongs to the heading above it, not to the gap. */
+.field-label + .muted {
+  margin-top: -2px;
+  margin-bottom: 10px;
+}
+.meal-editor .field-label {
+  margin: 0 0 6px;
+}
+/* The control under a heading needs air beneath it before the next label. */
+.units-toggle {
+  margin-bottom: 14px;
 }
 .meal-kind-btns {
   display: flex;
