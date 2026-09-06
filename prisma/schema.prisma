@@ -184,6 +184,7 @@ model User {
   dayNotes           DayNote[]
   waterLogs          WaterLog[]
   foodShares         FoodShare[]
+  teamMemberships    TeamMember[]
 }
 
 // A single-use token for resetting a forgotten password. Only the hash is
@@ -489,6 +490,52 @@ model FoodShare {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
+  @@index([userId])
+}
+
+// A group of people whose weeks are compared side by side.
+//
+// The app is named after a league, and a league is a table. Everything a table
+// needs — multi-user accounts, per-user weeks, weighted days logged, weekly
+// totals — has been here since long before this model; what was missing was
+// anything to join people together.
+//
+// Two deliberate limits:
+//
+//   - **The join code is the only way in.** It is random, there is no endpoint
+//     that lists teams, and nothing about a team is reachable without being a
+//     member of it. A code is a capability, handed out by whoever runs the
+//     team.
+//   - **Very little crosses.** The table carries a name, how many days each
+//     person logged, and how much weight they changed. Not what anyone ate,
+//     not what they weigh, not their targets. A league table is a comparison
+//     of effort and outcome, and everything else is somebody's diary.
+model Team {
+  id              Int          @id @default(autoincrement())
+  name            String
+  // Unguessable, and the only way in. Not derived from the name or the owner.
+  joinCode        String       @unique
+  // The team's own week, not each member's. Two people with different
+  // rollovers must not see different tables for the same week — a league has
+  // one fixture list. Defaulted from whoever created it.
+  weekStartWeekday Int         @default(0)
+  weekStartHour    Int         @default(17)
+  weekStartMinute  Int         @default(0)
+  createdAt       DateTime     @default(now())
+  members         TeamMember[]
+}
+
+model TeamMember {
+  id       Int      @id @default(autoincrement())
+  teamId   Int
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId   Int
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // "owner" can rename the team and remove people; "member" can only leave.
+  role     String   @default("member")
+  joinedAt DateTime @default(now())
+
+  @@unique([teamId, userId])
   @@index([userId])
 }
 
