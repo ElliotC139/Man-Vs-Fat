@@ -98,6 +98,7 @@ const foodFavoritesSection = document.getElementById("food-favorites-section");
 const foodFavoritesList = document.getElementById("food-favorites-list");
 const foodFavoritesToggle = document.getElementById("food-favorites-toggle");
 const foodAllCount = document.getElementById("food-all-count");
+const foodAllMore = document.getElementById("food-all-more");
 const foodAllList = document.getElementById("food-all-list");
 const foodLibraryError = document.getElementById("food-library-error");
 
@@ -874,12 +875,32 @@ function renderMealGroup(group, container) {
   kcal.textContent = anyUnknown ? `${total} kcal +` : `${total} kcal`;
   if (anyUnknown) kcal.title = "One item in this meal has no calorie figure yet";
 
+  // Repeating the whole thing, without opening it and tapping + four times.
+  // A meal is one thing the person ate; the diary collapsing it to one line
+  // and then making them repeat it row by row was the collapse taking
+  // something away.
+  const actions = document.createElement("div");
+  actions.className = "entry-actions";
+  const repeatBtn = document.createElement("button");
+  repeatBtn.type = "button";
+  repeatBtn.className = "entry-action-icon";
+  repeatBtn.innerHTML = ICONS.plus;
+  repeatBtn.title = `Add ${group.name || "this meal"} to today`;
+  repeatBtn.setAttribute("aria-label", `Add ${group.name || "this meal"} to today`);
+  repeatBtn.addEventListener("click", (event) => {
+    // The whole header is the open/close target, so the button has to say it
+    // meant something else.
+    event.stopPropagation();
+    repeatEntries(group.entries.map((entry) => entry.id), group.name);
+  });
+  actions.appendChild(repeatBtn);
+
   const chevron = document.createElement("span");
   chevron.className = "meal-group-chevron";
   chevron.setAttribute("aria-hidden", "true");
   chevron.innerHTML = open ? ICONS.chevronUp : ICONS.chevronDown;
 
-  head.append(main, kcal, chevron);
+  head.append(main, kcal, actions, chevron);
   head.addEventListener("click", () => {
     if (open) openMealGroups.delete(group.id);
     else openMealGroups.add(group.id);
@@ -1250,6 +1271,33 @@ function enterEditMode(row, entry) {
 async function deleteEntry(id) {
   await fetch(`/api/entries/${id}`, { method: "DELETE" });
   refreshCurrentView();
+}
+
+/**
+ * Repeats several entries onto today, as one meal again.
+ *
+ * The server gives them a fresh group id, so what was one line in the diary is
+ * one line again rather than four loose rows arriving at once.
+ */
+async function repeatEntries(ids, name) {
+  try {
+    const res = await fetch("/api/entries/repeat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    if (!res.ok) throw new Error();
+    const created = await res.json();
+    weeksAgo = 0;
+    haptic();
+    showToast(`${name || "Meal"} added again`, {
+      actionLabel: "Undo",
+      onAction: () => undoEntries(created.map((entry) => entry.id)),
+    });
+    await refreshCurrentView();
+  } catch {
+    showToast("Couldn't add that again — please try again.");
+  }
 }
 
 async function repeatEntry(id) {
@@ -3045,6 +3093,10 @@ function loadFoodLibraryScreen() {
   foodSearchInput.value = "";
   foodLibraryError.hidden = true;
   closeMealEditor();
+  // Both lists start at their first page on arrival. Coming back to a screen
+  // scrolled two hundred rows deep is not where anyone left off.
+  foodPagesShown = 1;
+  mealPagesShown = 1;
   loadFoods("");
   loadMeals();
 }
@@ -3076,6 +3128,23 @@ async function loadFoods(query) {
 const FAVOURITES_SHOWN = 5;
 let favouritesExpanded = false;
 
+/**
+ * How much of a long list arrives at once.
+ *
+ * The Food screen stacks three lists — favourites, meals, every food ever
+ * logged — and the last of those grows without limit. After a few months it is
+ * hundreds of rows, which buries the two above it, costs a scroll to get past,
+ * and builds hundreds of DOM nodes nobody looks at. A page at a time, with the
+ * rest one tap away: the list is still complete, it just doesn't arrive all at
+ * once.
+ *
+ * Deliberately client-side. The whole library is one small JSON payload the
+ * screen already had, and paging it on the server would trade a scrolling
+ * problem for a round trip on every tap.
+ */
+const FOOD_PAGE = 25;
+let foodPagesShown = 1;
+
 function renderFoodLibrary(foods) {
   const favorites = foods.filter((f) => f.favorite);
   foodFavoritesSection.hidden = favorites.length === 0;
@@ -3094,14 +3163,34 @@ function renderFoodLibrary(foods) {
   foodAllCount.textContent = foods.length === 0 ? "" : `${foods.length}`;
   if (foods.length === 0) {
     foodAllList.innerHTML = '<p class="empty-state">No foods found.</p>';
+    foodAllMore.hidden = true;
     return;
   }
+
   // Ordered by the server: most-often eaten first, most-recent breaking the
   // ties. See GET /api/foods.
-  for (const food of foods) {
+  const shownCount = Math.min(foods.length, FOOD_PAGE * foodPagesShown);
+  for (const food of foods.slice(0, shownCount)) {
     foodAllList.appendChild(renderFoodRow(food));
   }
+
+  const remaining = foods.length - shownCount;
+  foodAllMore.hidden = remaining <= 0;
+  // Says how many are left and how many the tap brings, so it isn't a button
+  // whose cost is unknown.
+  foodAllMore.textContent = remaining > FOOD_PAGE
+    ? `Show ${FOOD_PAGE} more — ${remaining} to go`
+    : `Show the last ${remaining}`;
+  // The count in the header now describes a list that isn't all on screen, so
+  // it says how much of it is.
+  foodAllCount.textContent = remaining > 0 ? `${shownCount} of ${foods.length}` : `${foods.length}`;
 }
+
+foodAllMore.addEventListener("click", () => {
+  foodPagesShown += 1;
+  haptic();
+  loadFoods(foodSearchInput.value);
+});
 
 foodFavoritesToggle.addEventListener("click", () => {
   favouritesExpanded = !favouritesExpanded;
@@ -3436,6 +3525,9 @@ async function logFood(food, btn) {
 foodLibraryBack.addEventListener("click", leaveFoodLibrary);
 foodSearchInput.addEventListener("input", () => {
   clearTimeout(foodSearchTimer);
+  // A new search is a new list, so it starts at the top of it — carrying an
+  // expanded page count across would show "75 of 3".
+  foodPagesShown = 1;
   foodSearchTimer = setTimeout(() => loadFoods(foodSearchInput.value), 250);
 });
 
@@ -5252,6 +5344,11 @@ quickAddManage.addEventListener("click", () => {
 // ── Saved meals & recipes (Food Library screen) ─────────────────────────────
 const mealsSection = document.getElementById("meals-section");
 const mealListEl = document.getElementById("meal-list");
+const mealListMore = document.getElementById("meal-list-more");
+/** Kept so the show-more button can redraw without a re-fetch. */
+let lastMeals = [];
+/** Same page size as the food list, so the screen reads as one thing. */
+let mealPagesShown = 1;
 const mealNewBtn = document.getElementById("meal-new-btn");
 const mealEditor = document.getElementById("meal-editor");
 const mealNameInput = document.getElementById("meal-name");
@@ -5274,9 +5371,11 @@ async function loadMeals() {
   try {
     const res = await fetch("/api/meals");
     if (!res.ok) throw new Error();
-    renderMeals(await res.json());
+    lastMeals = await res.json();
+    renderMeals(lastMeals);
   } catch {
     mealListEl.innerHTML = '<p class="empty-state">Couldn’t load your meals.</p>';
+    mealListMore.hidden = true;
   }
 }
 
@@ -5285,10 +5384,27 @@ function renderMeals(meals) {
   if (meals.length === 0) {
     mealListEl.innerHTML =
       '<p class="empty-state">No saved meals yet — save one to log it in a single tap.</p>';
+    mealListMore.hidden = true;
     return;
   }
-  for (const meal of meals) mealListEl.appendChild(renderMealRow(meal));
+
+  const shownCount = Math.min(meals.length, FOOD_PAGE * mealPagesShown);
+  for (const meal of meals.slice(0, shownCount)) mealListEl.appendChild(renderMealRow(meal));
+
+  const remaining = meals.length - shownCount;
+  mealListMore.hidden = remaining <= 0;
+  mealListMore.textContent = remaining > FOOD_PAGE
+    ? `Show ${FOOD_PAGE} more — ${remaining} to go`
+    : `Show the last ${remaining}`;
 }
+
+mealListMore.addEventListener("click", () => {
+  mealPagesShown += 1;
+  haptic();
+  // Redrawn from what is already in hand: opening a page is not a reason to
+  // ask the server for the same list again.
+  renderMeals(lastMeals);
+});
 
 function renderMealRow(meal) {
   const row = document.createElement("div");

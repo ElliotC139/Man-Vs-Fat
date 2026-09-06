@@ -1,5 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { prisma } from "../db";
 import { config } from "../config";
@@ -551,6 +552,85 @@ entriesRouter.post("/:id/repeat", async (req, res) => {
   });
 
   res.status(201).json(entry);
+});
+
+const repeatManySchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(50),
+});
+
+/**
+ * Repeats several entries at once, onto today.
+ *
+ * The single-entry version above is what a row's + button calls. A meal logged
+ * as four rows collapses to one line in the diary, and repeating it a row at a
+ * time meant opening the group and tapping + four times — for something the
+ * user thinks of as one thing they ate.
+ *
+ * Scoped to the caller's own entries, so a list of ids can only ever repeat
+ * their own food: an id belonging to someone else simply isn't found, and a
+ * request naming nothing they own is a 404 rather than a silent no-op.
+ */
+entriesRouter.post("/repeat", async (req, res) => {
+  const parsed = repeatManySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const existing = await prisma.entry.findMany({
+    where: { id: { in: parsed.data.ids }, matchWeek: { userId: req.userId! } },
+    orderBy: { timestamp: "asc" },
+  });
+  if (existing.length === 0) {
+    res.status(404).json({ error: "None of those entries were found." });
+    return;
+  }
+
+  const entryTimestamp = new Date();
+  const weekStart = await getUserWeekStart(req.userId!);
+  const matchWeek = await findOrCreateMatchWeek(entryTimestamp, config.TIMEZONE, req.userId!, weekStart);
+  const inferred = inferMealType(getLocalParts(entryTimestamp, config.TIMEZONE).hour);
+
+  // One group id for the whole repeat, so what was one line in the diary is
+  // one line again rather than four loose rows. The name comes from the
+  // originals where they agree on one, which is the case for anything that was
+  // logged as a meal.
+  const names = new Set(existing.map((entry) => entry.mealGroupName).filter(Boolean));
+  const groupId = existing.length > 1 ? randomUUID() : null;
+  const groupName = groupId && names.size === 1 ? [...names][0]! : null;
+
+  const created = await prisma.$transaction(
+    existing.map((entry) =>
+      prisma.entry.create({
+        data: {
+          timestamp: entryTimestamp,
+          rawInput: null,
+          label: entry.label,
+          kcal: entry.kcal,
+          quantity: entry.quantity,
+          unitLabel: entry.unitLabel,
+          proteinG: entry.proteinG,
+          carbsG: entry.carbsG,
+          fatG: entry.fatG,
+          fibreG: entry.fibreG,
+          sugarG: entry.sugarG,
+          satFatG: entry.satFatG,
+          saltG: entry.saltG,
+          imageUrl: entry.imageUrl,
+          // Same rule as a single repeat: a tag you chose comes with it, a slot
+          // the clock guessed gets a fresh guess for the new time.
+          mealType: entry.mealTypeSet ? entry.mealType : inferred,
+          mealTypeSet: entry.mealTypeSet,
+          source: entry.source,
+          mealGroupId: groupId,
+          mealGroupName: groupName,
+          matchWeekId: matchWeek.id,
+        },
+      }),
+    ),
+  );
+
+  res.status(201).json(created);
 });
 
 const copyDaySchema = z.object({
