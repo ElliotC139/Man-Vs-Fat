@@ -151,6 +151,9 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
   const imageUrl = photo ? saveUploadedImage(photo.buffer) : null;
   const matchWeek = await findOrCreateMatchWeek(entryTimestamp, config.TIMEZONE, req.userId!, weekStart);
   const mealType = resolveMealType(chosenMeal, entryTimestamp);
+  // Only a supplied value is a choice. An absent one is the clock guessing,
+  // which must never look like something the user picked.
+  const mealTypeSet = chosenMeal !== undefined;
 
   const entries = await prisma.$transaction(
     items.map((item) =>
@@ -165,6 +168,7 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
           fatG: item.fatG,
           imageUrl,
           mealType,
+          mealTypeSet,
           source,
           matchWeekId: matchWeek.id,
         },
@@ -278,6 +282,7 @@ entriesRouter.post("/confirm", async (req, res) => {
 
   const matchWeek = await findOrCreateMatchWeek(timestamp, config.TIMEZONE, req.userId!, weekStart);
   const mealType = resolveMealType(chosenMeal, timestamp);
+  const mealTypeSet = chosenMeal !== undefined;
 
   // Only the safe filename part of an uploaded URL is honoured, so a doctored
   // value can't point an entry at something outside the uploads directory.
@@ -297,6 +302,7 @@ entriesRouter.post("/confirm", async (req, res) => {
           fatG: item.fatG ?? null,
           imageUrl: safeImageUrl,
           mealType,
+          mealTypeSet,
           source,
           matchWeekId: matchWeek.id,
         },
@@ -310,7 +316,8 @@ entriesRouter.post("/confirm", async (req, res) => {
 const updateEntrySchema = z.object({
   label: z.string().trim().min(1).optional(),
   kcal: z.number().int().min(0).nullable().optional(),
-  mealType: z.enum(MEAL_TYPES).optional(),
+  // Null clears the tag back to "no meal", which is a choice like any other.
+  mealType: z.enum(MEAL_TYPES).nullable().optional(),
   // Local calendar day (YYYY-MM-DD) to move the entry to.
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   // Explicit local hour (0-23) to pin the entry to. Needed alongside date/mealType
@@ -360,10 +367,15 @@ entriesRouter.patch("/:id", async (req, res) => {
       proteinG?: number | null;
       carbsG?: number | null;
       fatG?: number | null;
+      mealTypeSet?: boolean;
     } = {
       ...rest,
       edited: true,
     };
+
+    // Setting the meal by hand is the clearest possible choice, including
+    // setting it back to none.
+    if (rest.mealType !== undefined) data.mealTypeSet = true;
 
     // Typing a number over an estimate makes it the user's own figure, so it
     // should stop being labelled as guessed.
@@ -448,7 +460,11 @@ entriesRouter.post("/:id/repeat", async (req, res) => {
   const entryTimestamp = new Date();
   const weekStart = await getUserWeekStart(req.userId!);
   const matchWeek = await findOrCreateMatchWeek(entryTimestamp, config.TIMEZONE, req.userId!, weekStart);
-  const mealType = inferMealType(getLocalParts(entryTimestamp, config.TIMEZONE).hour);
+  // A repeat of something you tagged keeps that tag; a repeat of something the
+  // clock guessed gets a fresh guess for its new time, still marked a guess.
+  const mealType = existing.mealTypeSet
+    ? existing.mealType
+    : inferMealType(getLocalParts(entryTimestamp, config.TIMEZONE).hour);
 
   const entry = await prisma.entry.create({
     data: {
@@ -462,6 +478,7 @@ entriesRouter.post("/:id/repeat", async (req, res) => {
       fatG: existing.fatG,
       imageUrl: existing.imageUrl,
       mealType,
+      mealTypeSet: existing.mealTypeSet,
       // A repeat is only as trustworthy as what it copies, so it inherits
       // the original's provenance rather than claiming a fresh one.
       source: existing.source,

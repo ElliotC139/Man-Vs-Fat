@@ -70,3 +70,17 @@ export function writeMealTagNames(names: Partial<MealTagNames> | null | undefine
   }
   return Object.keys(out).length > 0 ? JSON.stringify(out) : null;
 }
+
+/**
+ * The tag an entry actually has, as opposed to the slot the clock once guessed.
+ *
+ * Everything user-facing goes through this: the row on the diary, the grouping
+ * on Today, the analysis card. An entry whose slot was never chosen reads as
+ * untagged, however confident the guess in the column looks.
+ */
+export function effectiveMealType(entry: {
+  mealType: string | null;
+  mealTypeSet?: boolean | null;
+}): string | null {
+  return entry.mealTypeSet ? entry.mealType : null;
+}

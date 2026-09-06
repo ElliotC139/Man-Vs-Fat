@@ -679,10 +679,10 @@ describe("GET /api/stats/meal-breakdown", () => {
     // point of the per-day-eaten average is that it is not just a total: a
     // lunch that happens half as often still shows what it costs when it does.
     for (let d = 4; d >= 1; d--) {
-      state.entries.push({ userId, timestamp: middayDaysAgo(d), kcal: 800, mealType: "dinner" });
+      state.entries.push({ userId, timestamp: middayDaysAgo(d), kcal: 800, mealType: "dinner", mealTypeSet: true });
     }
     for (const d of [2, 1]) {
-      state.entries.push({ userId, timestamp: middayDaysAgo(d), kcal: 600, mealType: "lunch" });
+      state.entries.push({ userId, timestamp: middayDaysAgo(d), kcal: 600, mealType: "lunch", mealTypeSet: true });
     }
 
     const res = await fetch(`${baseUrl}/api/stats/meal-breakdown`, { headers: { Cookie: cookie } });
@@ -710,9 +710,9 @@ describe("GET /api/stats/meal-breakdown", () => {
     // Folding them into snack is the tempting shortcut and it overstates
     // snacking, which is exactly the number someone reads this card for.
     const { cookie, userId } = await signUp("alice");
-    state.entries.push({ userId, timestamp: middayDaysAgo(3), kcal: 200, mealType: "snack" });
-    state.entries.push({ userId, timestamp: middayDaysAgo(2), kcal: 500, mealType: null });
-    state.entries.push({ userId, timestamp: middayDaysAgo(1), kcal: 700, mealType: "dinner" });
+    state.entries.push({ userId, timestamp: middayDaysAgo(3), kcal: 200, mealType: "snack", mealTypeSet: true });
+    state.entries.push({ userId, timestamp: middayDaysAgo(2), kcal: 500, mealType: null, mealTypeSet: true });
+    state.entries.push({ userId, timestamp: middayDaysAgo(1), kcal: 700, mealType: "dinner", mealTypeSet: true });
 
     const res = await fetch(`${baseUrl}/api/stats/meal-breakdown`, { headers: { Cookie: cookie } });
     const body = (await res.json()) as any;
@@ -723,10 +723,31 @@ describe("GET /api/stats/meal-breakdown", () => {
     expect(snack).toMatchObject({ kcal: 200 });
   });
 
+
+  it("does not count a slot the clock guessed as a meal the user chose", () => {
+    // The complaint that prompted this: switching tags on made a back
+    // catalogue of guesses look like it had been categorised all along.
+    return (async () => {
+      const { cookie, userId } = await signUp("alice");
+      state.entries.push({ userId, timestamp: middayDaysAgo(3), kcal: 400, mealType: "lunch", mealTypeSet: false });
+      state.entries.push({ userId, timestamp: middayDaysAgo(2), kcal: 400, mealType: "dinner", mealTypeSet: false });
+      state.entries.push({ userId, timestamp: middayDaysAgo(1), kcal: 700, mealType: "dinner", mealTypeSet: true });
+
+      const res = await fetch(`${baseUrl}/api/stats/meal-breakdown`, { headers: { Cookie: cookie } });
+      const body = (await res.json()) as any;
+
+      // Only the chosen one is a meal; the two guesses are untagged.
+      expect(body.meals.find((m: any) => m.mealType === "dinner")).toMatchObject({ kcal: 700 });
+      expect(body.meals.find((m: any) => m.mealType === null)).toMatchObject({ kcal: 800 });
+      expect(body.meals.find((m: any) => m.mealType === "lunch")).toBeUndefined();
+    })();
+  });
+
+
   it("uses the user's own names for the slots", async () => {
     const { cookie, userId } = await signUp("alice");
     state.users[0]!.mealTagNames = '{"dinner":"Tea"}';
-    state.entries.push({ userId, timestamp: middayDaysAgo(1), kcal: 700, mealType: "dinner" });
+    state.entries.push({ userId, timestamp: middayDaysAgo(1), kcal: 700, mealType: "dinner", mealTypeSet: true });
 
     const res = await fetch(`${baseUrl}/api/stats/meal-breakdown`, { headers: { Cookie: cookie } });
     const body = (await res.json()) as any;

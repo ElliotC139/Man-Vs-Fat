@@ -4451,6 +4451,16 @@ body.modal-open {
   cursor: pointer;
 }
 
+/* The confirm sheet's meal row wraps the same way the log form's does. */
+#confirm-meal-row {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+#confirm-meal-row .log-week-btns {
+  flex-wrap: wrap;
+}
+
 /* ── Where the calories go ── */
 .meal-breakdown {
   display: flex;

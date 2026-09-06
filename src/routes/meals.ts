@@ -274,6 +274,7 @@ mealsRouter.post("/:id/log", async (req, res) => {
   const mealType: MealType | null = parsed.data.mealType === undefined
     ? inferMealType(getLocalParts(timestamp, config.TIMEZONE).hour)
     : parsed.data.mealType;
+  const mealTypeSet = parsed.data.mealType !== undefined;
 
   const items = [...meal.items].sort((a, b) => a.sortOrder - b.sortOrder);
 
@@ -320,6 +321,7 @@ mealsRouter.post("/:id/log", async (req, res) => {
           fatG: row.fatG ?? null,
           imageUrl: null,
           mealType,
+          mealTypeSet,
           source: "meal",
           matchWeekId: matchWeek.id,
         },
