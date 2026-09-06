@@ -14,6 +14,7 @@ import {
 } from "../auth";
 import { BURN_SOURCES, readBurnSource } from "../burnSource";
 import { readMealTagNames, writeMealTagNames } from "../mealTags";
+import { BUFFER_MODES, MAX_BUFFER_PCT, resolveBuffer } from "../kcalBuffer";
 import { MEAL_TYPES } from "../mealType";
 import { deleteAccount } from "../deleteAccount";
 import { canSendMail, sendMail } from "../mailer";
@@ -63,6 +64,11 @@ const settingsSchema = z.object({
   reminderHour: z.number().int().min(0).max(23).nullable().optional(),
   // Which figure the Today card calls the day's burn. Null means measured.
   burnSource: z.enum(BURN_SOURCES).nullable().optional(),
+  // How much the under-reporting buffer adds, and whether it varies per item.
+  kcalBufferMode: z.enum(BUFFER_MODES).nullable().optional(),
+  kcalBufferPct: z.number().int().min(0).max(MAX_BUFFER_PCT).nullable().optional(),
+  kcalBufferMinPct: z.number().int().min(0).max(MAX_BUFFER_PCT).nullable().optional(),
+  kcalBufferMaxPct: z.number().int().min(0).max(MAX_BUFFER_PCT).nullable().optional(),
   // Whether the log form asks which meal an entry belongs to.
   mealTagsEnabled: z.boolean().optional(),
   // What the four slots are called. Only the four known slots are accepted, so
@@ -144,6 +150,10 @@ function toPublicUser(user: {
   burnSource?: string | null;
   mealTagsEnabled?: boolean | null;
   mealTagNames?: string | null;
+  kcalBufferMode?: string | null;
+  kcalBufferPct?: number | null;
+  kcalBufferMinPct?: number | null;
+  kcalBufferMaxPct?: number | null;
   email?: string | null;
   googleId?: string | null;
   passwordHash?: string | null;
@@ -185,6 +195,10 @@ function toPublicUser(user: {
     // Sent resolved rather than raw, so the client never has to know what an
     // unset slot falls back to.
     mealTagNames: readMealTagNames(user.mealTagNames),
+    // Resolved rather than raw, so the settings screen shows the figures the
+    // estimator will actually use — including the defaults an untouched
+    // account is running on.
+    kcalBuffer: resolveBuffer(user),
     email: user.email ?? null,
     // The settings screen needs to know which recovery routes exist for this
     // account without being told the secrets behind them.

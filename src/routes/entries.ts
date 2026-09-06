@@ -146,6 +146,7 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
         imageBase64: photo?.buffer.toString("base64"),
         imageMediaType: photo?.mimeType,
         references: await findReferences(text),
+        buffer: await prisma.user.findUnique({ where: { id: req.userId! } }),
       });
 
   const imageUrl = photo ? saveUploadedImage(photo.buffer) : null;
@@ -223,6 +224,7 @@ entriesRouter.post("/preview", upload.single("photo"), async (req, res) => {
     imageBase64: photo?.buffer.toString("base64"),
     imageMediaType: photo?.mimeType,
     references: await findReferences(text),
+    buffer: await prisma.user.findUnique({ where: { id: req.userId! } }),
   });
 
   // The photo is stored now rather than on confirm, so the browser doesn't

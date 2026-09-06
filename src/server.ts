@@ -22,6 +22,7 @@ import { pushRouter } from "./routes/push";
 import { statsRouter } from "./routes/stats";
 import { weighInsRouter } from "./routes/weighIns";
 import { whoopRouter } from "./routes/whoop";
+import { sharesRouter } from "./routes/shares";
 import { startScheduler } from "./jobs/scheduler";
 
 ensureUploadsDir();
@@ -74,8 +75,16 @@ app.use("/api/push", pushRouter);
 app.use("/api/stats", statsRouter);
 app.use("/api/weigh-ins", weighInsRouter);
 app.use("/api/whoop", whoopRouter);
+app.use("/api/shares", sharesRouter);
 
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
+
+// A shared link is short and pasteable, and serves the ordinary app shell —
+// the page reads the token out of its own URL and asks the API for the items.
+// Static files are matched above, so this can't shadow one.
+app.get("/s/:token", (_req, res) => {
+  res.sendFile(path.join(process.cwd(), "public", "index.html"));
+});
 
 // Reached only if nothing above matched — no API route, no static file.
 app.use((req, res) => {

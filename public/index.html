@@ -702,6 +702,47 @@
             </div>
           </section>
 
+          <section class="settings-section" data-settings-section>
+            <button type="button" class="settings-section-head" aria-expanded="false">
+              <span class="settings-section-title">Estimate buffer</span>
+              <span class="settings-section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="settings-section-body" hidden>
+              <p class="muted">
+                Descriptions of food tend to run low — portions rounded down, the oil and the
+                sauce left out — so a guessed estimate gets a percentage added on top. Entries
+                where you stated the amount ("200g", "10 pieces") are never buffered.
+              </p>
+
+              <span class="field-label">How much to add</span>
+              <div class="units-toggle">
+                <button type="button" id="buffer-mode-fixed" class="units-btn units-btn--active">Always the same</button>
+                <button type="button" id="buffer-mode-random" class="units-btn">Vary per item</button>
+              </div>
+
+              <div id="buffer-fixed-row" class="settings-row">
+                <div class="settings-field">
+                  <label for="buffer-pct">Add this much (%)</label>
+                  <input type="number" id="buffer-pct" min="0" max="50" step="1" />
+                </div>
+              </div>
+
+              <div id="buffer-random-row" class="settings-row" hidden>
+                <div class="settings-field">
+                  <label for="buffer-min-pct">At least (%)</label>
+                  <input type="number" id="buffer-min-pct" min="0" max="50" step="1" />
+                </div>
+                <div class="settings-field">
+                  <label for="buffer-max-pct">At most (%)</label>
+                  <input type="number" id="buffer-max-pct" min="0" max="50" step="1" />
+                </div>
+              </div>
+
+              <p id="buffer-note" class="muted"></p>
+              <p id="buffer-error" class="error" hidden></p>
+            </div>
+          </section>
+
           <h2 class="settings-group">You and your targets</h2>
           <section class="settings-section" id="body-stats-fieldset" data-settings-section>
             <button type="button" class="settings-section-head" aria-expanded="false">
@@ -1649,6 +1690,7 @@
       <span id="select-count" class="select-count"></span>
       <div class="select-bar-actions">
         <button type="button" id="select-cancel" class="ghost-sm">Cancel</button>
+        <button type="button" id="select-share" class="ghost-sm">Share</button>
         <button type="button" id="select-save-meal">Save as meal</button>
       </div>
     </div>
@@ -1682,6 +1724,24 @@
         <div class="sheet-actions">
           <button type="button" id="save-meal-confirm">Save</button>
           <button type="button" id="save-meal-cancel" class="ghost">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="share-items-sheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="share-items-title">
+      <div class="sheet-panel">
+        <div class="sheet-head">
+          <h2 id="share-items-title" class="sheet-title">Shared with you</h2>
+          <span class="sheet-source">Shared</span>
+        </div>
+        <p id="share-items-note" class="muted sheet-note"></p>
+        <div id="share-items-list" class="confirm-items"></div>
+        <p id="share-items-total" class="confirm-total"></p>
+        <p id="share-items-error" class="error" hidden></p>
+
+        <div class="sheet-actions">
+          <button type="button" id="share-items-accept">Add to my day</button>
+          <button type="button" id="share-items-dismiss" class="ghost">No thanks</button>
         </div>
       </div>
     </div>
