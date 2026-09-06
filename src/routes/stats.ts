@@ -21,7 +21,7 @@ import { recordError } from "../errorLog";
 import { MACRO_KEYS, resolveMacroTargets, sumMacros, type MacroKey } from "../macros";
 import { expectedBurnToday, macroRoom, whatCanIStillEat, type WhatNowFood, type WhatNowMeal } from "../whatNow";
 import { normalizeLabel } from "./foods";
-import { readMealTagNames } from "../mealTags";
+import { effectiveMealType, readMealTagNames } from "../mealTags";
 import { MEAL_TYPES, type MealType } from "../mealType";
 import { getRecentSleepRecovery, refreshWhoopSoon } from "../whoop/sync";
 
@@ -1253,7 +1253,7 @@ statsRouter.get("/meal-breakdown", async (req, res) => {
     prisma.user.findUnique({ where: { id: userId } }),
     prisma.entry.findMany({
       where: { matchWeek: { userId }, timestamp: { gte: since } },
-      select: { timestamp: true, kcal: true, mealType: true },
+      select: { timestamp: true, kcal: true, mealType: true, mealTypeSet: true },
       orderBy: { timestamp: "asc" },
     }),
   ]);
@@ -1266,7 +1266,9 @@ statsRouter.get("/meal-breakdown", async (req, res) => {
   for (const entry of entries) {
     const dayKey = localDayKey(entry.timestamp, config.TIMEZONE);
     loggedDays.add(dayKey);
-    const key = entry.mealType ?? UNTAGGED_KEY;
+    // The tag the person chose, never the one the clock guessed — otherwise
+    // switching meal tags on makes years of guesses look like categories.
+    const key = effectiveMealType(entry) ?? UNTAGGED_KEY;
     const bucket = buckets.get(key) ?? { kcal: 0, entries: 0, days: new Set<string>() };
     bucket.kcal += entry.kcal ?? 0;
     bucket.entries += 1;

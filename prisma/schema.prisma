@@ -417,6 +417,15 @@ model Entry {
   // any of the four, and filing it under one because the column had to hold
   // something made the tag mean nothing.
   mealType    String?
+  // Whether the person actually chose that meal, or the clock guessed it.
+  //
+  // Every entry has always carried a slot inferred from its time of day, which
+  // was harmless while nothing displayed it. The moment meal tags switched on,
+  // years of guesses appeared as though they had been categorised — so the two
+  // have to be told apart. Only a slot with this set is treated as a tag by
+  // the diary and the analysis; the rest read as untagged, with the guess left
+  // in the column for the exports that have always carried it.
+  mealTypeSet Boolean   @default(false)
   // Where the kcal figure came from, so the diary can be honest about how
   // much to trust it: "ai" (estimated from text/photo), "database" (a real
   // per-100g figure from Open Food Facts), "manual" (the user typed the

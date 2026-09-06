@@ -214,6 +214,9 @@ foodsRouter.post("/log", async (req, res) => {
   const mealType = chosenMeal === undefined
     ? inferMealType(getLocalParts(entryTimestamp, config.TIMEZONE).hour)
     : chosenMeal;
+  // Supplied means chosen; absent means the clock guessed and must not look
+  // like a tag the user picked.
+  const mealTypeSet = chosenMeal !== undefined;
 
   const entry = await prisma.entry.create({
     data: {
@@ -229,6 +232,7 @@ foodsRouter.post("/log", async (req, res) => {
       fatG: override ? override.fatG : match.fatG,
       imageUrl: match.imageUrl,
       mealType,
+      mealTypeSet,
       // Figures the user typed themselves are no longer an estimate.
       source: override ? "manual" : match.source,
       matchWeekId: matchWeek.id,

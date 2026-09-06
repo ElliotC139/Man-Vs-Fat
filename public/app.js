@@ -613,10 +613,10 @@ function renderEntryRow(entry) {
   // The meal it was filed under, but only once the user has asked to be asked:
   // with tags off every entry still carries a slot inferred from the clock,
   // and showing a guess nobody made would be noise.
-  if (mealTagsOn() && entry.mealType) {
+  if (mealTagsOn() && entryMealType(entry)) {
     const tag = document.createElement("span");
     tag.className = "entry-meal-tag";
-    tag.textContent = mealTagName(entry.mealType);
+    tag.textContent = mealTagName(entryMealType(entry));
     main.appendChild(tag);
   }
 
@@ -775,7 +775,7 @@ function enterEditMode(row, entry) {
       opt.textContent = option.label;
       mealSelect.appendChild(opt);
     }
-    mealSelect.value = entry.mealType ?? "";
+    mealSelect.value = entryMealType(entry) ?? "";
   }
 
   const dateInput = document.createElement("input");
@@ -2126,6 +2126,42 @@ let confirmState = null;
  * @param {string} [opts.warning] shown in red — a missing figure, say
  * @param {{label: string, run: Function}} [opts.alt]  optional third button
  */
+
+// The meal on the confirm sheet. The log form's choice arrives here, and this
+// is the screen where the figures get checked before anything is saved — so it
+// is the natural place to notice the meal is wrong and fix it, rather than
+// saving and then editing the entry.
+const confirmMealRow = document.getElementById("confirm-meal-row");
+const confirmMealBtns = document.getElementById("confirm-meal-btns");
+
+function renderConfirmMealRow() {
+  confirmMealRow.hidden = !mealTagsOn();
+  if (!mealTagsOn()) return;
+
+  confirmMealBtns.innerHTML = "";
+  const options = [
+    { key: null, label: "\u2014" },
+    ...MEAL_TAG_SLOTS.map((slot) => ({ key: slot, label: mealTagName(slot) })),
+  ];
+  // undefined would mean "nobody was asked", which is not true once this row
+  // is on the screen — the sheet always sends an answer, even if it is none.
+  const current = confirmState.mealType ?? null;
+  for (const option of options) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "log-week-btn";
+    btn.classList.toggle("log-week-btn--active", option.key === current);
+    btn.textContent = option.label;
+    if (option.key === null) btn.setAttribute("aria-label", "No meal tag");
+    btn.addEventListener("click", () => {
+      confirmState.mealType = option.key;
+      haptic();
+      renderConfirmMealRow();
+    });
+    confirmMealBtns.appendChild(btn);
+  }
+}
+
 function openConfirmSheet({
   items,
   imageUrl = null,
@@ -2154,6 +2190,7 @@ function openConfirmSheet({
     mealType,
   };
 
+  renderConfirmMealRow();
   confirmSourceEl.textContent = sourceLabel;
   confirmNoteEl.textContent = note;
   confirmNoteEl.hidden = !note;
@@ -3406,6 +3443,18 @@ let selectedMealTag = null;
 
 const mealTagRow = document.getElementById("meal-tag-row");
 const mealTagBtns = document.getElementById("meal-tag-btns");
+
+/**
+ * The tag an entry actually has.
+ *
+ * Every entry carries a slot inferred from its time of day, and always has —
+ * harmless while nothing displayed it, and badly misleading the moment meal
+ * tags switched on, because years of guesses appeared as though they had been
+ * categorised. Only a slot the person chose counts.
+ */
+function entryMealType(entry) {
+  return entry.mealTypeSet ? (entry.mealType ?? null) : null;
+}
 
 function mealTagName(slot) {
   return currentUser?.mealTagNames?.[slot] || MEAL_TAG_FALLBACK[slot];
@@ -8933,7 +8982,7 @@ function renderTodayEntries(entries) {
   todayEntryList.classList.add("meal-grouped");
 
   for (const slot of [...MEAL_TAG_SLOTS, null]) {
-    const inSlot = entries.filter((entry) => (entry.mealType ?? null) === slot);
+    const inSlot = entries.filter((entry) => entryMealType(entry) === slot);
     if (inSlot.length === 0) continue;
 
     const heading = document.createElement("div");

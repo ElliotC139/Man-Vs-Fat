@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { MEAL_TYPES, inferMealType } from "../src/mealType";
-import { readMealTagNames } from "../src/mealTags";
+import { effectiveMealType, readMealTagNames } from "../src/mealTags";
 
 /**
  * The meal slot has three states on the wire and they mean different things.
@@ -52,5 +52,25 @@ describe("the tag a row displays", () => {
       "Tea",
       "Nibbles",
     ]);
+  });
+});
+
+describe("a guessed slot is not a tag", () => {
+  it("reads an unchosen slot as untagged, however confident it looks", () => {
+    // Every entry ever logged carries a slot inferred from its time of day.
+    // Switching meal tags on made years of those guesses appear as though
+    // they had been categorised — this is the line that stops it.
+    expect(effectiveMealType({ mealType: "snack", mealTypeSet: false })).toBeNull();
+    expect(effectiveMealType({ mealType: "dinner", mealTypeSet: false })).toBeNull();
+    // Rows written before the column existed have no value at all.
+    expect(effectiveMealType({ mealType: "lunch" })).toBeNull();
+  });
+
+  it("keeps a slot the person chose", () => {
+    expect(effectiveMealType({ mealType: "breakfast", mealTypeSet: true })).toBe("breakfast");
+  });
+
+  it("treats a chosen none as untagged, which is what it is", () => {
+    expect(effectiveMealType({ mealType: null, mealTypeSet: true })).toBeNull();
   });
 });
