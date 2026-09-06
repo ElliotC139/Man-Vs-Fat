@@ -7618,6 +7618,104 @@ function renderNutrientToday(today) {
   }
 }
 
+// ── The target proposal ────────────────────────────────────────────────────
+//
+// The adaptive burn figure has always been computed from this person's own
+// intake and weigh-ins, and has never done anything but sit on a card. This is
+// the loop closed: once a week, if the learned figure has moved far enough to
+// matter, the app offers a new target and the user takes it or doesn't. The
+// rules about when it speaks up live in src/targetReview.ts; nothing here
+// decides anything.
+
+const targetReviewCard = document.getElementById("target-review-card");
+const targetReviewBody = document.getElementById("target-review-body");
+const targetReviewAccept = document.getElementById("target-review-accept");
+const targetReviewDecline = document.getElementById("target-review-decline");
+const targetReviewError = document.getElementById("target-review-error");
+
+let targetReview = null;
+
+async function loadTargetReview() {
+  try {
+    const res = await fetch("/api/stats/target-review");
+    if (!res.ok) throw new Error();
+    const review = await res.json();
+    targetReview = review?.available ? review : null;
+  } catch {
+    // A failed look is not worth an error on the Today screen — the card is
+    // an offer, and an offer that doesn't arrive costs nobody anything.
+    targetReview = null;
+  }
+  renderTargetReview();
+}
+
+function renderTargetReview() {
+  if (!targetReview) {
+    targetReviewCard.hidden = true;
+    return;
+  }
+  targetReviewCard.hidden = false;
+  targetReviewError.hidden = true;
+
+  const { proposed, current, tdee, windowDays, weightChangeKg, weeklyGoalKg } = targetReview;
+  const lost = weightChangeKg < 0;
+  const kg = Math.abs(weightChangeKg).toFixed(1);
+
+  // Says where the figure came from, in the order someone would ask: what you
+  // did, what that implies you burn, and what target that makes.
+  const evidence =
+    `Over the last ${windowDays} days you ${lost ? "lost" : "gained"} ${kg}kg on what you logged, `
+    + `which puts your actual burn at <strong>${tdee.toLocaleString()} kcal a day</strong>. `;
+  const goal = `To keep losing ${weeklyGoalKg}kg a week, that's <strong>${proposed.toLocaleString()} kcal</strong>`;
+  const versus = current === null
+    ? " — you haven't set a target yet."
+    : `, against the ${current.toLocaleString()} you're on now.`;
+
+  targetReviewBody.innerHTML = evidence + goal + versus;
+  targetReviewAccept.textContent = `Use ${proposed.toLocaleString()}`;
+  targetReviewDecline.textContent = current === null ? "Not now" : `Keep ${current.toLocaleString()}`;
+}
+
+async function answerTargetReview(accept) {
+  targetReviewAccept.disabled = true;
+  targetReviewDecline.disabled = true;
+  targetReviewError.hidden = true;
+  try {
+    const res = await fetch("/api/stats/target-review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accept }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : "Couldn't save that.");
+
+    targetReview = null;
+    renderTargetReview();
+    haptic();
+    if (accept) {
+      // The profile carries the target, so it has to be reloaded before the
+      // ring redraws against it — otherwise the bar keeps measuring the day
+      // against the number the user just replaced. Just the profile, not the
+      // whole sign-in path: nobody is being signed in here.
+      const me = await fetch("/api/auth/me");
+      if (me.ok) populateSettings(await me.json());
+      showToast(`Target set to ${body.dailyCalorieTarget?.toLocaleString()} kcal`);
+      await refreshCurrentView();
+    } else {
+      showToast("Left as it was — it'll ask again next week.");
+    }
+  } catch (error) {
+    targetReviewError.textContent = error.message;
+    targetReviewError.hidden = false;
+  } finally {
+    targetReviewAccept.disabled = false;
+    targetReviewDecline.disabled = false;
+  }
+}
+
+targetReviewAccept.addEventListener("click", () => answerTargetReview(true));
+targetReviewDecline.addEventListener("click", () => answerTargetReview(false));
+
 suggestTargetBtn.addEventListener("click", async () => {
   suggestTargetNote.hidden = true;
   try {
@@ -9422,7 +9520,13 @@ function renderToday(data) {
 
   // The target bar and macro rows are the same component the week summary
   // used to carry; they live here now, where today's numbers belong.
-  renderMacroToday({ kcal: eaten, macros: data.macros.eaten });
+  renderMacroToday({ kcal: eaten, macros: data.macros.eaten, nutrients: data.nutrients });
+
+  // Only asked about today, and only about the day that is actually today —
+  // stepping back to look at last Tuesday isn't a moment to be handed a
+  // decision about next week's target.
+  if (data.isToday) loadTargetReview();
+  else targetReviewCard.hidden = true;
 
   renderTodayBody(data.whoop);
   renderTodayInsights(data.insights);

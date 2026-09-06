@@ -102,6 +102,11 @@ model User {
   // Deliberately separate from the targets below: wanting to *see* fibre and
   // wanting to be *judged* on it are different asks, and tying them together
   // meant the only way to watch a figure was to invent a target for it.
+  // The match week in which the user last answered a target proposal, accepted
+  // or declined. The coach proposes once a week at most, and only once per
+  // week that hasn't been answered — see src/targetReview.ts. Null means never
+  // asked, which is every account before this existed.
+  targetReviewedWeek DateTime?
   nutrientsShown     String?
   // "net" reads a carb figure as carbohydrate minus fibre — the number a keto
   // or low-carb diet actually counts. Null or "total" is the label's own

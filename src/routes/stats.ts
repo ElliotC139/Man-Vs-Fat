@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { Router } from "express";
 import { prisma } from "../db";
 import { config } from "../config";
@@ -20,6 +21,7 @@ import { latestWeightKg, weightRate } from "../weightStats";
 import { computeDeficitStreak, type DayVerdict } from "../deficitStreak";
 import { recordError } from "../errorLog";
 import { MACRO_KEYS, resolveMacroTargets, sumMacros, type MacroKey } from "../macros";
+import { reviewTarget } from "../targetReview";
 import {
   isNetCarbs,
   netCarbsOf,
@@ -221,6 +223,75 @@ statsRouter.get("/summary", async (req, res) => {
 
 statsRouter.get("/tdee", async (req, res) => {
   res.json(await estimateAdaptiveTdee(req.userId!, req.query.days));
+});
+
+/**
+ * This week's proposal for the calorie target, or why there isn't one.
+ *
+ * The learned burn has always been computed and never used. This is the loop
+ * closed — see src/targetReview.ts for the rules about when it speaks up and
+ * why nothing changes without being asked.
+ */
+statsRouter.get("/target-review", async (req, res) => {
+  const [user, adaptive, weekStart] = await Promise.all([
+    prisma.user.findUnique({ where: { id: req.userId! } }),
+    estimateAdaptiveTdee(req.userId!),
+    getUserWeekStart(req.userId!),
+  ]);
+  if (!user) {
+    res.status(401).json({ error: "Not signed in" });
+    return;
+  }
+
+  const week = getMatchWeekBoundariesForWeeksAgo(new Date(), 0, config.TIMEZONE, weekStart);
+  res.json(reviewTarget(user, adaptive, week.start));
+});
+
+const targetReviewAnswerSchema = z.object({ accept: z.boolean() });
+
+/**
+ * Answers this week's proposal.
+ *
+ * Declining is recorded exactly like accepting: the point of the week marker
+ * is that the question is asked once, and an app that re-asks something you
+ * have already said no to is one whose cards stop being read.
+ */
+statsRouter.post("/target-review", async (req, res) => {
+  const parsed = targetReviewAnswerSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const [user, adaptive, weekStart] = await Promise.all([
+    prisma.user.findUnique({ where: { id: req.userId! } }),
+    estimateAdaptiveTdee(req.userId!),
+    getUserWeekStart(req.userId!),
+  ]);
+  if (!user) {
+    res.status(401).json({ error: "Not signed in" });
+    return;
+  }
+
+  const week = getMatchWeekBoundariesForWeeksAgo(new Date(), 0, config.TIMEZONE, weekStart);
+  const review = reviewTarget(user, adaptive, week.start);
+
+  // Re-derived here rather than taken from the request: a figure the client
+  // sends is a figure anyone can send, and this one writes the target.
+  if (!review.available) {
+    res.status(409).json({ error: "There's no target proposal to answer right now." });
+    return;
+  }
+
+  const updated = await prisma.user.update({
+    where: { id: req.userId! },
+    data: {
+      targetReviewedWeek: week.start,
+      ...(parsed.data.accept ? { dailyCalorieTarget: review.proposed } : {}),
+    },
+  });
+
+  res.json({ accepted: parsed.data.accept, dailyCalorieTarget: updated.dailyCalorieTarget });
 });
 
 // ── Calorie balance trend ───────────────────────────────────────────────────
