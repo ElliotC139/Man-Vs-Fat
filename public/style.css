@@ -5369,3 +5369,11 @@ body.hide-entry-times .entry-time {
   font-size: 1.1rem;
   line-height: 1;
 }
+
+/* A list that runs on past the fold gets a page at a time rather than an
+   endless scroll: the Food screen carries three lists stacked, and one of them
+   running to two hundred rows buries the others. */
+.list-more {
+  width: 100%;
+  margin-top: 8px;
+}

@@ -92,6 +92,15 @@ vi.mock("../src/db", () => {
         state.entries.push(entry);
         return entry;
       }),
+      findMany: vi.fn(async ({ where }: any) => {
+        const ids: number[] | undefined = where?.id?.in;
+        const userId = where?.matchWeek?.userId;
+        return state.entries.filter(
+          (e: any) =>
+            (ids ? ids.includes(e.id) : true)
+            && (userId === undefined || e.userId === userId),
+        );
+      }),
     },
     $transaction: vi.fn(async (arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma))),
   };
@@ -176,6 +185,101 @@ describe("POST /api/entries/preview", () => {
     expect(body.rawInput).toBe("bowl of porridge");
     // The whole point of the split: nothing is saved until it is confirmed.
     expect(state.entries).toHaveLength(0);
+  });
+});
+
+describe("POST /api/entries/repeat", () => {
+  function repeat(cookie: string, body: unknown) {
+    return fetch(`${baseUrl}/api/entries/repeat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(cookie ? { Cookie: cookie } : {}) },
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** A meal already in the diary: two rows sharing one group. */
+  function loggedMeal(userId: number) {
+    state.entries.push(
+      {
+        id: 901, userId, label: "Bacon medallion", kcal: 45, quantity: 1, unitLabel: null,
+        proteinG: 6, carbsG: 0, fatG: 2, fibreG: null, sugarG: null, satFatG: null, saltG: null,
+        imageUrl: null, mealType: "breakfast", mealTypeSet: true, source: "meal",
+        mealGroupId: "g1", mealGroupName: "Usual breakfast", timestamp: new Date("2026-01-01T07:40:00Z"),
+      },
+      {
+        id: 902, userId, label: "Fried egg", kcal: 90, quantity: 1, unitLabel: null,
+        proteinG: 6, carbsG: 1, fatG: 7, fibreG: null, sugarG: null, satFatG: null, saltG: null,
+        imageUrl: null, mealType: "breakfast", mealTypeSet: true, source: "meal",
+        mealGroupId: "g1", mealGroupName: "Usual breakfast", timestamp: new Date("2026-01-01T07:41:00Z"),
+      },
+    );
+  }
+
+  it("rejects an unauthenticated request", async () => {
+    expect((await repeat("", { ids: [1] })).status).toBe(401);
+  });
+
+  it("copies every row of the meal onto today", async () => {
+    const cookie = await signUp();
+    loggedMeal(1);
+
+    const res = await repeat(cookie, { ids: [901, 902] });
+    expect(res.status).toBe(201);
+    const created = (await res.json()) as any[];
+    expect(created.map((e) => e.label)).toEqual(["Bacon medallion", "Fried egg"]);
+    // Copies, not moves: the originals are still where they were logged.
+    expect(state.entries.filter((e: any) => e.id === 901 || e.id === 902)).toHaveLength(2);
+  });
+
+  it("keeps them one meal rather than four loose rows arriving at once", async () => {
+    const cookie = await signUp();
+    loggedMeal(1);
+
+    const created = (await (await repeat(cookie, { ids: [901, 902] })).json()) as any[];
+    const groups = new Set(created.map((e) => e.mealGroupId));
+    expect(groups.size).toBe(1);
+    expect([...groups][0]).toBeTruthy();
+    // A fresh id, not the original's — this is a new meal on a new day.
+    expect([...groups][0]).not.toBe("g1");
+    expect(created.every((e) => e.mealGroupName === "Usual breakfast")).toBe(true);
+  });
+
+  it("leaves a single entry ungrouped", async () => {
+    const cookie = await signUp();
+    loggedMeal(1);
+
+    const created = (await (await repeat(cookie, { ids: [901] })).json()) as any[];
+    expect(created[0]!.mealGroupId).toBeNull();
+  });
+
+  it("carries the whole label across, not just the calories", async () => {
+    const cookie = await signUp();
+    loggedMeal(1);
+
+    const created = (await (await repeat(cookie, { ids: [901] })).json()) as any[];
+    expect(created[0]).toMatchObject({ kcal: 45, proteinG: 6, carbsG: 0, fatG: 2, source: "meal" });
+  });
+
+  it("keeps a meal tag the user chose", async () => {
+    const cookie = await signUp();
+    loggedMeal(1);
+
+    const created = (await (await repeat(cookie, { ids: [901] })).json()) as any[];
+    expect(created[0]).toMatchObject({ mealType: "breakfast", mealTypeSet: true });
+  });
+
+  it("cannot be pointed at somebody else's entries", async () => {
+    // The ids are sequential and guessable, so scoping is the only thing
+    // stopping a repeat being built out of another person's diary.
+    const cookie = await signUp();
+    loggedMeal(999);
+
+    expect((await repeat(cookie, { ids: [901, 902] })).status).toBe(404);
+  });
+
+  it("refuses an empty list", async () => {
+    const cookie = await signUp();
+    expect((await repeat(cookie, { ids: [] })).status).toBe(400);
   });
 });
 
