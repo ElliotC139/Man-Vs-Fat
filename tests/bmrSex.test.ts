@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sexConstant } from "../src/routes/stats";
+import { sexConstant } from "../src/sexConstant";
 
 /**
  * Mifflin-St Jeor's final term is the only part of the resting-burn formula

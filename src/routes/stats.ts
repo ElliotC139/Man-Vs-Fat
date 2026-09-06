@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../db";
 import { config } from "../config";
 import { requireAuth } from "../auth";
+import { sexConstant } from "../sexConstant";
 import {
   getLocalParts,
   getMatchWeekBoundariesForWeeksAgo,
@@ -217,21 +218,9 @@ statsRouter.get("/tdee", async (req, res) => {
 
 // ── Calorie balance trend ───────────────────────────────────────────────────
 
-// Mifflin-St Jeor's final term depends on sex: +5 for men, -161 for women, a
-// 166 kcal/day gap. The app hardcoded +5, so every woman's burn came out 166
-// too high — a generous target, verdicts that read better than the week
-// really went, and slower loss than the projection promised.
-//
-// An unset value takes the midpoint rather than either constant. It is wrong
-// by 83 for everyone instead of wrong by 166 for half of them, and nobody
-// should have to answer this to use a food diary.
-const SEX_CONSTANTS = { male: 5, female: -161 } as const;
-const SEX_CONSTANT_UNKNOWN = (SEX_CONSTANTS.male + SEX_CONSTANTS.female) / 2;
-
-export function sexConstant(sex: string | null | undefined): number {
-  if (sex === "male" || sex === "female") return SEX_CONSTANTS[sex];
-  return SEX_CONSTANT_UNKNOWN;
-}
+// Lives in src/sexConstant.ts, re-exported here so the existing importers of
+// this module keep working.
+export { sexConstant };
 
 // Mirrors the estimate used client-side for the current week's budget widget
 // (public/app.js: calculateTdee) — used here as the "calories out" fallback
