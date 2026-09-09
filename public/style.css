@@ -7,10 +7,11 @@
   --pitch: #1f9d52;
   --pitch-light: #2ec26b;
   --pitch-dark: #12602f;
-  /* The header's ground, and the exact green of the QuicKcals mark — so the
-     app icon on the home screen and the banner behind it are the same colour
-     rather than two greens that nearly match. White on it measures 6.9:1. */
-  --brand: #29663A;
+  /* The header's ground, and the exact green of the QuicKcals mark, taken from
+     the brand artwork itself — so the app icon on the home screen and the
+     banner behind it are the same colour rather than two greens that nearly
+     match. White on it measures 6.6:1, so the header text passes AA. */
+  --brand: #176B3A;
   --brand-ink: #ffffff;
   --pitch-deep: var(--brand);
   --ink: #0f1417;
@@ -2594,7 +2595,7 @@ tr.has-tooltip:active {
   /* The header ground has to stay clearly above the page in dark mode; the
      light-mode value sits at almost the same luminance as the dark page and
      the scoreboard would dissolve into it. */
-  --brand: #1d4b2a;
+  --brand: #124F2B;
   --pitch-deep: var(--brand);
   --floodlight: #e8a91f;
 }
@@ -2625,7 +2626,7 @@ tr.has-tooltip:active {
     /* The header ground has to stay clearly above the page in dark mode; the
        light-mode value sits at almost the same luminance as the dark page and
        the scoreboard would dissolve into it. */
-    --brand: #1d4b2a;
+    --brand: #124F2B;
   --pitch-deep: var(--brand);
     --floodlight: #e8a91f;
   }
