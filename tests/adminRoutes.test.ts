@@ -78,7 +78,7 @@ vi.mock("../src/db", () => {
 });
 
 import { authRouter } from "../src/routes/auth";
-import { adminRouter } from "../src/routes/admin";
+import { adminRouter, forgetSignupsSetting } from "../src/routes/admin";
 
 let server: http.Server;
 let baseUrl: string;
@@ -88,6 +88,9 @@ beforeEach(async () => {
   state.usage.length = 0;
   state.settings.clear();
   state.nextId = 1;
+  // The setting is cached for half a minute in front of every sign-up; a
+  // fresh table needs a fresh answer.
+  forgetSignupsSetting();
   vi.clearAllMocks();
 
   const app = express();

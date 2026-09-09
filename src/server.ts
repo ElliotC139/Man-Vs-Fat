@@ -25,6 +25,7 @@ import { weighInsRouter } from "./routes/weighIns";
 import { whoopRouter } from "./routes/whoop";
 import { planRouter } from "./routes/plan";
 import { adminRouter } from "./routes/admin";
+import { suggestionsRouter } from "./routes/suggestions";
 import { billingRouter, billingWebhookRouter } from "./routes/billing";
 import { sharesRouter } from "./routes/shares";
 import { startScheduler } from "./jobs/scheduler";
@@ -88,6 +89,7 @@ app.use("/api/weigh-ins", weighInsRouter);
 app.use("/api/whoop", whoopRouter);
 app.use("/api/plan", planRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api/suggestions", suggestionsRouter);
 app.use("/api/billing", billingRouter);
 app.use("/api/shares", sharesRouter);
 

@@ -26,6 +26,7 @@ import { readMealReminders, writeMealReminders } from "../mealReminders";
 import { LOG_METHODS, readLogMethods, writeLogMethods } from "../logMethods";
 import { refileMatchWeeks } from "../refileMatchWeeks";
 import { signupsOpen } from "./admin";
+import { isAdminUser, reconcileAdmin } from "../adminAccess";
 
 export const authRouter = Router();
 
@@ -252,7 +253,7 @@ function toPublicUser(user: {
     nutrientsShown: readDiaryFields(user),
     carbMode: user.carbMode === "net" ? "net" : "total",
     ketoMode: user.ketoMode ?? false,
-    isAdmin: user.isAdmin ?? false,
+    isAdmin: isAdminUser(user),
     fibreTargetG: user.fibreTargetG ?? null,
     sugarTargetG: user.sugarTargetG ?? null,
     satFatTargetG: user.satFatTargetG ?? null,
@@ -341,6 +342,9 @@ authRouter.post("/signup", async (req, res) => {
   });
 
   await setSessionCookie(res, user.id);
+  // Brings the stored flag into line with ADMIN_USERNAMES, where the
+  // deployment sets one. See src/adminAccess.ts.
+  await reconcileAdmin(user.id);
   res.status(201).json(toPublicUser(user));
 });
 
@@ -376,6 +380,9 @@ authRouter.post("/login", async (req, res) => {
   // right doesn't leave the account near its limit for the next quarter hour.
   resetRateLimit(throttleKey);
   await setSessionCookie(res, user.id);
+  // Brings the stored flag into line with ADMIN_USERNAMES, where the
+  // deployment sets one. See src/adminAccess.ts.
+  await reconcileAdmin(user.id);
   res.json(toPublicUser(user));
 });
 
@@ -417,6 +424,9 @@ authRouter.post("/google", async (req, res) => {
   const existing = await prisma.user.findUnique({ where: { googleId } });
   if (existing) {
     await setSessionCookie(res, existing.id);
+  // Brings the stored flag into line with ADMIN_USERNAMES, where the
+  // deployment sets one. See src/adminAccess.ts.
+  await reconcileAdmin(existing.id);
     res.json(toPublicUser(existing));
     return;
   }
@@ -442,6 +452,9 @@ authRouter.post("/google", async (req, res) => {
   });
 
   await setSessionCookie(res, user.id);
+  // Brings the stored flag into line with ADMIN_USERNAMES, where the
+  // deployment sets one. See src/adminAccess.ts.
+  await reconcileAdmin(user.id);
   res.status(201).json(toPublicUser(user));
 });
 
@@ -694,6 +707,9 @@ authRouter.post("/reset", async (req, res) => {
     return;
   }
   await setSessionCookie(res, user.id);
+  // Brings the stored flag into line with ADMIN_USERNAMES, where the
+  // deployment sets one. See src/adminAccess.ts.
+  await reconcileAdmin(user.id);
   res.json(toPublicUser(user));
 });
 
@@ -737,6 +753,9 @@ authRouter.post("/password", requireAuth, async (req, res) => {
   // The device that just changed the password shouldn't be signed out by its
   // own action, so it gets a fresh token on the way out.
   await setSessionCookie(res, user.id);
+  // Brings the stored flag into line with ADMIN_USERNAMES, where the
+  // deployment sets one. See src/adminAccess.ts.
+  await reconcileAdmin(user.id);
   res.json({ ok: true });
 });
 

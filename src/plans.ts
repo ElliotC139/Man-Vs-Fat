@@ -111,6 +111,20 @@ export interface Plan {
 const POUND = 1_000_000;
 
 /**
+ * A year costs nine months. Three free, which is a discount somebody can hold
+ * in their head — unlike "17% off", which is the same number and says nothing.
+ *
+ * Safe on the arithmetic above because the ceilings are monthly: twelve months
+ * of Plus can cost at most £24 to serve against £44.91 taken, and twelve of
+ * Pro at most £54 against £89.91.
+ */
+const MONTHS_PAID_ON_A_YEAR = 9;
+
+function yearlyFor(monthlyPence: number): number {
+  return monthlyPence * MONTHS_PAID_ON_A_YEAR;
+}
+
+/**
  * Free — funded by ads, so it has to cost less than ads bring in.
  *
  * Display advertising on an app like this brings in roughly 20–40p per active
@@ -148,17 +162,20 @@ const FREE: Plan = {
 /**
  * Plus — the ordinary paid plan.
  *
- * £3.99 less Stripe's 1.5% + 20p is about £3.73 net. Ten estimates a day on
+ * £4.99 less Stripe's 1.5% + 20p is about £4.72 net. Ten estimates a day on
  * the full model is at most 31 × 10 × 0.62p ≈ £1.92, and the ceiling is £2.00.
- * Worst case margin is therefore about £1.73 a month, and the realistic margin
+ * Worst case margin is therefore about £2.72 a month, and the realistic margin
  * is far better than that, because most days are nowhere near ten and most
  * entries never reach the model at all.
+ *
+ * Undercuts MyFitnessPal Premium (about £15.99 a month) by a wide margin,
+ * which is the point: the diary is the product, not the subscription.
  */
 const PLUS: Plan = {
   id: "plus",
   name: "Plus",
-  pricePence: 399,
-  yearlyPence: 3499,
+  pricePence: 499,
+  yearlyPence: yearlyFor(499),
   dailyEstimates: 10,
   monthlyCostCapMicros: 2 * POUND,
   model: config.ANTHROPIC_MODEL,
@@ -178,13 +195,12 @@ const PLUS: Plan = {
 /**
  * Pro — for someone logging everything, every day.
  *
- * £7.99 less Stripe's fee is about £7.67 net. Forty photo estimates a day for
- * a long month comes to roughly £7.50-£7.75 — which side of break-even that
- * lands on depends on the exchange rate that month, and a business whose
- * margin is decided by the exchange rate has no margin.
+ * £9.99 less Stripe's fee is about £9.64 net. Forty photo estimates a day for
+ * a long month comes to roughly £7.50-£7.75, so even the allowance's own worst
+ * case now clears — but the ceiling still does the real work, because that
+ * figure moves with the exchange rate and the ceiling doesn't.
  *
- * So on this plan the ceiling is not a backstop, it is the thing that creates
- * the margin at all. At £4.50 it keeps about £3.17 whatever anyone does.
+ * At £4.50 it keeps about £5.14 whatever anyone does.
  *
  * The allowance is deliberately generous relative to it: forty a day is
  * "effectively unlimited" for a real person, and the ceiling only bites for
@@ -193,8 +209,8 @@ const PLUS: Plan = {
 const PRO: Plan = {
   id: "pro",
   name: "Pro",
-  pricePence: 799,
-  yearlyPence: 6999,
+  pricePence: 999,
+  yearlyPence: yearlyFor(999),
   dailyEstimates: 40,
   monthlyCostCapMicros: 4.5 * POUND,
   model: config.ANTHROPIC_MODEL,

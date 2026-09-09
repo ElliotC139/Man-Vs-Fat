@@ -227,9 +227,9 @@ body {
   text-overflow: ellipsis;
 }
 .banner--fixture h1 .brand-mark {
-  width: 16px;
-  height: 16px;
-  padding: 2px;
+  width: 28px;
+  height: 28px;
+  padding: 3px;
 }
 
 /* Three header icons on the main app-shell banner (food library, stats,
@@ -262,27 +262,43 @@ body {
 #app-shell .banner h1.brand {
   justify-content: flex-start;
 }
+/* The mark was disappearing into the header: a 24px disc at 14% white on a
+   green ground is a smudge rather than a logo. It is bigger now, sits on a
+   brighter disc with a hairline to hold its edge, and casts a small shadow so
+   it reads as an object on the banner rather than a stain in it. */
 .brand-mark {
   display: block;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.5);
   padding: 4px;
-  box-shadow: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
   flex-shrink: 0;
 }
 
-/* The wordmark. "Quick" carries the weight and "cals" steps back, exactly as
-   the logo sets it; the K is split out so it can hold the join between the
-   two halves — it is the K the mark is built from, and the k of kcal. */
+/* The wordmark. "Quic" carries the weight and everything after it steps back:
+   the K belongs with "cals" in the reading, not with the bold half, and
+   bolding it made the join the loudest thing in the word. It stays split out
+   because it is still the K the mark is built from and the k of kcal — it
+   just doesn't shout about it. */
 .brand-word {
   font-family: var(--font-brand);
   letter-spacing: -0.02em;
   white-space: nowrap;
+  /* Larger than the heading it sits in, so the name reads as the name rather
+     than as more of the same text. */
+  font-size: 1.35em;
+  /* Full white, not the 62% the fixture strap around it uses. That strap is a
+     label and is meant to recede; the name of the app is not, and inheriting
+     the label's colour was most of why the logo got lost. */
+  color: #fff;
 }
-.brand-word-a,
-.brand-word-k {
+.brand-word-a {
   font-weight: 800;
 }
+.brand-word-k,
 .brand-word-b {
   font-weight: 500;
 }
@@ -2341,6 +2357,62 @@ tr.has-tooltip:active {
   border-radius: 999px;
   background: var(--pill-active-bg);
   color: var(--pill-active-ink);
+}
+
+/* ── Suggestions, in the admin card ───────────────────────────────────────*/
+.admin-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.suggestion {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+/* Still readable, visibly done. Dropping it out of the list entirely would
+   mean the only way to check what was decided is the database. */
+.suggestion--handled { opacity: 0.55; }
+.suggestion-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.suggestion-kind {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--pill-active-bg);
+  color: var(--pill-active-ink);
+}
+/* A problem is the one worth spotting in a list of ideas. */
+.suggestion-kind--problem {
+  background: rgba(217, 119, 6, 0.15);
+  color: var(--amber);
+}
+.suggestion-who {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.suggestion-body {
+  margin: 0;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.suggestion-done {
+  width: auto;
+  align-self: flex-end;
 }
 
 /* ── The ad slot ──────────────────────────────────────────────────────────

@@ -42,6 +42,17 @@ const envSchema = z.object({
   // rather than an index nobody can read.
   ADSENSE_CLIENT_ID: z.string().optional(),
   ADSENSE_SLOT_TODAY: z.string().optional(),
+  // Who gets the admin screen, as a comma-separated list of usernames.
+  //
+  // Set, it is the whole answer: those accounts have admin on every sign-in
+  // and every other account has it taken away. That is what makes "I am the
+  // only admin" true rather than merely true today — a flag granted in the
+  // UI can be granted again by whoever holds it, and a flag the deployment
+  // decides cannot.
+  //
+  // Unset, nothing is enforced and the flag works as it did: the first
+  // account created has it, and admins grant it to each other.
+  ADMIN_USERNAMES: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REFRESH_TOKEN: z.string().optional(),
@@ -97,6 +108,13 @@ export const whoopConfigured = Boolean(config.WHOOP_CLIENT_ID && config.WHOOP_CL
  * money and never hear that it had, which is worse than not taking it.
  */
 export const stripeConfigured = Boolean(config.STRIPE_SECRET_KEY && config.STRIPE_WEBHOOK_SECRET);
+
+/** The usernames this deployment insists are admins, lowercased. Empty means
+ *  the list isn't configured and the stored flag is left alone. */
+export const adminUsernames: string[] = (config.ADMIN_USERNAMES ?? "")
+  .split(",")
+  .map((name) => name.trim().toLowerCase())
+  .filter(Boolean);
 
 /** Ads need a publisher id and at least one slot to put one in. */
 export const adsConfigured = Boolean(config.ADSENSE_CLIENT_ID && config.ADSENSE_SLOT_TODAY);

@@ -887,7 +887,7 @@ function renderMealGroup(group, container) {
     // The whole header is the open/close target, so the button has to say it
     // meant something else.
     event.stopPropagation();
-    repeatEntries(group.entries.map((entry) => entry.id), group.name);
+    repeatEntries(group.entries, group.name);
   });
   actions.appendChild(repeatBtn);
 
@@ -1026,7 +1026,7 @@ function renderEntryRow(entry) {
   repeatBtn.className = "entry-action-icon";
   repeatBtn.title = "Add to today";
   repeatBtn.setAttribute("aria-label", "Add to today");
-  repeatBtn.addEventListener("click", () => repeatEntry(entry.id));
+  repeatBtn.addEventListener("click", () => repeatEntry(entry));
   const delBtn = document.createElement("button");
   delBtn.innerHTML = ICONS.x;
   delBtn.type = "button";
@@ -1270,40 +1270,61 @@ async function deleteEntry(id) {
 }
 
 /**
- * Repeats several entries onto today, as one meal again.
+ * Adding something to today from the diary, or from the food library.
  *
- * The server gives them a fresh group id, so what was one line in the diary is
- * one line again rather than four loose rows arriving at once.
+ * These used to write straight through: one tap and yesterday's entry was on
+ * today at exactly the figures it had then. That is right when it was the same
+ * plate of food and wrong the rest of the time — 40g of oats one morning and
+ * 60g the next is the same entry at a different amount, and copying it silently
+ * logged a figure nobody chose.
+ *
+ * So they go through the confirm sheet instead, which already knows how to
+ * rescale a row by its quantity. One extra tap when the amount is the same,
+ * and the only way to get it right when it isn't.
+ *
+ * Nothing here costs a model call: the figures are already known.
  */
-async function repeatEntries(ids, name) {
-  try {
-    const res = await fetch("/api/entries/repeat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids }),
-    });
-    if (!res.ok) throw new Error();
-    const created = await res.json();
-    weeksAgo = 0;
-    haptic();
-    showToast(`${name || "Meal"} added again`, {
-      actionLabel: "Undo",
-      onAction: () => undoEntries(created.map((entry) => entry.id)),
-    });
-    await refreshCurrentView();
-  } catch {
-    showToast("Couldn't add that again — please try again.");
-  }
+function openRepeatSheet(items, { title, note } = {}) {
+  openConfirmSheet({
+    items: items.map((item) => ({
+      label: item.label,
+      kcal: item.kcal,
+      proteinG: item.proteinG,
+      carbsG: item.carbsG,
+      fatG: item.fatG,
+      fibreG: item.fibreG,
+      sugarG: item.sugarG,
+      satFatG: item.satFatG,
+      saltG: item.saltG,
+      quantity: item.quantity ?? 1,
+      unitLabel: item.unitLabel ?? null,
+    })),
+    // Not "ai": these figures were approved once already, and re-approving
+    // them doesn't make them a fresh guess.
+    source: "manual",
+    date: loggingDate(),
+    mealType: chosenMealTag(),
+    sourceLabel: title ?? "From your diary",
+    note: note ?? "Change the amount if it was different, then log it.",
+  });
 }
 
-async function repeatEntry(id) {
-  const res = await fetch(`/api/entries/${id}/repeat`, { method: "POST" });
-  const created = await res.json().catch(() => null);
-  weeksAgo = 0;
-  if (created?.id) {
-    showToast(`${created.label} added again`, { actionLabel: "Undo", onAction: () => undoEntries([created.id]) });
-  }
-  refreshCurrentView();
+/**
+ * Repeats several entries onto today, as one meal again.
+ *
+ * The whole group goes into the sheet together, so each row's amount can be
+ * adjusted on its own — half the rice, all the chicken — which is what
+ * repeating a meal a week later usually means.
+ */
+function repeatEntries(entries, name) {
+  openRepeatSheet(entries, {
+    title: name || "From your diary",
+    note: "Change any amounts that were different, then log it.",
+  });
+}
+
+function repeatEntry(entry) {
+  openRepeatSheet([entry]);
 }
 
 // ── What plan you're on, and what's left of it ──────────────────────────────
@@ -1624,6 +1645,145 @@ async function setSignups(open) {
 adminSignupsOpenBtn.addEventListener("click", () => setSignups(true));
 adminSignupsClosedBtn.addEventListener("click", () => setSignups(false));
 adminRefreshBtn.addEventListener("click", loadAdmin);
+
+// ── Suggest an update ───────────────────────────────────────────────────────
+//
+// Deliberately not a mailto: link. The useful half of a suggestion is the
+// context around it — which version they were on, what kind of thing it is,
+// who to go back to — and an email loses all three.
+
+/**
+ * What the service worker is caching under, which is the closest thing the
+ * client has to a build number. Sent with a suggestion because "which version
+ * were you on" is most of the answer to "I can't reproduce that".
+ */
+const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content ?? "unknown";
+
+const suggestBodyEl = document.getElementById("suggest-body");
+const suggestSendBtn = document.getElementById("suggest-send");
+const suggestNoteEl = document.getElementById("suggest-note");
+const suggestErrorEl = document.getElementById("suggest-error");
+const suggestKindBtns = {
+  idea: document.getElementById("suggest-kind-idea"),
+  problem: document.getElementById("suggest-kind-problem"),
+  other: document.getElementById("suggest-kind-other"),
+};
+
+let suggestKind = "idea";
+
+function setSuggestKind(kind) {
+  suggestKind = kind;
+  for (const [id, btn] of Object.entries(suggestKindBtns)) {
+    btn.classList.toggle("meal-kind-btn--active", id === kind);
+  }
+}
+for (const [id, btn] of Object.entries(suggestKindBtns)) {
+  btn.addEventListener("click", () => setSuggestKind(id));
+}
+
+suggestSendBtn.addEventListener("click", async () => {
+  const body = suggestBodyEl.value.trim();
+  suggestErrorEl.hidden = true;
+  suggestNoteEl.hidden = true;
+  if (body.length < 4) {
+    suggestErrorEl.textContent = "Write a sentence or two about what you'd change.";
+    suggestErrorEl.hidden = false;
+    return;
+  }
+
+  suggestSendBtn.disabled = true;
+  suggestSendBtn.textContent = "Sending…";
+  try {
+    const res = await fetch("/api/suggestions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: suggestKind, body, appVersion: APP_VERSION }),
+    });
+    const answer = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(answer.error || "Couldn't send that — please try again.");
+    haptic();
+    suggestBodyEl.value = "";
+    setSuggestKind("idea");
+    // Said here rather than as a toast: they are looking at this box, and a
+    // toast at the bottom of a long settings screen is a message nobody sees.
+    suggestNoteEl.textContent = "Sent — thank you. It goes straight to whoever builds this.";
+    suggestNoteEl.hidden = false;
+  } catch (error) {
+    suggestErrorEl.textContent = error.message;
+    suggestErrorEl.hidden = false;
+  } finally {
+    suggestSendBtn.disabled = false;
+    suggestSendBtn.textContent = "Send it";
+  }
+});
+
+// ── The pile, for whoever acts on them ──────────────────────────────────────
+const adminSuggestionsEl = document.getElementById("admin-suggestions");
+const adminSuggestionsToggle = document.getElementById("admin-suggestions-toggle");
+
+adminSuggestionsToggle.addEventListener("click", async () => {
+  const showing = !adminSuggestionsEl.hidden;
+  adminSuggestionsEl.hidden = showing;
+  adminSuggestionsToggle.textContent = showing ? "Show" : "Hide";
+  if (!showing) await loadSuggestions();
+});
+
+async function loadSuggestions() {
+  try {
+    const res = await fetch("/api/suggestions");
+    if (!res.ok) throw new Error();
+    renderSuggestions((await res.json()).suggestions ?? []);
+  } catch {
+    adminSuggestionsEl.innerHTML = '<p class="muted">Couldn\'t load those.</p>';
+  }
+}
+
+const SUGGEST_KIND_LABEL = { idea: "Idea", problem: "Problem", other: "Other" };
+
+function renderSuggestions(suggestions) {
+  adminSuggestionsEl.innerHTML = "";
+  if (suggestions.length === 0) {
+    adminSuggestionsEl.innerHTML = '<p class="muted">Nothing suggested yet.</p>';
+    return;
+  }
+
+  for (const suggestion of suggestions) {
+    const row = document.createElement("div");
+    row.className = `suggestion${suggestion.handled ? " suggestion--handled" : ""}`;
+
+    const head = document.createElement("div");
+    head.className = "suggestion-head";
+    const kind = document.createElement("span");
+    kind.className = `suggestion-kind suggestion-kind--${suggestion.kind}`;
+    kind.textContent = SUGGEST_KIND_LABEL[suggestion.kind] ?? suggestion.kind;
+    const who = document.createElement("span");
+    who.className = "suggestion-who";
+    who.textContent = `${suggestion.from} · ${new Date(suggestion.createdAt).toLocaleDateString()}`;
+    head.append(kind, who);
+
+    const body = document.createElement("p");
+    body.className = "suggestion-body";
+    // textContent, not innerHTML: this is text somebody else typed.
+    body.textContent = suggestion.body;
+
+    const done = document.createElement("button");
+    done.type = "button";
+    done.className = "ghost-sm suggestion-done";
+    done.textContent = suggestion.handled ? "Reopen" : "Mark done";
+    done.addEventListener("click", async () => {
+      done.disabled = true;
+      await fetch(`/api/suggestions/${suggestion.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ handled: !suggestion.handled }),
+      }).catch(() => {});
+      await loadSuggestions();
+    });
+
+    row.append(head, body, done);
+    adminSuggestionsEl.appendChild(row);
+  }
+}
 
 // ── Ads, on the free tier only ──────────────────────────────────────────────
 //
@@ -2357,13 +2517,45 @@ whoopDisconnectBtn.addEventListener("click", async () => {
   }
 });
 
+/**
+ * The sign-in form, and nothing else on the page.
+ *
+ * This used to hide three of the screens by name — the week, Today, and the
+ * tab bar — which was every screen the app had when it was written. Signing
+ * out from Settings, or Stats, or Food therefore left that screen sitting
+ * under the sign-in card, so the page scrolled and the diary of the person
+ * who had just signed out was still there to scroll to.
+ *
+ * Every screen goes now, from the same list navTo uses, so a screen added
+ * later cannot be forgotten here. The onboarding and review screens are named
+ * separately because they are detail views rather than tabs.
+ */
 function showAuthScreen() {
-  appShell.hidden = true;
-  todayScreen.hidden = true;
+  for (const screenFor of Object.values(TAB_SCREENS)) screenFor().hidden = true;
+  onboardingScreen.hidden = true;
+  reviewScreen.hidden = true;
   tabBar.hidden = true;
+
+  // Anything still open over the top of a screen goes with it: a sheet left
+  // hanging over the sign-in form belongs to a session that has ended.
+  closeAllSheets();
+
   authScreen.hidden = false;
   setAuthMode("login");
   authForm.reset();
+  // Back to the top, so the form is where it should be rather than wherever
+  // the last screen happened to be scrolled to.
+  window.scrollTo(0, 0);
+}
+
+/** Every modal and sheet the app can leave open. */
+function closeAllSheets() {
+  for (const el of document.querySelectorAll(".sheet, .share-modal, .photo-modal, .scan-modal")) {
+    el.hidden = true;
+  }
+  document.body.classList.remove("sheet-open", "search-open");
+  const search = document.getElementById("food-search-card");
+  if (search) search.hidden = true;
 }
 
 async function checkAuth() {
@@ -2372,10 +2564,9 @@ async function checkAuth() {
   // set a password, whatever session the browser still has.
   const resetToken = new URLSearchParams(window.location.search).get("reset");
   if (resetToken) {
-    appShell.hidden = true;
-    todayScreen.hidden = true;
-    tabBar.hidden = true;
-    authScreen.hidden = false;
+    // Same clean sweep as signing out: whatever was on screen belongs to a
+    // session that is about to be replaced.
+    showAuthScreen();
     authForm.hidden = true;
     authToggleBtn.parentElement.hidden = true;
     authForgotBtn.parentElement.hidden = true;
@@ -3874,7 +4065,7 @@ function renderFoodRow(food) {
   logBtn.type = "button";
   logBtn.className = "food-log-btn";
   logBtn.textContent = "+Today";
-  logBtn.addEventListener("click", () => logFood(food, logBtn));
+  logBtn.addEventListener("click", () => logFood(food));
 
   actions.append(editBtn, logBtn);
   row.append(starBtn, info, actions);
@@ -4066,33 +4257,19 @@ async function removeTag(food, tag) {
   if (ok) loadFoods(foodSearchInput.value);
 }
 
-async function logFood(food, btn) {
-  btn.disabled = true;
-  btn.textContent = "Adding…";
-  try {
-    const res = await fetch("/api/foods/log", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ labelKey: food.labelKey, date: loggingDate() ?? undefined, mealType: chosenMealTag() }),
-    });
-    if (res.ok) {
-      const entry = await res.json();
-      haptic();
-      btn.textContent = "+Today";
-      flashSaved(btn);
-      showToast(`${food.label} logged`, { actionLabel: "Undo", onAction: () => undoEntries([entry.id]) });
-      await refreshCurrentView();
-      setTimeout(() => {
-        btn.disabled = false;
-      }, 1100);
-    } else {
-      btn.textContent = "+Today";
-      btn.disabled = false;
-    }
-  } catch {
-    btn.textContent = "+Today";
-    btn.disabled = false;
-  }
+/**
+ * A food from the library, onto today.
+ *
+ * Through the sheet for the same reason a repeated entry is: the library row
+ * holds the figures from the last time it was logged, and "the last time" is
+ * not always the same amount as this time.
+ */
+function logFood(food) {
+  haptic();
+  openRepeatSheet([food], {
+    title: "From your foods",
+    note: "Change the amount if it's different this time, then log it.",
+  });
 }
 
 
