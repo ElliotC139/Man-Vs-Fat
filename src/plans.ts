@@ -35,6 +35,32 @@
  * scans, food search, saved meals, and re-logs of anything already in its
  * diary. None of that costs anything to serve. The AI is the part that costs
  * money, so the AI is the part that is rationed.
+ *
+ * ── Why photo logging is on Plus rather than Pro ──────────────────────────
+ *
+ * Because a photo costs 1.7x a typed estimate, not ten times it. At Plus's
+ * ten a day, an account that photographed every single meal would cost about
+ * £1.92 a month against £3.73 net — comfortably profitable, and the ceiling
+ * catches it even if that arithmetic is wrong. There is no cost argument for
+ * holding it back.
+ *
+ * There is a *ladder* argument, and it is the right instinct pointed at the
+ * wrong feature. Photographing your dinner is the single most persuasive
+ * reason a free user pays anything at all; putting it at £7.99 doesn't move
+ * those people up to Pro, it leaves most of them on free. So Pro earns its
+ * price on capability that genuinely belongs at the top instead:
+ *
+ *   - Recipe and label scanning, which is the one call that really is
+ *     expensive — an image in and up to 2,000 tokens back, about six typed
+ *     estimates.
+ *   - WHOOP and Apple Health, which turn a formula's guess at what you burned
+ *     into a measurement. Costs nothing to serve; it is a power-user feature
+ *     and reads as one.
+ *   - The weekly PDF report and its Drive filing, same again.
+ *
+ * The charts, trends, targets and adaptive TDEE stay free. They are what the
+ * diary is *for*, and a calorie app that won't show you your own trend is not
+ * a cheaper product, it is a broken one.
  */
 
 import { config } from "./config";
@@ -61,8 +87,20 @@ export interface Plan {
   model: string;
   /** Whether the free tier's ad slots are shown. */
   ads: boolean;
-  /** Photo logging, which costs roughly twice what a typed one does. */
+  /** Photo logging, which costs about 1.7x what a typed estimate does. */
   photo: boolean;
+  /**
+   * Scanning a recipe or a nutrition label into a full breakdown.
+   *
+   * The most expensive single call the app makes by a wide margin — an image
+   * in, and up to 2,000 tokens of ingredient list back, which is roughly six
+   * typed estimates. It earns its place at the top tier on cost alone.
+   */
+  recipeScan: boolean;
+  /** WHOOP and Apple Health sync — measured burn instead of a formula. */
+  health: boolean;
+  /** The weekly PDF report, and filing it to Google Drive. */
+  weeklyReport: boolean;
   /** One line for the plan picker. */
   tagline: string;
   /** What the plan adds over the one below it. */
@@ -94,10 +132,14 @@ const FREE: Plan = {
   model: config.ANTHROPIC_MODEL_FREE,
   ads: true,
   photo: false,
+  recipeScan: false,
+  health: false,
+  weeklyReport: false,
   tagline: "The whole diary, with the AI rationed.",
   highlights: [
     "Unlimited barcode scans and food search",
     "Unlimited saved meals, recipes and re-logs",
+    "Your charts, trends and targets",
     "3 AI estimates a day",
     "Shows ads",
   ],
@@ -122,7 +164,10 @@ const PLUS: Plan = {
   model: config.ANTHROPIC_MODEL,
   ads: false,
   photo: true,
-  tagline: "No ads, photo logging, ten estimates a day.",
+  recipeScan: false,
+  health: false,
+  weeklyReport: false,
+  tagline: "No ads, log by photo, ten estimates a day.",
   highlights: [
     "Everything in Free, with no ads",
     "Log by photo",
@@ -133,13 +178,16 @@ const PLUS: Plan = {
 /**
  * Pro — for someone logging everything, every day.
  *
- * £7.99 less Stripe's fee is about £7.67 net. Forty estimates a day is at most
- * 31 × 40 × 0.62p ≈ £7.69, which is more than the plan brings in — so the
- * ceiling, not the allowance, is what makes this plan safe. It sits at £4.50,
- * leaving about £3.17 of margin in the worst case that can actually happen.
+ * £7.99 less Stripe's fee is about £7.67 net. Forty photo estimates a day for
+ * a long month comes to roughly £7.50-£7.75 — which side of break-even that
+ * lands on depends on the exchange rate that month, and a business whose
+ * margin is decided by the exchange rate has no margin.
  *
- * The allowance is deliberately generous relative to the ceiling: forty a day
- * is "effectively unlimited" for a real person, and the ceiling only bites for
+ * So on this plan the ceiling is not a backstop, it is the thing that creates
+ * the margin at all. At £4.50 it keeps about £3.17 whatever anyone does.
+ *
+ * The allowance is deliberately generous relative to it: forty a day is
+ * "effectively unlimited" for a real person, and the ceiling only bites for
  * someone using the app in a way no diary-keeper does.
  */
 const PRO: Plan = {
@@ -152,11 +200,16 @@ const PRO: Plan = {
   model: config.ANTHROPIC_MODEL,
   ads: false,
   photo: true,
-  tagline: "Log everything, every day, without counting.",
+  recipeScan: true,
+  health: true,
+  weeklyReport: true,
+  tagline: "Everything the app can do, connected to what you wear.",
   highlights: [
     "Everything in Plus",
     "40 AI estimates a day",
-    "Priority on new features",
+    "Scan a recipe or a label into a full breakdown",
+    "WHOOP and Apple Health — burn measured, not guessed",
+    "The weekly report, filed to your Drive",
   ],
 };
 

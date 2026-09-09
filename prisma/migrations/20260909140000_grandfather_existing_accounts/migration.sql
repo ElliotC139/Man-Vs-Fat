@@ -1,0 +1,15 @@
+-- Everyone who was already here keeps everything they already had.
+--
+-- The plan column shipped defaulting to "free", which was correct while
+-- nothing read it. Now that plans gate WHOOP sync, recipe scanning and the
+-- weekly report, leaving existing accounts on free would take away features
+-- those people have been using — on a deploy, with no warning and nothing
+-- they did to cause it. That is not a paywall, it is a regression.
+--
+-- So every account that exists at this moment becomes Pro. Signups from here
+-- on get the "free" default, which is what the column was for.
+--
+-- Deliberately a data migration rather than application logic keyed off
+-- createdAt: "existing" means existing when plans went live, and that is a
+-- fact about one moment, not a rule the code should keep re-deciding.
+UPDATE "User" SET "plan" = 'pro' WHERE "plan" = 'free';

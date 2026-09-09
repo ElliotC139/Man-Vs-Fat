@@ -2118,6 +2118,93 @@ tr.has-tooltip:active {
   color: var(--pitch-dark);
 }
 
+/* ── Plan and allowance ───────────────────────────────────────────────────
+   Deliberately quiet. What plan someone is on is a fact about their account,
+   not a thing to sell at them every time they open Settings. */
+.plan-card {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.plan-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.plan-name {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+.plan-price {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.plan-usage {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.plan-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.plan-options:not(:empty) {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--hairline);
+}
+.plan-option {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.plan-option-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.plan-option-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.plan-option-price {
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.plan-option-tagline {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.plan-option-list {
+  margin: 2px 0 0;
+  padding-left: 18px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.plan-option-list li {
+  margin-bottom: 2px;
+}
+
+/* The line under the log button. Amber rather than red: running low is not
+   an error, and colouring it like one would make the app look broken. */
+.plan-allowance {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  color: var(--amber);
+  text-align: center;
+}
+
 /* ── Matches as you type ──────────────────────────────────────────────────
    Sits directly under the description box, so the answer arrives where the
    question is being asked rather than at the bottom of the screen. */

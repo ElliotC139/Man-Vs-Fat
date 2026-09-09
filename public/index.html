@@ -311,6 +311,10 @@
         </div>
         </div>
         <button type="submit" id="submit-btn">Log it</button>
+        <!-- Only appears once the allowance starts running out. A counter
+             sitting there all day is a nag; one that appears at the end is
+             information. -->
+        <p id="plan-allowance" class="plan-allowance" hidden></p>
         <p id="form-error" class="error" hidden></p>
         </form>
 
@@ -698,6 +702,18 @@
       <main>
         <section id="settings-card" class="card">
           <p class="muted">Signed in as <strong id="settings-username"></strong></p>
+
+          <!-- What this account is on and what is left of it. First thing in
+               Settings because it is the first thing anyone comes here to
+               check when something says no. -->
+          <section id="plan-card" class="plan-card" hidden>
+            <div class="plan-card-head">
+              <span id="plan-name" class="plan-name"></span>
+              <span id="plan-price" class="plan-price"></span>
+            </div>
+            <p id="plan-usage" class="plan-usage"></p>
+            <div id="plan-options" class="plan-options"></div>
+          </section>
 
           <h2 class="settings-group">Your week</h2>
           <section class="settings-section" data-settings-section>

@@ -20,6 +20,20 @@
  * model when they hit a limit would mean worse figures in their diary with
  * nothing to tell them why, which is the wrong kind of silence for a number
  * they are going to act on.
+ *
+ * ── What counts against the allowance ─────────────────────────────────────
+ *
+ * A row is written when the API returns a message — including one this app
+ * then fails to parse, because those tokens were spent either way. A call
+ * that never reached the model at all (no key, a network failure, a 4xx)
+ * writes nothing and costs the person nothing, which is the fair reading:
+ * losing one of three estimates a day to someone else's outage is not a
+ * limit, it is a punishment.
+ *
+ * That does leave a theoretical loop — an account retrying a failing estimate
+ * forever — but the burst rate limiter in rateLimit.ts is consumed *before*
+ * the call regardless of how it turns out, so the loop is capped there. Two
+ * limiters, and this is the one about money.
  */
 
 import { prisma } from "./db";

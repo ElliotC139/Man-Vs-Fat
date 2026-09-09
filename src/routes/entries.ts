@@ -18,6 +18,8 @@ import { timestampOnLocalDay } from "../entryTiming";
 import { saveUploadedImage, deleteUploadedImage, uploadFilename } from "../lib/storage";
 import { normalizeUploadedImage } from "../lib/imageProcessing";
 import { consumeAll, AI_BURST, AI_DAILY } from "../rateLimit";
+import { gateAiCall } from "./planGate";
+import { recordAiUsage } from "../entitlements";
 import { macroBackfillStatus, runMacroBackfill } from "../macroBackfill";
 
 export const entriesRouter = Router();
@@ -183,6 +185,12 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
   // Only the estimating path is metered — a barcode scan, a typed number, or
   // an answer the app already had costs nothing, and rationing those would
   // punish exactly the entries the app most wants people to make.
+  //
+  // Two limits, and they are not the same thing. The rate limiter is about
+  // bursts: it stops one account hammering the API in a loop. The plan gate is
+  // about money: what this account may spend this day and this month. Both
+  // have to pass.
+  let estimateModel: string | undefined;
   if (!directKcal && !shortcut) {
     const verdict = consumeAll(`ai:${req.userId!}`, [AI_BURST, AI_DAILY]);
     if (!verdict.allowed) {
@@ -191,6 +199,9 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
         .json({ error: "That's a lot of entries at once — give it a minute and try again." });
       return;
     }
+    const gate = await gateAiCall(req, res, photo ? "photo" : "estimate");
+    if (!gate) return;
+    estimateModel = gate.model;
   }
 
   const items: (EstimateItem & { quantity?: number; unitLabel?: string | null })[] = directKcal
@@ -218,6 +229,8 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
           // Fetched above if the text path went looking for a shortcut.
           references: text && !photo ? toReferences(products) : await findReferences(text),
           buffer: await prisma.user.findUnique({ where: { id: req.userId! } }),
+          model: estimateModel,
+          onUsage: (usage) => void recordAiUsage(req.userId!, photo ? "photo" : "estimate", usage),
         });
 
   const imageUrl = photo ? saveUploadedImage(photo.buffer) : null;
@@ -310,7 +323,8 @@ entriesRouter.post("/preview", upload.single("photo"), async (req, res) => {
   }
 
   // The model call is here, so this is the step that costs money and the step
-  // the ceiling has to sit in front of.
+  // both ceilings have to sit in front of: the rate limiter against bursts,
+  // and the plan against this account's day and month.
   const verdict = consumeAll(`ai:${req.userId!}`, [AI_BURST, AI_DAILY]);
   if (!verdict.allowed) {
     res.status(429)
@@ -318,6 +332,9 @@ entriesRouter.post("/preview", upload.single("photo"), async (req, res) => {
       .json({ error: "That's a lot of entries at once — give it a minute and try again." });
     return;
   }
+  const kind = photo ? "photo" : "estimate";
+  const gate = await gateAiCall(req, res, kind);
+  if (!gate) return;
 
   const items = await estimateMeal({
     text,
@@ -327,6 +344,10 @@ entriesRouter.post("/preview", upload.single("photo"), async (req, res) => {
     // photo-only entry still has to go and get them.
     references: text && !photo ? toReferences(products) : await findReferences(text),
     buffer: await prisma.user.findUnique({ where: { id: req.userId! } }),
+    model: gate.model,
+    // Not awaited: the entry should reach the person whether or not the meter
+    // row lands. See recordAiUsage, which swallows its own failures.
+    onUsage: (usage) => void recordAiUsage(req.userId!, kind, usage),
   });
 
   // The photo is stored now rather than on confirm, so the browser doesn't

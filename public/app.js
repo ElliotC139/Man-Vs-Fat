@@ -1306,6 +1306,129 @@ async function repeatEntry(id) {
   refreshCurrentView();
 }
 
+// ── What plan you're on, and what's left of it ──────────────────────────────
+//
+// A limit you discover by being refused is a limit that feels like a fault, so
+// the allowance is visible before it runs out — but only once it starts
+// mattering. A counter sitting there all day is a nag; one that appears with
+// three left is information.
+//
+// The money never appears here. What an account costs to run is the operator's
+// business, and "you have used 43p of your £2" is both a strange thing to tell
+// a customer and an invitation to game it.
+
+const planCardEl = document.getElementById("plan-card");
+const planNameEl = document.getElementById("plan-name");
+const planPriceEl = document.getElementById("plan-price");
+const planUsageEl = document.getElementById("plan-usage");
+const planOptionsEl = document.getElementById("plan-options");
+const planAllowanceEl = document.getElementById("plan-allowance");
+
+/** Where the allowance stops being background and starts being news. */
+const ALLOWANCE_WARN_AT = 3;
+
+let currentPlan = null;
+
+function priceText(pence) {
+  return pence === 0 ? "Free" : `£${(pence / 100).toFixed(2)}/mo`;
+}
+
+async function loadPlan() {
+  try {
+    const res = await fetch("/api/plan");
+    if (!res.ok) throw new Error();
+    currentPlan = await res.json();
+    renderPlan();
+  } catch {
+    // The diary works without knowing the plan. Failing quietly is right:
+    // there is nothing the person could do about it, and a banner about
+    // billing on a screen they came to log lunch on is worse than silence.
+    planCardEl.hidden = true;
+    planAllowanceEl.hidden = true;
+  }
+}
+
+function renderPlan() {
+  if (!currentPlan) return;
+  const { plan, estimates, monthlyCapReached } = currentPlan;
+
+  planCardEl.hidden = false;
+  planNameEl.textContent = plan.name;
+  planPriceEl.textContent = priceText(plan.pricePence);
+  planUsageEl.textContent = monthlyCapReached
+    ? "This month's AI estimates are used up. Search, barcodes and your saved meals still work."
+    : `${estimates.remaining} of ${estimates.allowance} AI estimates left today.`;
+
+  renderPlanOptions(plan.id);
+
+  // The line under the log button: silent until it isn't.
+  const low = !monthlyCapReached && estimates.remaining <= ALLOWANCE_WARN_AT;
+  planAllowanceEl.hidden = !(low || monthlyCapReached);
+  if (monthlyCapReached) {
+    planAllowanceEl.textContent = "No AI estimates left this month — search and barcodes still work.";
+  } else if (low) {
+    planAllowanceEl.textContent = estimates.remaining === 0
+      ? "No AI estimates left today — search and barcodes still work."
+      : `${estimates.remaining} AI ${estimates.remaining === 1 ? "estimate" : "estimates"} left today.`;
+  }
+}
+
+/** The plans above this one, as what they add rather than as a price list. */
+async function renderPlanOptions(currentId) {
+  planOptionsEl.innerHTML = "";
+  try {
+    const res = await fetch("/api/plan/catalogue");
+    if (!res.ok) return;
+    const { plans } = await res.json();
+    const index = plans.findIndex((p) => p.id === currentId);
+
+    for (const plan of plans.slice(index + 1)) {
+      const row = document.createElement("div");
+      row.className = "plan-option";
+
+      const head = document.createElement("div");
+      head.className = "plan-option-head";
+      const name = document.createElement("span");
+      name.className = "plan-option-name";
+      name.textContent = plan.name;
+      const price = document.createElement("span");
+      price.className = "plan-option-price";
+      price.textContent = priceText(plan.pricePence);
+      head.append(name, price);
+
+      const tagline = document.createElement("p");
+      tagline.className = "plan-option-tagline";
+      tagline.textContent = plan.tagline;
+
+      const list = document.createElement("ul");
+      list.className = "plan-option-list";
+      for (const line of plan.highlights) {
+        const li = document.createElement("li");
+        li.textContent = line;
+        list.appendChild(li);
+      }
+
+      row.append(head, tagline, list);
+      planOptionsEl.appendChild(row);
+    }
+  } catch {
+    // Same reasoning as loadPlan: nothing useful to say about it.
+  }
+}
+
+/**
+ * What to say when the server refuses on plan grounds.
+ *
+ * Every one of these names something that still works. A limit that only says
+ * no reads as the app being broken rather than as a choice someone can make.
+ */
+function showPlanLimit(body) {
+  formError.textContent = body.error ?? "That needs a different plan.";
+  formError.hidden = false;
+  // Refresh so the count under the button agrees with what just happened.
+  void loadPlan();
+}
+
 // ── Matches as you type ─────────────────────────────────────────────────────
 //
 // The databases should answer before the model does, and the moment to offer
@@ -1471,10 +1594,19 @@ form.addEventListener("submit", async (event) => {
     }
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
+      // A plan limit is not an error, it is an answer — and it comes with
+      // somewhere to go. Anything else falls through to the message.
+      if (body.limit) {
+        showPlanLimit(body);
+        return;
+      }
       throw new Error(body.error ? JSON.stringify(body.error) : "Failed to estimate that.");
     }
     const preview = await res.json();
     haptic();
+    // The estimate that just happened is one off today's allowance, so the
+    // count on screen is stale the moment it returns.
+    void loadPlan();
 
     form.reset();
     photoStatus.textContent = "Add a photo (optional)";
@@ -1819,6 +1951,7 @@ async function showApp(user, { firstRun = false } = {}) {
   refreshOfflineBanner();
   flushQueue();
   loadWater();
+  loadPlan();
   // Last, and only once there is a diary to add to: someone who followed a
   // shared link straight into a sign-up lands on the sheet rather than losing
   // the link to the redirect.

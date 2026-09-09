@@ -6,17 +6,23 @@ import { requireAuth } from "../auth";
 import { localDayKey } from "../matchWeek";
 import { buildAuthorizeUrl, exchangeCodeForTokens } from "../whoop/client";
 import { getRecentSleepRecovery, syncUser } from "../whoop/sync";
+import { gateFeature } from "./planGate";
 
 export const whoopRouter = Router();
 
 const STATE_COOKIE = "whoop_oauth_state";
 const STATE_COOKIE_MAX_AGE_MS = 10 * 60 * 1000;
 
-whoopRouter.get("/connect", requireAuth, (_req, res) => {
+// Starting a connection is what the plan gates, not reading one. WHOOP costs
+// nothing to serve — the value is the integration, not the traffic — so a
+// downgrade leaves an existing connection syncing rather than silently
+// emptying someone's burn figures on the day their card expires.
+whoopRouter.get("/connect", requireAuth, async (req, res) => {
   if (!whoopConfigured) {
     res.status(503).json({ error: "WHOOP isn't configured on this server yet." });
     return;
   }
+  if (!(await gateFeature(req, res, "health"))) return;
   const state = crypto.randomBytes(24).toString("hex");
   res.cookie(STATE_COOKIE, state, {
     httpOnly: true,

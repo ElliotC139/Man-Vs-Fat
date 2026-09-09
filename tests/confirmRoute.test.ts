@@ -20,7 +20,13 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("../src/config", () => ({
-  config: { TIMEZONE: "Europe/London", GOOGLE_SIGNIN_CLIENT_ID: undefined },
+  config: {
+    TIMEZONE: "Europe/London",
+    GOOGLE_SIGNIN_CLIENT_ID: undefined,
+    GBP_PER_USD: 0.8,
+    ANTHROPIC_MODEL: "claude-sonnet-5",
+    ANTHROPIC_MODEL_FREE: "claude-haiku-4-5",
+  },
 }));
 
 vi.mock("../src/estimate", () => ({
@@ -105,6 +111,12 @@ vi.mock("../src/db", () => {
     // The preview route looks at their own foods before it calls the model
     // (see src/estimateShortcut.ts), which is these two reads.
     foodOverride: { findMany: vi.fn(async () => []) },
+    // And checks the plan's allowance and spend before it does call it.
+    aiUsage: {
+      count: vi.fn(async () => 0),
+      aggregate: vi.fn(async () => ({ _sum: { costMicros: 0 } })),
+      create: vi.fn(async ({ data }: any) => data),
+    },
     $transaction: vi.fn(async (arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma))),
   };
   return { prisma };

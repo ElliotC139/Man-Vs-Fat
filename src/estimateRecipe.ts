@@ -15,6 +15,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config";
 import { recordError } from "./errorLog";
 import { clampNutrients } from "./nutrients";
+import type { ModelUsage } from "./modelPricing";
 
 const client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
 
@@ -143,14 +144,16 @@ function parseDraft(raw: string): RecipeDraft {
 export async function estimateRecipeFromPhoto(
   imageBase64: string,
   imageMediaType = "image/jpeg",
+  options: { model?: string; onUsage?: (usage: ModelUsage) => void } = {},
 ): Promise<RecipeDraft> {
   const attempts = RETRY_DELAYS_MS.length + 1;
   let lastError: unknown;
 
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
+      const model = options.model ?? config.ANTHROPIC_MODEL;
       const message = await client.messages.create({
-        model: config.ANTHROPIC_MODEL,
+        model,
         max_tokens: MAX_TOKENS,
         system: SYSTEM_PROMPT,
         messages: [
@@ -169,6 +172,14 @@ export async function estimateRecipeFromPhoto(
             ],
           },
         ],
+      });
+
+      options.onUsage?.({
+        model,
+        inputTokens: message.usage.input_tokens,
+        outputTokens: message.usage.output_tokens,
+        cacheReadTokens: message.usage.cache_read_input_tokens ?? 0,
+        cacheWriteTokens: message.usage.cache_creation_input_tokens ?? 0,
       });
 
       const textBlock = message.content.find((block) => block.type === "text");
