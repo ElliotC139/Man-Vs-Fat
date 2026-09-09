@@ -2118,6 +2118,55 @@ tr.has-tooltip:active {
   color: var(--pitch-dark);
 }
 
+/* ── Matches as you type ──────────────────────────────────────────────────
+   Sits directly under the description box, so the answer arrives where the
+   question is being asked rather than at the bottom of the screen. */
+.text-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: -4px 0 12px;
+  animation: fadeInUp 0.16s var(--ease);
+}
+.text-suggestion {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  text-align: left;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  background: var(--card);
+  background-image: none;
+  box-shadow: none;
+  color: var(--ink);
+  transition: background 0.12s var(--ease), border-color 0.12s var(--ease);
+}
+.text-suggestion:hover,
+.text-suggestion:focus-visible {
+  border-color: var(--pitch);
+  background: rgba(31, 157, 82, 0.05);
+}
+.text-suggestion-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.text-suggestion-meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
 /* ── Food database search ── */
 .food-search-card #food-search-query {
   margin-bottom: 10px;

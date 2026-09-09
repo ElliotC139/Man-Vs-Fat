@@ -1306,27 +1306,113 @@ async function repeatEntry(id) {
   refreshCurrentView();
 }
 
-/**
- * Whether what was typed reads as the name of one food rather than a
- * description of a meal.
- *
- * A name is something a database can be asked for — "hobnobs", "chicken
- * breast", "200g greek yoghurt". A description is something only the estimator
- * can answer — "chicken stir fry with rice, small handful of crisps". The
- * joining words are what separate them: a comma, a plus, "and", "with" all say
- * more than one thing is being logged, and length says the same. Deliberately
- * generous about what counts as a name, because a search that comes up empty
- * still offers the estimate, whereas going straight to the estimator skips the
- * databases entirely and spends an API call to be less accurate.
- */
-const LOOKUP_MAX_WORDS = 5;
-const LOOKUP_JOINERS = /(^|\s)(and|with|plus|then|followed\sby)(\s|$)/i;
+// ── Matches as you type ─────────────────────────────────────────────────────
+//
+// The databases should answer before the model does, and the moment to offer
+// that is while someone is still typing the name — not after they have pressed
+// log. Diverting the log button into a search panel did put the databases
+// first, but it moved the answer to the bottom of the screen and turned the
+// panel's way out into a loop back into itself.
+//
+// So the matches come to the box instead. Tapping one logs that food at its
+// real published figures; ignoring them and pressing log estimates, the way it
+// always did. Nothing here costs a model call.
 
-function looksLikeALookup(text) {
-  if (/[,;+&]/.test(text)) return false;
-  if (LOOKUP_JOINERS.test(text)) return false;
-  return text.split(/\s+/).filter(Boolean).length <= LOOKUP_MAX_WORDS;
+const textSuggestionsEl = document.getElementById("text-suggestions");
+const SUGGEST_MIN_CHARS = 3;
+const SUGGEST_LIMIT = 5;
+const SUGGEST_DEBOUNCE_MS = 300;
+
+let suggestTimer = null;
+// The query the in-flight request was for, so a slow answer to an old query
+// can't land on top of a newer one.
+let suggestQuery = "";
+
+function hideTextSuggestions() {
+  clearTimeout(suggestTimer);
+  suggestQuery = "";
+  textSuggestionsEl.innerHTML = "";
+  textSuggestionsEl.hidden = true;
+  textInput.setAttribute("aria-expanded", "false");
 }
+
+function renderTextSuggestions(results, query) {
+  textSuggestionsEl.innerHTML = "";
+  if (results.length === 0) {
+    hideTextSuggestions();
+    return;
+  }
+
+  for (const result of results) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "text-suggestion";
+    row.setAttribute("role", "option");
+
+    const name = document.createElement("span");
+    name.className = "text-suggestion-name";
+    name.textContent = result.name;
+
+    const meta = document.createElement("span");
+    meta.className = "text-suggestion-meta";
+    meta.textContent = [result.brand, foodResultFigures(result)].filter(Boolean).join(" · ");
+
+    row.append(name, meta);
+    row.addEventListener("click", () => {
+      hideTextSuggestions();
+      textInput.value = "";
+      haptic();
+      openFoodResult(result);
+    });
+    textSuggestionsEl.appendChild(row);
+  }
+
+  textSuggestionsEl.hidden = false;
+  textInput.setAttribute("aria-expanded", "true");
+}
+
+async function runTextSuggestions(query) {
+  suggestQuery = query;
+  try {
+    const res = await fetch(`/api/food-search?q=${encodeURIComponent(query)}&limit=${SUGGEST_LIMIT}`);
+    if (!res.ok) throw new Error();
+    const body = await res.json();
+    // Only paint if this is still what is in the box.
+    if (suggestQuery !== query || textInput.value.trim() !== query) return;
+    renderTextSuggestions(body.results ?? [], query);
+  } catch {
+    // A suggestion list is a convenience: failing to fetch one should leave
+    // the box exactly as usable as it was, with nothing said about it.
+    hideTextSuggestions();
+  }
+}
+
+textInput.addEventListener("input", () => {
+  clearTimeout(suggestTimer);
+  const query = textInput.value.trim();
+  // A photo is being logged, or the description has grown into a meal rather
+  // than a food's name — neither is something to look up.
+  if (query.length < SUGGEST_MIN_CHARS || photoInput.files?.length || query.length > 60) {
+    hideTextSuggestions();
+    return;
+  }
+  suggestTimer = setTimeout(() => runTextSuggestions(query), SUGGEST_DEBOUNCE_MS);
+});
+
+textInput.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !textSuggestionsEl.hidden) {
+    e.stopPropagation();
+    hideTextSuggestions();
+  }
+});
+
+// A tap on a suggestion has to register before the list goes, so the blur
+// handler waits a beat rather than closing under the finger.
+textInput.addEventListener("blur", () => {
+  setTimeout(() => {
+    if (!textSuggestionsEl.contains(document.activeElement)) hideTextSuggestions();
+  }, 150);
+});
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1340,17 +1426,13 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
-  // Typing a food's name is a lookup, not a description to be guessed at, so
-  // it goes to the databases first — the figures there are the real ones, and
-  // an estimate costs an API call to be less accurate. A described meal still
-  // goes straight to the estimator: no database has "chicken stir fry with
-  // rice and a handful of crisps" in it, and searching for it wastes a tap.
-  // Either way the search card carries an "estimate it instead" button, so
-  // nothing is a dead end.
-  if (text && !photo && looksLikeALookup(text)) {
-    openSearchFor(text);
-    return;
-  }
+  // The log button logs. It used to divert anything that read like a food's
+  // name into the search panel instead, which put the databases first but made
+  // "estimate it instead" a loop: that button put the words back in this box,
+  // and pressing log sent them straight back to search. The databases still go
+  // first — the server checks them before it calls the model, and matches now
+  // appear under the box as you type — but pressing log always logs.
+  hideTextSuggestions();
 
   const data = new FormData();
   if (text) data.append("text", text);
@@ -6220,7 +6302,11 @@ function showEstimateFallback(query) {
     closeFoodSearch();
     textInput.value = query;
     navTo("today");
-    textInput.focus();
+    // Estimates, rather than putting the words back in the box and leaving
+    // the person to press log. Handing it back was the bug: log read the same
+    // words as a lookup and reopened this panel, so the one button offering a
+    // way out of search led straight back into it.
+    form.requestSubmit();
   };
 }
 
