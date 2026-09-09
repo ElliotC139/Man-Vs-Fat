@@ -3,6 +3,7 @@ import { Router } from "express";
 import { prisma } from "../db";
 import { config } from "../config";
 import { fastingAnchors } from "../fasting";
+import { ketoDay } from "../keto";
 import { requireAuth } from "../auth";
 import { sexConstant } from "../sexConstant";
 import {
@@ -917,6 +918,17 @@ statsRouter.get("/today", async (req, res) => {
         unknownEntries: macrosEaten.unknownEntries,
       },
     },
+    // What Today leads with under keto: net carbs against the day's ceiling.
+    // Null when keto is off, so the card simply isn't there rather than being
+    // a permanent fixture nobody asked for.
+    keto: user?.ketoMode
+      ? ketoDay({
+          carbsG: macrosEaten.carbs,
+          fibreG: nutrientsEaten.knownEntries > 0 ? nutrientsEaten.fibre : null,
+          limitG: user.carbsTargetG ?? null,
+          unknownEntries: macrosEaten.unknownEntries,
+        })
+      : null,
     // The rest of the label, alongside the macros rather than folded into
     // them: none of these are energy, so mixing them into a structure the
     // card reads as "what the calories are made of" would be a lie about

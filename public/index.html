@@ -158,6 +158,19 @@
           <p id="today-pending" class="error" hidden></p>
         </section>
 
+        <!-- Only present with keto mode on, which is off by default. -->
+        <section id="keto-card" class="card keto-card" data-module="today:keto" data-module-name="Net carbs" hidden>
+          <div class="keto-head">
+            <span class="keto-title">Net carbs</span>
+            <span id="keto-note" class="keto-note"></span>
+          </div>
+          <div class="keto-figures">
+            <span id="keto-eaten" class="keto-eaten">—</span>
+            <span id="keto-limit" class="keto-limit"></span>
+          </div>
+          <div class="keto-track"><div id="keto-fill" class="keto-fill"></div></div>
+        </section>
+
         <!-- Only present once a target window is set, which is off by default. -->
         <section id="fasting-card" class="card fasting-card" hidden>
           <div class="fasting-main">
@@ -946,6 +959,20 @@
               Off by default. Turn them on and every new entry gets a protein, carb and fat
               estimate alongside its calories, and today's card shows what's left of each.
             </p>
+
+            <span class="field-label">Keto</span>
+            <div class="meal-kind-btns">
+              <button type="button" id="keto-off" class="meal-kind-btn meal-kind-btn--active">Off</button>
+              <button type="button" id="keto-on" class="meal-kind-btn">On</button>
+            </div>
+            <p class="muted">
+              Turning it on counts carbs as net, sets a 20g daily ceiling, and puts net carbs and
+              fibre under every entry — the settings in this section, set together rather than
+              found one by one. Today then leads with net carbs against that ceiling. Change any
+              of them afterwards and they stay changed; turning keto off leaves them all alone.
+            </p>
+
+            <hr class="settings-rule" />
 
             <span class="field-label">Track macros</span>
             <div class="meal-kind-btns">

@@ -8603,6 +8603,47 @@ function durationText(minutes) {
   return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
 }
 
+// ── Net carbs, under keto ───────────────────────────────────────────────────
+//
+// Keto has one rule, and it is a ceiling on net carbs. The macro row already
+// carries carbs as one of three equal bars, which is the right weight for a
+// macro split and the wrong weight for the only number that decides whether
+// the day worked. So under keto it gets a card of its own — see src/keto.ts
+// for why the flag is stored rather than read off the settings it sets.
+
+const ketoCard = document.getElementById("keto-card");
+const ketoEatenEl = document.getElementById("keto-eaten");
+const ketoLimitEl = document.getElementById("keto-limit");
+const ketoNoteEl = document.getElementById("keto-note");
+const ketoFillEl = document.getElementById("keto-fill");
+
+function renderKeto(keto) {
+  ketoCard.hidden = !keto;
+  if (!keto) return;
+
+  const eaten = keto.eatenG;
+  ketoEatenEl.textContent = eaten === null ? "—" : `${round1(eaten)}g`;
+  ketoLimitEl.textContent = keto.limitG === null ? "no ceiling set" : `of ${keto.limitG}g`;
+
+  // Said plainly, and once. Nothing here tells anyone what to think about it.
+  ketoNoteEl.textContent = keto.unknownEntries > 0
+    ? `${keto.unknownEntries} without carbs`
+    : keto.over
+      ? "over"
+      : keto.remainingG === null
+        ? ""
+        : `${round1(keto.remainingG)}g left`;
+
+  ketoFillEl.className = `keto-fill${keto.over ? " keto-fill--over" : ""}`;
+  ketoFillEl.style.width =
+    keto.limitG === null || eaten === null ? "0%" : `${Math.min(100, (eaten / keto.limitG) * 100)}%`;
+}
+
+/** Grams read better without a trailing ".0" on a whole number. */
+function round1(value) {
+  return Math.round(value * 10) / 10;
+}
+
 /** The instants from the last Today payload, or null when the card is off. */
 let fastingAnchors = null;
 let fastingTicker = null;
@@ -10337,8 +10378,15 @@ const nutrientOpInputs = {
   salt: document.getElementById("nutrient-salt-op"),
 };
 
+const ketoOffBtn = document.getElementById("keto-off");
+const ketoOnBtn = document.getElementById("keto-on");
+
+/** The starting ceiling, matching DEFAULT_KETO_NET_CARB_LIMIT_G on the server. */
+const KETO_DEFAULT_LIMIT_G = 20;
+
 let chosenShowFields = ["protein", "carbs", "fat"];
 let carbMode = "total";
+let ketoMode = false;
 
 function setCarbMode(mode) {
   carbMode = mode === "net" ? "net" : "total";
@@ -10349,6 +10397,39 @@ function setCarbMode(mode) {
 
 carbModeTotalBtn.addEventListener("click", () => setCarbMode("total"));
 carbModeNetBtn.addEventListener("click", () => setCarbMode("net"));
+
+/**
+ * The keto switch, which is four settings at once.
+ *
+ * The same changes the server makes when it sees ketoMode go true (see
+ * src/keto.ts) are made to the form here as well, so the controls below show
+ * what is about to be saved rather than their stale values. Turning it off
+ * changes nothing else, on either side.
+ */
+function setKetoMode(on, { applySettings = true } = {}) {
+  ketoMode = Boolean(on);
+  ketoOffBtn.classList.toggle("meal-kind-btn--active", !ketoMode);
+  ketoOnBtn.classList.toggle("meal-kind-btn--active", ketoMode);
+  if (!ketoMode || !applySettings) return;
+
+  setMacroMode("grams");
+  macroOpInputs.carbs.value = "max";
+  if (!macroGramInputs.carbs.value) macroGramInputs.carbs.value = String(KETO_DEFAULT_LIMIT_G);
+  setCarbMode("net");
+  for (const field of ["netCarbs", "fibre"]) {
+    if (!chosenShowFields.includes(field)) {
+      chosenShowFields = DIARY_FIELDS.filter((f) => f === field || chosenShowFields.includes(f));
+    }
+  }
+  renderNutrientShowRow();
+  // Setting an input's value in script fires no input event, so the sentence
+  // under the fields would otherwise still be complaining about the targets
+  // this just filled in.
+  refreshMacroSummary();
+}
+
+ketoOffBtn.addEventListener("click", () => setKetoMode(false));
+ketoOnBtn.addEventListener("click", () => setKetoMode(true));
 
 /**
  * The toggles for what a row shows.
@@ -10390,6 +10471,9 @@ function populateNutrientSettings(user) {
     ? DIARY_FIELDS.filter((field) => user.nutrientsShown.includes(field))
     : ["protein", "carbs", "fat"];
   setCarbMode(user.carbMode ?? "total");
+  // Reflecting what is stored, not switching anything on — the settings keto
+  // implies are already in the values this form was just populated with.
+  setKetoMode(user.ketoMode === true, { applySettings: false });
 
   // A stored 0 means untracked, same as the macro targets, so it shows blank.
   nutrientGramInputs.fibre.value = user.fibreTargetG || "";
@@ -10411,6 +10495,7 @@ function nutrientSettingsPayload() {
   return {
     nutrientsShown: chosenShowFields,
     carbMode,
+    ketoMode,
     fibreTargetG: grams("fibre"),
     sugarTargetG: grams("sugar"),
     satFatTargetG: grams("satFat"),
@@ -10666,6 +10751,7 @@ function renderToday(data) {
   if (data.isToday) loadTargetReview();
   else targetReviewCard.hidden = true;
 
+  renderKeto(data.keto ?? null);
   renderFasting(data);
 
   renderTodayBody(data.whoop);

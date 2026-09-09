@@ -124,6 +124,19 @@ model User {
   // or low-carb diet actually counts. Null or "total" is the label's own
   // figure, which is what every entry logged so far means.
   carbMode           String?
+  // Keto mode. The settings it needs already existed — net carbs, a carb
+  // ceiling, fibre on the entry rows — but scattered across four controls
+  // that had to be found and set correctly for the diary to be any use to
+  // someone doing keto. Turning this on sets them together, and turning it
+  // off leaves them alone: it is a way in, not a mode the rest of the app
+  // branches on.
+  //
+  // What it does change is what Today leads with. Under keto the number that
+  // matters is net carbs against the day's ceiling, not a third macro bar of
+  // equal weight, so the flag is stored rather than inferred from the
+  // settings it sets — those can be edited afterwards without meaning the
+  // person has stopped doing keto.
+  ketoMode           Boolean              @default(false)
   // Gram targets for the nutrients that aren't energy macros, each with its
   // own comparison. They are rarely wanted the same way round — fibre is a
   // floor, salt and saturated fat are ceilings — so the op is per nutrient,

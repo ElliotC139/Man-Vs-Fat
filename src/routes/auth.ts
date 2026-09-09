@@ -21,6 +21,7 @@ import { canSendMail, sendMail } from "../mailer";
 import { consume, reset as resetRateLimit, LOGIN_BURST, RESET_BURST } from "../rateLimit";
 import { MACRO_MODES, MACRO_OPS, resolveMacroTargets } from "../macros";
 import { DIARY_FIELDS, readDiaryFields, resolveNutrientTargets, writeDiaryFields } from "../nutrients";
+import { ketoDiaryFields, ketoSettings } from "../keto";
 import { readMealReminders, writeMealReminders } from "../mealReminders";
 import { LOG_METHODS, readLogMethods, writeLogMethods } from "../logMethods";
 import { refileMatchWeeks } from "../refileMatchWeeks";
@@ -75,6 +76,9 @@ const settingsSchema = z.object({
   // "net" counts carbohydrate minus fibre. Null or "total" is the label's own
   // figure, which is what the diary has always meant.
   carbMode: z.enum(["total", "net"]).nullable().optional(),
+  // Turning this on also sets the four settings keto needs, which is the
+  // whole point of it — see src/keto.ts. Turning it off changes nothing else.
+  ketoMode: z.boolean().optional(),
   fibreTargetG: z.number().int().min(0).max(200).nullable().optional(),
   sugarTargetG: z.number().int().min(0).max(600).nullable().optional(),
   satFatTargetG: z.number().int().min(0).max(300).nullable().optional(),
@@ -188,6 +192,7 @@ function toPublicUser(user: {
   teamsEnabled?: boolean | null;
   nutrientsShown?: string | null;
   carbMode?: string | null;
+  ketoMode?: boolean;
   fibreTargetG?: number | null;
   sugarTargetG?: number | null;
   satFatTargetG?: number | null;
@@ -244,6 +249,7 @@ function toPublicUser(user: {
     teamsEnabled: user.teamsEnabled ?? false,
     nutrientsShown: readDiaryFields(user),
     carbMode: user.carbMode === "net" ? "net" : "total",
+    ketoMode: user.ketoMode ?? false,
     fibreTargetG: user.fibreTargetG ?? null,
     sugarTargetG: user.sugarTargetG ?? null,
     satFatTargetG: user.satFatTargetG ?? null,
@@ -480,6 +486,17 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
   }
   if (nutrientsShown !== undefined) {
     data.nutrientsShown = nutrientsShown === null ? null : writeDiaryFields(nutrientsShown);
+  }
+  // Switching keto on brings its settings with it. Written before the update
+  // rather than as a second one so the whole change lands together, and only
+  // where this request is the one turning it on — editing the carb ceiling
+  // afterwards must not be undone by the next unrelated save.
+  if (parsed.data.ketoMode === true && !current.ketoMode) {
+    Object.assign(data, ketoSettings(current));
+    // Whatever they had chosen to see, plus the two figures the count is made
+    // of. An explicit choice in the same request still wins.
+    const chosen = nutrientsShown ?? readDiaryFields(current);
+    data.nutrientsShown = writeDiaryFields(ketoDiaryFields(chosen));
   }
   // writeMealTagNames drops anything that matches the built-in name, so
   // renaming a slot and changing your mind back leaves a clean row rather than

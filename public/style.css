@@ -5219,6 +5219,68 @@ body.hide-entry-times .entry-time {
    A single line and a bar. The retrospective version of this figure already
    has a card on Stats; this is the live one, and it only needs to answer
    "how long have I got" at a glance. */
+/* ── Net carbs, under keto ────────────────────────────────────────────────
+   The one number keto is about, given the weight the macro row can't: a hero
+   figure against its ceiling rather than a third bar of three. */
+.keto-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.keto-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.keto-title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.keto-note {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.keto-figures {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.keto-eaten {
+  font-family: var(--font-heading);
+  font-size: 2.1rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.keto-limit {
+  font-size: 0.9rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.keto-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--hairline);
+  overflow: hidden;
+}
+.keto-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--pitch);
+  transition: width 0.3s var(--ease);
+}
+/* Past the ceiling, in the same colour every other ceiling on the screen
+   turns — reported, not scolded. */
+.keto-fill--over { background: var(--floodlight); }
+
 .fasting-card {
   display: flex;
   flex-direction: column;
