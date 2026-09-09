@@ -204,6 +204,7 @@ describe("POST /api/auth/signup", () => {
       teamsEnabled: false,
       nutrientsShown: ["protein", "carbs", "fat"],
       carbMode: "total",
+      ketoMode: false,
       fibreTargetG: null,
       sugarTargetG: null,
       satFatTargetG: null,
@@ -925,5 +926,60 @@ describe("PATCH /api/auth/me — macro operators and blanks", () => {
       body: JSON.stringify({ macroMode: "grams", proteinTargetG: 180, proteinOp: "roughly" }),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("PATCH /api/auth/me — keto mode", () => {
+  const patch = (cookie: string, body: unknown) =>
+    fetch(`${baseUrl}/api/auth/me`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(body),
+    });
+
+  it("brings its settings with it", async () => {
+    const cookie = await signUpAlice();
+    // Sent the way the settings form does: keto on, alongside the form's own
+    // stale values for the settings keto is about to change.
+    const body = (await (await patch(cookie, {
+      ketoMode: true, carbMode: "total", nutrientsShown: ["protein", "carbs", "fat"],
+    })).json()) as any;
+
+    expect(body.ketoMode).toBe(true);
+    expect(body.carbMode).toBe("net");
+    expect(body.macroMode).toBe("grams");
+    expect(body.carbsTargetG).toBe(20);
+    expect(body.carbsOp).toBe("max");
+    expect(body.nutrientsShown).toContain("netCarbs");
+    expect(body.nutrientsShown).toContain("fibre");
+  });
+
+  it("keeps a carb ceiling they have already set", async () => {
+    const cookie = await signUpAlice();
+    await patch(cookie, { macroMode: "grams", carbsTargetG: 35, carbsOp: "max" });
+    const body = (await (await patch(cookie, { ketoMode: true })).json()) as any;
+    expect(body.carbsTargetG).toBe(35);
+  });
+
+  it("leaves the settings alone once it is already on", async () => {
+    const cookie = await signUpAlice();
+    await patch(cookie, { ketoMode: true });
+    // Raising the ceiling afterwards must stick, not be reset by the next save.
+    await patch(cookie, { carbsTargetG: 30 });
+    const body = (await (await patch(cookie, { ketoMode: true })).json()) as any;
+    expect(body.carbsTargetG).toBe(30);
+  });
+
+  it("changes nothing else when switched off", async () => {
+    const cookie = await signUpAlice();
+    await patch(cookie, { ketoMode: true });
+    const body = (await (await patch(cookie, { ketoMode: false })).json()) as any;
+
+    expect(body.ketoMode).toBe(false);
+    // Their carb ceiling and net-carb counting are settings they may well
+    // still want — dropping them because they stopped calling it keto would
+    // throw away a choice they made.
+    expect(body.carbMode).toBe("net");
+    expect(body.carbsTargetG).toBe(20);
   });
 });

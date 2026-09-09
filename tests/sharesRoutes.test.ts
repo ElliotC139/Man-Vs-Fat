@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   users: [] as any[],
   entries: [] as any[],
   shares: [] as any[],
+  meals: [] as any[],
   nextUserId: 1,
   nextEntryId: 1,
   nextShareId: 1,
@@ -67,6 +68,10 @@ vi.mock("../src/db", () => {
         return entry;
       }),
     },
+    savedMeal: {
+      findFirst: vi.fn(async ({ where }: any) =>
+        state.meals.find((m: any) => m.id === where.id && m.userId === where.userId) ?? null),
+    },
     foodShare: {
       create: vi.fn(async ({ data }: any) => {
         const share = { id: state.nextShareId++, createdAt: new Date(), ...data };
@@ -102,6 +107,7 @@ beforeEach(async () => {
   state.users.length = 0;
   state.entries.length = 0;
   state.shares.length = 0;
+  state.meals.length = 0;
   state.nextUserId = 1;
   state.nextEntryId = 1;
   state.nextShareId = 1;
@@ -291,5 +297,82 @@ describe("POST /api/shares/:token/accept", () => {
       body: JSON.stringify({}),
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /api/shares — a whole saved meal", () => {
+  function saveMeal(userId: number, meal: { id: number; name: string; kind: string; servings: number; items: any[] }) {
+    state.meals.push({ userId, ...meal });
+    return meal;
+  }
+
+  const breakfastItems = [
+    { label: "Eggs", kcal: 220, proteinG: 18, carbsG: 2, fatG: 16, fibreG: 0, sugarG: null, satFatG: null, saltG: null, sortOrder: 0 },
+    { label: "Toast", kcal: 160, proteinG: 5, carbsG: 28, fatG: 2, fibreG: 3, sugarG: null, satFatG: null, saltG: null, sortOrder: 1 },
+  ];
+
+  const share = (cookie: string, body: unknown) =>
+    fetch(`${baseUrl}/api/shares`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(body),
+    });
+
+  it("sends a template as its own items, titled with the meal's name", async () => {
+    const alice = await signUp("alice");
+    saveMeal(alice.userId, { id: 1, name: "Big breakfast", kind: "template", servings: 1, items: breakfastItems });
+
+    const body = (await (await share(alice.cookie, { mealId: 1 })).json()) as any;
+    expect(body.title).toBe("Big breakfast");
+    expect(body.items.map((i: any) => i.label)).toEqual(["Eggs", "Toast"]);
+    // The rest of the label travels: without fibre a shared meal arrives with
+    // its net carbs unknowable.
+    expect(body.items[1].fibreG).toBe(3);
+  });
+
+  it("sends a recipe as one portion, not the batch", async () => {
+    const alice = await signUp("alice");
+    saveMeal(alice.userId, {
+      id: 1, name: "Chilli", kind: "recipe", servings: 4,
+      items: [
+        { label: "Mince", kcal: 1200, proteinG: 80, carbsG: 0, fatG: 96, fibreG: 0, sugarG: null, satFatG: null, saltG: null, sortOrder: 0 },
+        { label: "Beans", kcal: 400, proteinG: 24, carbsG: 60, fatG: 4, fibreG: 20, sugarG: null, satFatG: null, saltG: null, sortOrder: 1 },
+      ],
+    });
+
+    const body = (await (await share(alice.cookie, { mealId: 1 })).json()) as any;
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]).toMatchObject({ label: "Chilli (1 portion)", kcal: 400 });
+  });
+
+  it("lets the sender name it something else", async () => {
+    const alice = await signUp("alice");
+    saveMeal(alice.userId, { id: 1, name: "Big breakfast", kind: "template", servings: 1, items: breakfastItems });
+    const body = (await (await share(alice.cookie, { mealId: 1, title: "Sunday" })).json()) as any;
+    expect(body.title).toBe("Sunday");
+  });
+
+  it("will not share someone else's meal", async () => {
+    const alice = await signUp("alice");
+    saveMeal(alice.userId, { id: 1, name: "Big breakfast", kind: "template", servings: 1, items: breakfastItems });
+    const bob = await signUp("bob");
+    expect((await share(bob.cookie, { mealId: 1 })).status).toBe(404);
+  });
+
+  it("puts the whole meal in the recipient's diary", async () => {
+    const alice = await signUp("alice");
+    saveMeal(alice.userId, { id: 1, name: "Big breakfast", kind: "template", servings: 1, items: breakfastItems });
+    const made = (await (await share(alice.cookie, { mealId: 1 })).json()) as any;
+
+    const bob = await signUp("bob");
+    const res = await fetch(`${baseUrl}/api/shares/${made.token}/accept`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: bob.cookie },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(201);
+    const created = (await res.json()) as any[];
+    expect(created.map((e) => e.label)).toEqual(["Eggs", "Toast"]);
+    expect(created[1].fibreG).toBe(3);
   });
 });

@@ -1306,27 +1306,113 @@ async function repeatEntry(id) {
   refreshCurrentView();
 }
 
-/**
- * Whether what was typed reads as the name of one food rather than a
- * description of a meal.
- *
- * A name is something a database can be asked for — "hobnobs", "chicken
- * breast", "200g greek yoghurt". A description is something only the estimator
- * can answer — "chicken stir fry with rice, small handful of crisps". The
- * joining words are what separate them: a comma, a plus, "and", "with" all say
- * more than one thing is being logged, and length says the same. Deliberately
- * generous about what counts as a name, because a search that comes up empty
- * still offers the estimate, whereas going straight to the estimator skips the
- * databases entirely and spends an API call to be less accurate.
- */
-const LOOKUP_MAX_WORDS = 5;
-const LOOKUP_JOINERS = /(^|\s)(and|with|plus|then|followed\sby)(\s|$)/i;
+// ── Matches as you type ─────────────────────────────────────────────────────
+//
+// The databases should answer before the model does, and the moment to offer
+// that is while someone is still typing the name — not after they have pressed
+// log. Diverting the log button into a search panel did put the databases
+// first, but it moved the answer to the bottom of the screen and turned the
+// panel's way out into a loop back into itself.
+//
+// So the matches come to the box instead. Tapping one logs that food at its
+// real published figures; ignoring them and pressing log estimates, the way it
+// always did. Nothing here costs a model call.
 
-function looksLikeALookup(text) {
-  if (/[,;+&]/.test(text)) return false;
-  if (LOOKUP_JOINERS.test(text)) return false;
-  return text.split(/\s+/).filter(Boolean).length <= LOOKUP_MAX_WORDS;
+const textSuggestionsEl = document.getElementById("text-suggestions");
+const SUGGEST_MIN_CHARS = 3;
+const SUGGEST_LIMIT = 5;
+const SUGGEST_DEBOUNCE_MS = 300;
+
+let suggestTimer = null;
+// The query the in-flight request was for, so a slow answer to an old query
+// can't land on top of a newer one.
+let suggestQuery = "";
+
+function hideTextSuggestions() {
+  clearTimeout(suggestTimer);
+  suggestQuery = "";
+  textSuggestionsEl.innerHTML = "";
+  textSuggestionsEl.hidden = true;
+  textInput.setAttribute("aria-expanded", "false");
 }
+
+function renderTextSuggestions(results, query) {
+  textSuggestionsEl.innerHTML = "";
+  if (results.length === 0) {
+    hideTextSuggestions();
+    return;
+  }
+
+  for (const result of results) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "text-suggestion";
+    row.setAttribute("role", "option");
+
+    const name = document.createElement("span");
+    name.className = "text-suggestion-name";
+    name.textContent = result.name;
+
+    const meta = document.createElement("span");
+    meta.className = "text-suggestion-meta";
+    meta.textContent = [result.brand, foodResultFigures(result)].filter(Boolean).join(" · ");
+
+    row.append(name, meta);
+    row.addEventListener("click", () => {
+      hideTextSuggestions();
+      textInput.value = "";
+      haptic();
+      openFoodResult(result);
+    });
+    textSuggestionsEl.appendChild(row);
+  }
+
+  textSuggestionsEl.hidden = false;
+  textInput.setAttribute("aria-expanded", "true");
+}
+
+async function runTextSuggestions(query) {
+  suggestQuery = query;
+  try {
+    const res = await fetch(`/api/food-search?q=${encodeURIComponent(query)}&limit=${SUGGEST_LIMIT}`);
+    if (!res.ok) throw new Error();
+    const body = await res.json();
+    // Only paint if this is still what is in the box.
+    if (suggestQuery !== query || textInput.value.trim() !== query) return;
+    renderTextSuggestions(body.results ?? [], query);
+  } catch {
+    // A suggestion list is a convenience: failing to fetch one should leave
+    // the box exactly as usable as it was, with nothing said about it.
+    hideTextSuggestions();
+  }
+}
+
+textInput.addEventListener("input", () => {
+  clearTimeout(suggestTimer);
+  const query = textInput.value.trim();
+  // A photo is being logged, or the description has grown into a meal rather
+  // than a food's name — neither is something to look up.
+  if (query.length < SUGGEST_MIN_CHARS || photoInput.files?.length || query.length > 60) {
+    hideTextSuggestions();
+    return;
+  }
+  suggestTimer = setTimeout(() => runTextSuggestions(query), SUGGEST_DEBOUNCE_MS);
+});
+
+textInput.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !textSuggestionsEl.hidden) {
+    e.stopPropagation();
+    hideTextSuggestions();
+  }
+});
+
+// A tap on a suggestion has to register before the list goes, so the blur
+// handler waits a beat rather than closing under the finger.
+textInput.addEventListener("blur", () => {
+  setTimeout(() => {
+    if (!textSuggestionsEl.contains(document.activeElement)) hideTextSuggestions();
+  }, 150);
+});
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1340,17 +1426,13 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
-  // Typing a food's name is a lookup, not a description to be guessed at, so
-  // it goes to the databases first — the figures there are the real ones, and
-  // an estimate costs an API call to be less accurate. A described meal still
-  // goes straight to the estimator: no database has "chicken stir fry with
-  // rice and a handful of crisps" in it, and searching for it wastes a tap.
-  // Either way the search card carries an "estimate it instead" button, so
-  // nothing is a dead end.
-  if (text && !photo && looksLikeALookup(text)) {
-    openSearchFor(text);
-    return;
-  }
+  // The log button logs. It used to divert anything that read like a food's
+  // name into the search panel instead, which put the databases first but made
+  // "estimate it instead" a loop: that button put the words back in this box,
+  // and pressing log sent them straight back to search. The databases still go
+  // first — the server checks them before it calls the model, and matches now
+  // appear under the box as you type — but pressing log always logs.
+  hideTextSuggestions();
 
   const data = new FormData();
   if (text) data.append("text", text);
@@ -1397,21 +1479,34 @@ form.addEventListener("submit", async (event) => {
     form.reset();
     photoStatus.textContent = "Add a photo (optional)";
 
+    // The server answers from what it already knows where it can, and only
+    // calls the model when it can't (see src/estimateShortcut.ts) — so the
+    // sheet says which of the three it was rather than always "AI estimate".
+    const from = preview.from ?? null;
+    const badge =
+      from === "library" ? "From your diary"
+      : from === "database" ? "From the packet"
+      : "AI estimate";
+    const note =
+      from === "library" ? "The last time you logged this. Change anything that's different."
+      : from === "database" ? "Published figures. Set the amount, then log it."
+      : "Change anything that's off, then log it.";
+
     // Nothing is in the diary yet — the sheet is where it gets saved, and it
     // carries the "log to last week" choice with it so the form can reset.
     openConfirmSheet({
       items: preview.items,
       imageUrl: preview.imageUrl,
       rawInput: preview.rawInput,
-      source: "ai",
+      source: preview.source ?? "ai",
       lastWeek: logToLastWeek,
       // Captured when the form was submitted, not when the sheet is saved:
       // the day on screen is what the user meant, and they could step to
       // another one while the sheet is open.
       date: loggingDate(),
       mealType: chosenMealTag(),
-      sourceLabel: "AI estimate",
-      note: "Change anything that's off, then log it.",
+      sourceLabel: badge,
+      note,
     });
 
     logToLastWeek = false;
@@ -5496,12 +5591,25 @@ function renderMealRow(meal) {
   editBtn.type = "button";
   editBtn.textContent = "Edit";
   editBtn.addEventListener("click", () => openMealEditor(meal));
+  const shareBtn = document.createElement("button");
+  shareBtn.type = "button";
+  shareBtn.textContent = "Share";
+  shareBtn.addEventListener("click", async () => {
+    shareBtn.disabled = true;
+    try {
+      await shareSavedMeal(meal);
+    } catch {
+      showToast("Couldn't make that link — please try again.");
+    } finally {
+      shareBtn.disabled = false;
+    }
+  });
   const delBtn = document.createElement("button");
   delBtn.type = "button";
   delBtn.innerHTML = ICONS.x;
   delBtn.setAttribute("aria-label", `Delete ${meal.name}`);
   delBtn.addEventListener("click", () => deleteMeal(meal));
-  actions.append(logBtn, editBtn, delBtn);
+  actions.append(logBtn, editBtn, shareBtn, delBtn);
 
   row.append(info, actions);
   return row;
@@ -5916,10 +6024,10 @@ function foodBrandRow(group) {
 /**
  * Opens the search card on a query and runs it.
  *
- * The card is the last thing on the Today screen, so letting focus() do the
- * scrolling threw the page to the very bottom and left the search box under
- * the keyboard. The card is put at the top of the viewport deliberately, and
- * the caret is taken without moving anything.
+ * The card is a fixed panel over the screen while it is open (see the CSS), so
+ * nothing here has to scroll it anywhere: it covers the phone and floats as a
+ * dialog on anything wider. focus() still gets preventScroll so that taking
+ * the caret can't shift the page behind it.
  */
 function openSearchFor(query) {
   foodSearchCard.hidden = false;
@@ -5930,12 +6038,10 @@ function openSearchFor(query) {
   foodMenuBack.hidden = true;
   menuBrand = null;
   renderMenuSuggestions();
-  // The card is the last thing on the screen, so without this the page simply
-  // bottoms out and the card stays where it was — which is the "search jumps
-  // to the bottom" complaint. The class opens up enough room below it that
-  // scrolling its top to the top of the viewport is actually possible.
+  // The class is what the CSS keys the backdrop off; the panel itself goes
+  // fixed as soon as it stops being hidden.
   document.body.classList.add("search-open");
-  foodSearchCard.scrollIntoView({ behavior: "smooth", block: "start" });
+  foodSearchResults.scrollTop = 0;
   foodSearchQuery.focus({ preventScroll: true });
   if (query) runFoodSearch(query);
 }
@@ -5951,6 +6057,21 @@ foodSearchBtn.addEventListener("click", () => {
 });
 
 foodSearchClose.addEventListener("click", closeFoodSearch);
+
+// A panel covering the screen needs a way out that isn't hunting for a button.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !foodSearchCard.hidden) {
+    closeFoodSearch();
+    textInput.focus();
+  }
+});
+
+// On a wide screen the panel floats over a dimmed page, and the dimming is a
+// body::before — so a click that lands on the backdrop reports body as its
+// target. Tapping outside a dialog to dismiss it is what everyone expects.
+document.addEventListener("click", (e) => {
+  if (e.target === document.body && !foodSearchCard.hidden) closeFoodSearch();
+});
 
 foodSearchQuery.addEventListener("input", () => {
   clearTimeout(dbSearchTimer);
@@ -6181,7 +6302,11 @@ function showEstimateFallback(query) {
     closeFoodSearch();
     textInput.value = query;
     navTo("today");
-    textInput.focus();
+    // Estimates, rather than putting the words back in the box and leaving
+    // the person to press log. Handing it back was the bug: log read the same
+    // words as a lookup and reopened this panel, so the one button offering a
+    // way out of search led straight back into it.
+    form.requestSubmit();
   };
 }
 
@@ -8549,13 +8674,19 @@ function renderNutrientToday(today) {
 //
 // Stats already reports the window that happened — first meal to last meal,
 // worked out from timestamps with nothing extra logged. This is the forward
-// half of the same idea: a target length, and a countdown while the day is
-// still running.
+// half of the same idea, and it runs both ways round the clock: how long is
+// left to eat while the window is open, and how long the fast has run once it
+// has closed. An 8-hour window IS a 16-hour fast, so one setting drives both.
 //
 // The window opens at the first thing logged rather than at a clock time,
 // because that is how time-restricted eating is actually practised. A target
 // that started at 12:00 whether or not you had eaten would be wrong on every
-// morning that ran late.
+// morning that ran late. The fast is measured from the last thing eaten
+// rather than from when the window closed, so eating late restarts it.
+//
+// The instants all come from the server (see src/fasting.ts) and only the
+// comparison against the clock happens here, which is what lets the card tick
+// without asking again and keeps the rules in one place.
 
 const fastingCard = document.getElementById("fasting-card");
 const fastingState = document.getElementById("fasting-state");
@@ -8571,47 +8702,113 @@ function durationText(minutes) {
   return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
 }
 
-function renderFasting(today, entries) {
-  const windowHours = currentUser?.eatingWindowHours ?? null;
+// ── Net carbs, under keto ───────────────────────────────────────────────────
+//
+// Keto has one rule, and it is a ceiling on net carbs. The macro row already
+// carries carbs as one of three equal bars, which is the right weight for a
+// macro split and the wrong weight for the only number that decides whether
+// the day worked. So under keto it gets a card of its own — see src/keto.ts
+// for why the flag is stored rather than read off the settings it sets.
+
+const ketoCard = document.getElementById("keto-card");
+const ketoEatenEl = document.getElementById("keto-eaten");
+const ketoLimitEl = document.getElementById("keto-limit");
+const ketoNoteEl = document.getElementById("keto-note");
+const ketoFillEl = document.getElementById("keto-fill");
+
+function renderKeto(keto) {
+  ketoCard.hidden = !keto;
+  if (!keto) return;
+
+  const eaten = keto.eatenG;
+  ketoEatenEl.textContent = eaten === null ? "—" : `${round1(eaten)}g`;
+  ketoLimitEl.textContent = keto.limitG === null ? "no ceiling set" : `of ${keto.limitG}g`;
+
+  // Said plainly, and once. Nothing here tells anyone what to think about it.
+  ketoNoteEl.textContent = keto.unknownEntries > 0
+    ? `${keto.unknownEntries} without carbs`
+    : keto.over
+      ? "over"
+      : keto.remainingG === null
+        ? ""
+        : `${round1(keto.remainingG)}g left`;
+
+  ketoFillEl.className = `keto-fill${keto.over ? " keto-fill--over" : ""}`;
+  ketoFillEl.style.width =
+    keto.limitG === null || eaten === null ? "0%" : `${Math.min(100, (eaten / keto.limitG) * 100)}%`;
+}
+
+/** Grams read better without a trailing ".0" on a whole number. */
+function round1(value) {
+  return Math.round(value * 10) / 10;
+}
+
+/** The instants from the last Today payload, or null when the card is off. */
+let fastingAnchors = null;
+let fastingTicker = null;
+
+function renderFasting(today) {
   // Off by default, and only ever about today — a countdown on a day that
   // finished last Tuesday is nonsense.
-  if (!windowHours || !today?.isToday) {
-    fastingCard.hidden = true;
-    return;
-  }
-  fastingCard.hidden = false;
+  fastingAnchors = today?.isToday ? today.fasting ?? null : null;
+  fastingCard.hidden = !fastingAnchors;
+  if (!fastingAnchors) return;
 
-  const times = (entries ?? [])
-    .map((entry) => new Date(entry.timestamp).getTime())
-    .filter((t) => Number.isFinite(t));
+  paintFasting();
+  // A timer nobody can see is a timer nobody believes. One tick a minute is
+  // enough for a figure written in whole minutes, and costs nothing.
+  if (!fastingTicker) fastingTicker = setInterval(paintFasting, 60_000);
+}
 
-  if (times.length === 0) {
+// Coming back to a backgrounded tab, the clock has moved further than the
+// interval noticed — a phone that slept for three hours would otherwise show
+// a three-hour-old figure until the next tick.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) paintFasting();
+});
+
+function paintFasting() {
+  const anchors = fastingAnchors;
+  if (!anchors || fastingCard.hidden) return;
+  const now = Date.now();
+
+  if (anchors.lastMealAt === null) {
     fastingState.textContent = "Window hasn't opened";
-    fastingDetail.textContent = `${durationText(windowHours * 60)} once you start`;
+    fastingDetail.textContent = `${durationText(anchors.windowHours * 60)} once you start`;
     fastingFill.style.width = "0%";
     fastingFill.className = "fasting-fill fasting-fill--waiting";
     return;
   }
 
-  const openedAt = Math.min(...times);
-  const closesAt = openedAt + windowHours * 3600_000;
-  const now = Date.now();
-  const elapsedMin = (now - openedAt) / 60000;
-  const windowMin = windowHours * 60;
-  const openedText = timeFmt.format(new Date(openedAt));
-
-  if (now < closesAt) {
-    fastingState.textContent = `${durationText((closesAt - now) / 60000)} left to eat`;
-    fastingDetail.textContent = `Opened ${openedText} · closes ${timeFmt.format(new Date(closesAt))}`;
+  if (anchors.closesAt !== null && now < anchors.closesAt) {
+    const opened = anchors.openedAt;
+    fastingState.textContent = `${durationText((anchors.closesAt - now) / 60000)} left to eat`;
+    fastingDetail.textContent =
+      `Opened ${timeFmt.format(new Date(opened))} · closes ${timeFmt.format(new Date(anchors.closesAt))}`;
     fastingFill.className = "fasting-fill";
-  } else {
-    // Reported, not scolded: the app says what happened and leaves it there,
-    // same stance as everything else that judges a day.
-    fastingState.textContent = `Window closed ${durationText((now - closesAt) / 60000)} ago`;
-    fastingDetail.textContent = `Opened ${openedText} · ${durationText(windowMin)} target`;
-    fastingFill.className = "fasting-fill fasting-fill--over";
+    fastingFill.style.width = `${Math.min(100, ((now - opened) / (anchors.closesAt - opened)) * 100)}%`;
+    return;
   }
-  fastingFill.style.width = `${Math.min(100, (elapsedMin / windowMin) * 100)}%`;
+
+  // The window has closed, so the clock now runs the other way.
+  const elapsedMin = Math.max(0, (now - anchors.lastMealAt) / 60000);
+  const targetMin = anchors.fastTargetMin;
+  const since = `since ${timeFmt.format(new Date(anchors.lastMealAt))}`;
+
+  if (elapsedMin >= targetMin) {
+    // Said once and left there. The app reports what happened rather than
+    // congratulating anyone, same stance as everything else that judges a day.
+    fastingState.textContent = `${durationText(targetMin)} fast done`;
+    fastingDetail.textContent = `Fasting ${durationText(elapsedMin)} · ${since}`;
+    fastingFill.className = "fasting-fill fasting-fill--done";
+    fastingFill.style.width = "100%";
+    return;
+  }
+
+  fastingState.textContent = `Fasting ${durationText(elapsedMin)}`;
+  fastingDetail.textContent = `${durationText(targetMin - elapsedMin)} to ${durationText(targetMin)} · ${since}`;
+  fastingFill.className = "fasting-fill fasting-fill--fasting";
+  fastingFill.style.width = `${(elapsedMin / targetMin) * 100}%`;
 }
 
 
@@ -9408,33 +9605,47 @@ saveMealConfirm.addEventListener("click", async () => {
 // Only labels and figures cross — no photos, no notes, no times, no username.
 const selectShareBtn = document.getElementById("select-share");
 
+/**
+ * Makes a link and hands it to the OS share sheet.
+ *
+ * One function for both ways in — a handful of diary rows, or a saved meal —
+ * because everything after "what goes in it" is the same: make the share, try
+ * the sheet, fall back to the clipboard. `body` is whichever shape the shares
+ * endpoint wants; see src/routes/shares.ts.
+ */
+async function shareFood(body, { subject, message }) {
+  const res = await fetch("/api/shares", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error();
+  const share = await res.json();
+
+  const text = `${message} ${share.url}`;
+  // The OS share sheet is the whole point on a phone: it puts WhatsApp,
+  // Messages and the rest one tap away. Copying is the fallback for a
+  // desktop browser, or for someone who dismisses the sheet.
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: subject, text });
+      return;
+    } catch {
+      // Dismissing the OS sheet is a normal thing to do, not a failure — the
+      // link exists either way, so it goes to the clipboard instead.
+    }
+  }
+  await copyShareLink(share.url);
+}
+
 selectShareBtn.addEventListener("click", async () => {
   if (selectedEntryIds.size === 0) return;
   selectShareBtn.disabled = true;
   try {
-    const res = await fetch("/api/shares", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ entryIds: [...selectedEntryIds].sort((a, b) => a - b) }),
-    });
-    if (!res.ok) throw new Error();
-    const share = await res.json();
-
-    const text = `Here's what I had — tap to add it to your day: ${share.url}`;
-    // The OS share sheet is the whole point on a phone: it puts WhatsApp,
-    // Messages and the rest one tap away. Copying is the fallback for a
-    // desktop browser, or for someone who dismisses the sheet.
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: "Food from my diary", text });
-      } catch {
-        // Dismissing the OS sheet is a normal thing to do, not a failure —
-        // the link exists either way, so it goes to the clipboard instead.
-        await copyShareLink(share.url);
-      }
-    } else {
-      await copyShareLink(share.url);
-    }
+    await shareFood(
+      { entryIds: [...selectedEntryIds].sort((a, b) => a - b) },
+      { subject: "Food from my diary", message: "Here's what I had — tap to add it to your day:" },
+    );
     setSelectMode(false);
   } catch {
     showToast("Couldn't make that link — please try again.");
@@ -9442,6 +9653,24 @@ selectShareBtn.addEventListener("click", async () => {
     selectShareBtn.disabled = false;
   }
 });
+
+/**
+ * Sends a saved meal, as its owner would log it.
+ *
+ * A recipe crosses as one portion rather than as the batch: "here's my chilli"
+ * means the plate, and handing over an ingredient list at batch quantities
+ * would be a different meal. The server decides that from the meal's own kind
+ * (see src/savedMealRows.ts), so nothing about it is worked out twice.
+ */
+async function shareSavedMeal(meal) {
+  await shareFood(
+    { mealId: meal.id, servings: 1 },
+    {
+      subject: meal.name,
+      message: `Here's my "${meal.name}" — tap to add it to your day:`,
+    },
+  );
+}
 
 async function copyShareLink(url) {
   try {
@@ -10280,8 +10509,15 @@ const nutrientOpInputs = {
   salt: document.getElementById("nutrient-salt-op"),
 };
 
+const ketoOffBtn = document.getElementById("keto-off");
+const ketoOnBtn = document.getElementById("keto-on");
+
+/** The starting ceiling, matching DEFAULT_KETO_NET_CARB_LIMIT_G on the server. */
+const KETO_DEFAULT_LIMIT_G = 20;
+
 let chosenShowFields = ["protein", "carbs", "fat"];
 let carbMode = "total";
+let ketoMode = false;
 
 function setCarbMode(mode) {
   carbMode = mode === "net" ? "net" : "total";
@@ -10292,6 +10528,39 @@ function setCarbMode(mode) {
 
 carbModeTotalBtn.addEventListener("click", () => setCarbMode("total"));
 carbModeNetBtn.addEventListener("click", () => setCarbMode("net"));
+
+/**
+ * The keto switch, which is four settings at once.
+ *
+ * The same changes the server makes when it sees ketoMode go true (see
+ * src/keto.ts) are made to the form here as well, so the controls below show
+ * what is about to be saved rather than their stale values. Turning it off
+ * changes nothing else, on either side.
+ */
+function setKetoMode(on, { applySettings = true } = {}) {
+  ketoMode = Boolean(on);
+  ketoOffBtn.classList.toggle("meal-kind-btn--active", !ketoMode);
+  ketoOnBtn.classList.toggle("meal-kind-btn--active", ketoMode);
+  if (!ketoMode || !applySettings) return;
+
+  setMacroMode("grams");
+  macroOpInputs.carbs.value = "max";
+  if (!macroGramInputs.carbs.value) macroGramInputs.carbs.value = String(KETO_DEFAULT_LIMIT_G);
+  setCarbMode("net");
+  for (const field of ["netCarbs", "fibre"]) {
+    if (!chosenShowFields.includes(field)) {
+      chosenShowFields = DIARY_FIELDS.filter((f) => f === field || chosenShowFields.includes(f));
+    }
+  }
+  renderNutrientShowRow();
+  // Setting an input's value in script fires no input event, so the sentence
+  // under the fields would otherwise still be complaining about the targets
+  // this just filled in.
+  refreshMacroSummary();
+}
+
+ketoOffBtn.addEventListener("click", () => setKetoMode(false));
+ketoOnBtn.addEventListener("click", () => setKetoMode(true));
 
 /**
  * The toggles for what a row shows.
@@ -10333,6 +10602,9 @@ function populateNutrientSettings(user) {
     ? DIARY_FIELDS.filter((field) => user.nutrientsShown.includes(field))
     : ["protein", "carbs", "fat"];
   setCarbMode(user.carbMode ?? "total");
+  // Reflecting what is stored, not switching anything on — the settings keto
+  // implies are already in the values this form was just populated with.
+  setKetoMode(user.ketoMode === true, { applySettings: false });
 
   // A stored 0 means untracked, same as the macro targets, so it shows blank.
   nutrientGramInputs.fibre.value = user.fibreTargetG || "";
@@ -10354,6 +10626,7 @@ function nutrientSettingsPayload() {
   return {
     nutrientsShown: chosenShowFields,
     carbMode,
+    ketoMode,
     fibreTargetG: grams("fibre"),
     sugarTargetG: grams("sugar"),
     satFatTargetG: grams("satFat"),
@@ -10609,7 +10882,8 @@ function renderToday(data) {
   if (data.isToday) loadTargetReview();
   else targetReviewCard.hidden = true;
 
-  renderFasting(data, data.entries);
+  renderKeto(data.keto ?? null);
+  renderFasting(data);
 
   renderTodayBody(data.whoop);
   renderTodayInsights(data.insights);

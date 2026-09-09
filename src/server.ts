@@ -121,7 +121,7 @@ app.use((err: unknown, _req: express.Request, res: express.Response, next: expre
 Promise.all([ensureSessionSecret(), ensureVapidKeys()])
   .then(() => {
     app.listen(config.PORT, () => {
-      console.log(`Match week food diary listening on :${config.PORT} (timezone ${config.TIMEZONE})`);
+      console.log(`QuicKcals listening on :${config.PORT} (timezone ${config.TIMEZONE})`);
       startScheduler();
     });
   })

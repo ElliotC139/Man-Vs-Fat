@@ -124,6 +124,27 @@ model User {
   // or low-carb diet actually counts. Null or "total" is the label's own
   // figure, which is what every entry logged so far means.
   carbMode           String?
+  // Keto mode. The settings it needs already existed — net carbs, a carb
+  // ceiling, fibre on the entry rows — but scattered across four controls
+  // that had to be found and set correctly for the diary to be any use to
+  // someone doing keto. Turning this on sets them together, and turning it
+  // off leaves them alone: it is a way in, not a mode the rest of the app
+  // branches on.
+  //
+  // What it does change is what Today leads with. Under keto the number that
+  // matters is net carbs against the day's ceiling, not a third macro bar of
+  // equal weight, so the flag is stored rather than inferred from the
+  // settings it sets — those can be edited afterwards without meaning the
+  // person has stopped doing keto.
+  ketoMode           Boolean              @default(false)
+  // Which plan this account is on — "free", "plus" or "pro", defined in
+  // src/plans.ts. Deliberately a plain string rather than a foreign key to a
+  // plans table: there are three of them, their prices and allowances are
+  // deployment decisions rather than data someone edits, and a row per plan
+  // would mean a migration to change a price. Anything unrecognised reads as
+  // free, which is the safe direction.
+  plan               String               @default("free")
+  aiUsage            AiUsage[]
   // Gram targets for the nutrients that aren't energy macros, each with its
   // own comparison. They are rarely wanted the same way round — fibre is a
   // floor, salt and saturated fat are ceilings — so the op is per nutrient,
@@ -731,4 +752,31 @@ model WeighIn {
 model Setting {
   key   String @id
   value String
+}
+
+// One model call, and what it cost.
+//
+// The whole pricing structure rests on this table: a plan can only be promised
+// profitable if the spend behind it is measured, so every call the app makes
+// on someone's behalf lands here with the token counts the API reported and
+// the money they came to. See src/modelPricing.ts and src/plans.ts.
+//
+// Cost is in micros — millionths of a pound, as integers — because these rows
+// are summed to decide whether someone has hit a spending ceiling, and a float
+// that drifts is a ceiling that leaks.
+model AiUsage {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  at             DateTime @default(now())
+  // What the call was for: "estimate", "photo", "recipe", "exercise".
+  kind           String
+  model          String
+  inputTokens    Int
+  outputTokens   Int
+  cacheReadTokens  Int    @default(0)
+  cacheWriteTokens Int    @default(0)
+  costMicros     Int
+  // Indexed on the pair every read uses: this user, this month, this day.
+  @@index([userId, at])
 }

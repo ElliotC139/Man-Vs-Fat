@@ -102,6 +102,9 @@ vi.mock("../src/db", () => {
         );
       }),
     },
+    // The preview route looks at their own foods before it calls the model
+    // (see src/estimateShortcut.ts), which is these two reads.
+    foodOverride: { findMany: vi.fn(async () => []) },
     $transaction: vi.fn(async (arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma))),
   };
   return { prisma };

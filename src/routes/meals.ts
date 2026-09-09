@@ -7,8 +7,8 @@ import { requireAuth } from "../auth";
 import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart } from "../matchWeek";
 import { MEAL_TYPES, inferMealType, type MealType } from "../mealType";
 import { timestampOnLocalDay } from "../entryTiming";
-import { scaleMacros, sumMacros } from "../macros";
-import { scaleNutrients, sumNutrients } from "../nutrients";
+import { sumMacros } from "../macros";
+import { savedMealRows } from "../savedMealRows";
 import multer from "multer";
 import { estimateRecipeFromPhoto } from "../estimateRecipe";
 import { normalizeUploadedImage } from "../lib/imageProcessing";
@@ -369,60 +369,7 @@ mealsRouter.post("/:id/log", async (req, res) => {
     : parsed.data.mealType;
   const mealTypeSet = parsed.data.mealType !== undefined;
 
-  const items = [...meal.items].sort((a, b) => a.sortOrder - b.sortOrder);
-
-  const rows =
-    meal.kind === "recipe"
-      ? (() => {
-          // A recipe collapses to one entry: what went in the diary is
-          // "two portions of chilli", not the whole ingredient list again.
-          const anyUnknown = items.some((i) => i.kcal === null);
-          const total = anyUnknown ? null : items.reduce((sum, i) => sum + (i.kcal ?? 0), 0);
-          const kcal = total === null ? null : Math.round((total / meal.servings) * eaten);
-          const portionLabel = eaten === 1 ? "1 portion" : `${round2(eaten)} portions`;
-
-          // The macros follow the same rule as the calories: a batch with one
-          // un-costed ingredient gives a portion with unknown macros rather
-          // than a total quietly missing that ingredient.
-          const macroTotals = sumMacros(items);
-          const perPortion =
-            macroTotals.unknownEntries > 0
-              ? { proteinG: null, carbsG: null, fatG: null }
-              : scaleMacros(
-                  { proteinG: macroTotals.protein, carbsG: macroTotals.carbs, fatG: macroTotals.fat },
-                  eaten / meal.servings,
-                );
-
-          // The rest of the label divides the same way, and abstains the same
-          // way: an ingredient with no fibre figure means the portion's fibre
-          // is unknown, not that the batch contained none.
-          const nutrientTotals = sumNutrients(items);
-          const nutrientsPerPortion =
-            nutrientTotals.unknownEntries > 0
-              ? { fibreG: null, sugarG: null, satFatG: null, saltG: null }
-              : scaleNutrients(
-                  {
-                    fibreG: nutrientTotals.fibre,
-                    sugarG: nutrientTotals.sugar,
-                    satFatG: nutrientTotals.satFat,
-                    saltG: nutrientTotals.salt,
-                  },
-                  eaten / meal.servings,
-                );
-
-          return [{
-            label: `${meal.name} (${portionLabel})`,
-            kcal,
-            ...perPortion,
-            ...nutrientsPerPortion,
-          }];
-        })()
-      : items.map((i) => ({
-          label: eaten === 1 ? i.label : `${i.label} (x${round2(eaten)})`,
-          kcal: i.kcal === null ? null : Math.round(i.kcal * eaten),
-          ...scaleMacros(i, eaten),
-          ...scaleNutrients(i, eaten),
-        }));
+  const rows = savedMealRows(meal, eaten);
 
   // Only worth grouping when there is more than one row to group: a recipe
   // already collapses to a single "two portions of chilli" entry, and marking
@@ -461,7 +408,3 @@ mealsRouter.post("/:id/log", async (req, res) => {
   res.status(201).json(created);
 });
 
-/** Trims float noise off a user-entered portion count (1.5, not 1.5000001). */
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}

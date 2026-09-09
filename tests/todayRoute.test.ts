@@ -91,6 +91,13 @@ vi.mock("../src/db", () => {
     // range rather than handing back everything ever logged.
     entry: {
       findMany: vi.fn(async ({ where }: any = {}) => filterByTimestamp(state.entries, where)),
+      // The last thing eaten before the day being shown, which the fasting
+      // card measures a cross-midnight fast from.
+      findFirst: vi.fn(async ({ where }: any = {}) =>
+        filterByTimestamp(state.entries, where)
+          .slice()
+          .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())[0] ?? null,
+      ),
     },
     exercise: {
       findMany: vi.fn(async ({ where }: any = {}) => filterByTimestamp(state.exercises, where)),
@@ -408,5 +415,41 @@ describe("a day that straddles the week rollover", () => {
 
     const body = (await (await getToday(cookie, MONDAY)).json()) as any;
     expect(body.kcal.eaten).toBe(600);
+  });
+});
+
+describe("the fasting anchors", () => {
+  it("sends nothing when no eating window is set", async () => {
+    const cookie = await signUp();
+    logToday({ kcal: 400 });
+    const body = (await (await getToday(cookie)).json()) as any;
+    expect(body.fasting).toBeNull();
+  });
+
+  it("anchors the window on the first thing eaten today", async () => {
+    const cookie = await signUp();
+    state.users[0].eatingWindowHours = 8;
+    const first = new Date(Date.now() - 3 * 3600_000);
+    logToday({ kcal: 400, timestamp: first });
+    logToday({ kcal: 300, timestamp: new Date(Date.now() - 3600_000) });
+
+    const body = (await (await getToday(cookie)).json()) as any;
+    expect(body.fasting.openedAt).toBe(first.getTime());
+    expect(body.fasting.closesAt).toBe(first.getTime() + 8 * 3600_000);
+    // 24 hours less the window: an 8-hour window is a 16-hour fast.
+    expect(body.fasting.fastTargetMin).toBe(960);
+  });
+
+  it("reaches back past midnight for the last thing eaten", async () => {
+    const cookie = await signUp();
+    state.users[0].eatingWindowHours = 8;
+    // Nothing today, so the fast can only be measured from yesterday — the
+    // case the card could not show at all before this field existed.
+    const yesterday = logOnDay(1, { kcal: 500 });
+    expect(yesterday).not.toBe(localDayKey(new Date(), TIMEZONE));
+
+    const body = (await (await getToday(cookie)).json()) as any;
+    expect(body.fasting.openedAt).toBeNull();
+    expect(body.fasting.lastMealAt).toBe(state.entries[0].timestamp.getTime());
   });
 });

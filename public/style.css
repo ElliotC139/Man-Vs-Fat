@@ -2118,6 +2118,55 @@ tr.has-tooltip:active {
   color: var(--pitch-dark);
 }
 
+/* ── Matches as you type ──────────────────────────────────────────────────
+   Sits directly under the description box, so the answer arrives where the
+   question is being asked rather than at the bottom of the screen. */
+.text-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: -4px 0 12px;
+  animation: fadeInUp 0.16s var(--ease);
+}
+.text-suggestion {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  text-align: left;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  background: var(--card);
+  background-image: none;
+  box-shadow: none;
+  color: var(--ink);
+  transition: background 0.12s var(--ease), border-color 0.12s var(--ease);
+}
+.text-suggestion:hover,
+.text-suggestion:focus-visible {
+  border-color: var(--pitch);
+  background: rgba(31, 157, 82, 0.05);
+}
+.text-suggestion-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.text-suggestion-meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
 /* ── Food database search ── */
 .food-search-card #food-search-query {
   margin-bottom: 10px;
@@ -2230,6 +2279,22 @@ tr.has-tooltip:active {
   display: flex;
   gap: 5px;
   flex-shrink: 0;
+}
+/* Four actions beside the name squeezed the meal's own figures into a column
+   two words wide on a small phone — "435 kcal per portion" over four lines,
+   with the ingredients truncated to nothing. Below the width where they both
+   fit, the buttons take a line of their own underneath. */
+@media (max-width: 460px) {
+  .meal-row {
+    flex-wrap: wrap;
+  }
+  .meal-info {
+    flex: 1 0 100%;
+  }
+  .meal-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 .meal-actions button {
   width: auto;
@@ -5219,6 +5284,68 @@ body.hide-entry-times .entry-time {
    A single line and a bar. The retrospective version of this figure already
    has a card on Stats; this is the live one, and it only needs to answer
    "how long have I got" at a glance. */
+/* ── Net carbs, under keto ────────────────────────────────────────────────
+   The one number keto is about, given the weight the macro row can't: a hero
+   figure against its ceiling rather than a third bar of three. */
+.keto-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.keto-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.keto-title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.keto-note {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.keto-figures {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.keto-eaten {
+  font-family: var(--font-heading);
+  font-size: 2.1rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.keto-limit {
+  font-size: 0.9rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.keto-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--hairline);
+  overflow: hidden;
+}
+.keto-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--pitch);
+  transition: width 0.3s var(--ease);
+}
+/* Past the ceiling, in the same colour every other ceiling on the screen
+   turns — reported, not scolded. */
+.keto-fill--over { background: var(--floodlight); }
+
 .fasting-card {
   display: flex;
   flex-direction: column;
@@ -5252,9 +5379,12 @@ body.hide-entry-times .entry-time {
   background: var(--pitch);
   transition: width 0.3s var(--ease);
 }
-/* Past the window: the same warning colour the macro bars use for a ceiling
-   that's been passed, so "over" means one thing across the screen. */
-.fasting-fill--over { background: var(--floodlight); }
+/* The fast itself fills the other way — toward a target rather than up to a
+   ceiling — so it gets its own colour rather than borrowing the warning one. */
+.fasting-fill--fasting { background: var(--amber); }
+/* Target reached. The green the rest of the screen uses for a figure that has
+   landed where it was meant to. */
+.fasting-fill--done { background: var(--pitch); }
 /* Before the first thing is eaten there is nothing to fill, and an empty
    track reads better than a bar claiming zero progress. */
 .fasting-fill--waiting { background: var(--hairline); }
@@ -5403,13 +5533,72 @@ body.hide-entry-times .entry-time {
   margin-top: 8px;
 }
 
-/* The search card is the last thing on the Today screen, so on its own it can
-   never be scrolled to the top of the viewport — the page bottoms out first
-   and the card stays where it was, which is what "search jumps to the bottom"
-   was. Giving the card the rest of the screen while it is open makes that
-   scroll possible, and fills the room it opens up rather than leaving a gap
-   under a three-line card: searching becomes its own view, which is what it
-   already was in everything but layout. */
-body.search-open #food-search-card {
-  min-height: calc(100dvh - 104px - env(safe-area-inset-bottom));
+/* The search card sits last on the Today screen, and opening it used to ask
+   the page to scroll it up into view. That only ever worked if there was
+   enough room below it to scroll into, and with the keyboard up on a phone
+   there isn't — so the box stayed down at the bottom, under the keyboard.
+   It is now lifted out of the page: while it is open it is a fixed panel over
+   the screen, so where it lands owes nothing to how far the page can scroll or
+   to what the keyboard has done to the viewport. Searching becomes its own
+   view, which is what it already was in everything but layout. */
+/* .card is named in the selector on purpose: the Today screen's entrance rule
+   (#today-screen main > .card) would otherwise out-specify a plain id here and
+   hand the card back its in-flow animation and transform. */
+#food-search-card.card:not([hidden]) {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  /* The panel itself doesn't scroll: the header and the query box stay put and
+     only the results move, so the box you are typing in can't drift away. */
+  overflow: hidden;
+  padding: calc(14px + env(safe-area-inset-top)) 16px calc(14px + env(safe-area-inset-bottom));
+  animation: search-rise 0.18s var(--ease);
+}
+#food-search-card.card:not([hidden]) .food-search-results {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overscroll-behavior: contain;
+}
+/* The estimate fallback is the last resort under the results, not something to
+   push off the bottom of a full-height panel. */
+#food-search-card.card:not([hidden]) .food-search-estimate {
+  flex: none;
+}
+@keyframes search-rise {
+  from { transform: translateY(10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #food-search-card.card:not([hidden]) { animation: none; }
+}
+/* With room to spare it goes back to being a dialog over the page rather than
+   taking the whole window, so the diary stays visible behind it. */
+@media (min-width: 720px) {
+  #food-search-card.card:not([hidden]) {
+    inset: 5vh auto auto 50%;
+    transform: translateX(-50%);
+    width: min(560px, calc(100vw - 32px));
+    height: min(680px, 84vh);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    padding: 18px;
+    animation: search-fade 0.18s var(--ease);
+  }
+  @keyframes search-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  body.search-open::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 69;
+    background: rgba(8, 14, 11, 0.45);
+  }
 }
