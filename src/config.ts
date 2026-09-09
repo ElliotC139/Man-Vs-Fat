@@ -18,6 +18,30 @@ const envSchema = z.object({
   // Set it high rather than low: a rate that under-states the cost is a
   // ceiling that lets more through than it was set to allow.
   GBP_PER_USD: z.coerce.number().positive().default(0.82),
+  // Stripe. All optional, and the whole billing surface reports itself
+  // unconfigured without them — same as WHOOP and Nutritionix. A deployment
+  // with no card processor should run as a free app, not fail to boot.
+  STRIPE_SECRET_KEY: z.string().optional(),
+  // The signing secret for the webhook endpoint. Without it a webhook can't
+  // be trusted, so it isn't accepted at all — an unverified webhook is an
+  // unauthenticated request that hands out paid plans.
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  // One Stripe price per plan and interval. The plan catalogue holds what
+  // each tier costs and includes; Stripe holds the object that gets charged,
+  // and these are the join between them.
+  STRIPE_PRICE_PLUS_MONTHLY: z.string().optional(),
+  STRIPE_PRICE_PLUS_YEARLY: z.string().optional(),
+  STRIPE_PRICE_PRO_MONTHLY: z.string().optional(),
+  STRIPE_PRICE_PRO_YEARLY: z.string().optional(),
+  // Google AdSense, which is what pays for the free tier. Optional: with no
+  // publisher id nothing is loaded and the free tier simply runs at a small
+  // loss against its 20p ceiling, which is a deployment's own business.
+  //
+  // The publisher id ("ca-pub-...") and one slot id per placement. Slots are
+  // named rather than numbered so adding a second placement is a config key
+  // rather than an index nobody can read.
+  ADSENSE_CLIENT_ID: z.string().optional(),
+  ADSENSE_SLOT_TODAY: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REFRESH_TOKEN: z.string().optional(),
@@ -67,5 +91,14 @@ export const driveConfigured = Boolean(
 );
 
 export const whoopConfigured = Boolean(config.WHOOP_CLIENT_ID && config.WHOOP_CLIENT_SECRET);
+/**
+ * Billing is on only with both halves: a key to charge with, and a secret to
+ * verify Stripe's callbacks with. A key without a webhook secret would take
+ * money and never hear that it had, which is worse than not taking it.
+ */
+export const stripeConfigured = Boolean(config.STRIPE_SECRET_KEY && config.STRIPE_WEBHOOK_SECRET);
+
+/** Ads need a publisher id and at least one slot to put one in. */
+export const adsConfigured = Boolean(config.ADSENSE_CLIENT_ID && config.ADSENSE_SLOT_TODAY);
 
 export const mailConfigured = Boolean(config.RESEND_API_KEY);

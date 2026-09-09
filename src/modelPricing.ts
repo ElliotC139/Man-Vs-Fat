@@ -70,21 +70,40 @@ export interface ModelUsage {
   cacheWriteTokens?: number;
 }
 
+/**
+ * Float dust, not money.
+ *
+ * The rates are dollars per million tokens, so the sum below is already in
+ * millionths of a dollar and needs no divide — but multiplying by an exchange
+ * rate that has no exact binary form leaves results like 3520.0000000000005,
+ * and rounding those up costs a micro that was never spent. A billionth is
+ * far below the smallest real fraction and far above the error.
+ */
+const FLOAT_DUST = 1e-9;
+
 /** Millionths of a pound, rounded up — a ceiling must never under-count. */
 export function costMicros(usage: ModelUsage): number {
   const rate = rateFor(usage.model);
-  const dollars =
-    (usage.inputTokens * rate.input
-      + usage.outputTokens * rate.output
-      + (usage.cacheReadTokens ?? 0) * rate.input * CACHE_READ_MULTIPLIER
-      + (usage.cacheWriteTokens ?? 0) * rate.input * CACHE_WRITE_MULTIPLIER)
-    / 1_000_000;
+  // Each term is tokens x (dollars per million tokens), which is millionths
+  // of a dollar. Converting to pounds keeps the same unit.
+  const microDollars =
+    usage.inputTokens * rate.input
+    + usage.outputTokens * rate.output
+    + (usage.cacheReadTokens ?? 0) * rate.input * CACHE_READ_MULTIPLIER
+    + (usage.cacheWriteTokens ?? 0) * rate.input * CACHE_WRITE_MULTIPLIER;
 
-  return Math.ceil(dollars * config.GBP_PER_USD * 1_000_000);
+  return Math.ceil(microDollars * config.GBP_PER_USD - FLOAT_DUST);
 }
 
-/** Micros as money, for anywhere a person reads it. */
+/**
+ * Micros as money, for anywhere a person reads it.
+ *
+ * The pence-or-pounds choice is made on the rounded figure rather than the
+ * raw one. Deciding it on the raw value put 999,999 micros — a hair under a
+ * pound — through the pence branch, where rounding to one decimal turned it
+ * into "100.0p": correct to the penny and nonsense to read.
+ */
 export function formatMicros(micros: number): string {
-  const pounds = micros / 1_000_000;
-  return pounds < 1 ? `${(pounds * 100).toFixed(1)}p` : `£${pounds.toFixed(2)}`;
+  const pence = Math.round(micros / 10_000 * 10) / 10;
+  return pence < 100 ? `${pence.toFixed(1)}p` : `£${(pence / 100).toFixed(2)}`;
 }

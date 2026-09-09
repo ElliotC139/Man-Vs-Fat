@@ -23,6 +23,9 @@ import { statsRouter } from "./routes/stats";
 import { teamsRouter } from "./routes/teams";
 import { weighInsRouter } from "./routes/weighIns";
 import { whoopRouter } from "./routes/whoop";
+import { planRouter } from "./routes/plan";
+import { adminRouter } from "./routes/admin";
+import { billingRouter, billingWebhookRouter } from "./routes/billing";
 import { sharesRouter } from "./routes/shares";
 import { startScheduler } from "./jobs/scheduler";
 
@@ -55,6 +58,12 @@ app.use((_req, res, next) => {
   next();
 });
 
+// Before express.json(), and only the webhook: Stripe signs the exact bytes
+// it sent, so a JSON round trip re-orders keys and the signature check fails.
+// The rest of billing is mounted with the other routers below, because it
+// needs the cookie parser that comes after this.
+app.use("/api/billing", billingWebhookRouter);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
@@ -77,6 +86,9 @@ app.use("/api/stats", statsRouter);
 app.use("/api/teams", teamsRouter);
 app.use("/api/weigh-ins", weighInsRouter);
 app.use("/api/whoop", whoopRouter);
+app.use("/api/plan", planRouter);
+app.use("/api/admin", adminRouter);
+app.use("/api/billing", billingRouter);
 app.use("/api/shares", sharesRouter);
 
 app.get("/healthz", (_req, res) => res.json({ ok: true }));

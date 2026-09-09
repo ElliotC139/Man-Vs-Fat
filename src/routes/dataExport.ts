@@ -7,6 +7,7 @@ import { requireAuth } from "../auth";
 import { findOrCreateMatchWeek, getUserWeekStart, localDayKey } from "../matchWeek";
 import { parseAppleHealthStream, parseHealthExport, type HealthParseResult } from "../healthImport";
 import { openZipEntry } from "../lib/zipEntry";
+import { gateFeature } from "./planGate";
 
 /**
  * Data portability. Everything a user has put in, back out again in a form
@@ -507,6 +508,11 @@ const healthUpload = multer({
 });
 
 dataRouter.post("/import/health", healthUpload.single("file"), async (req, res) => {
+  // The other half of the health integration WHOOP is on — same tier, same
+  // reasoning. Exporting your own data is never gated: it is yours, and an
+  // app that holds your history hostage to a subscription is not one anybody
+  // should trust with it.
+  if (!(await gateFeature(req, res, "health"))) return;
   const file = req.file;
   if (!file) {
     res.status(400).json({ error: "Choose an export file first." });

@@ -9,6 +9,8 @@ import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart, zonedTimeToUtc 
 import { saveUploadedImage, deleteUploadedImage } from "../lib/storage";
 import { normalizeUploadedImage } from "../lib/imageProcessing";
 import { consumeAll, AI_BURST, AI_DAILY } from "../rateLimit";
+import { gateAiCall } from "./planGate";
+import { recordAiUsage } from "../entitlements";
 
 export const exercisesRouter = Router();
 exercisesRouter.use(requireAuth);
@@ -37,7 +39,7 @@ exercisesRouter.post("/", upload.single("photo"), async (req, res) => {
     }
   }
 
-  // Same ceiling as food entries — this path calls the model too.
+  // Same ceilings as food entries — this path calls the model too.
   const verdict = consumeAll(`ai:${req.userId!}`, [AI_BURST, AI_DAILY]);
   if (!verdict.allowed) {
     res.status(429)
@@ -45,8 +47,15 @@ exercisesRouter.post("/", upload.single("photo"), async (req, res) => {
       .json({ error: "That's a lot of entries at once — give it a minute and try again." });
     return;
   }
+  const gate = await gateAiCall(req, res, "exercise");
+  if (!gate) return;
 
-  const { description, kcalBurned } = await estimateExercise(text, photo?.buffer.toString("base64"), photo?.mimeType);
+  const { description, kcalBurned } = await estimateExercise(
+    text,
+    photo?.buffer.toString("base64"),
+    photo?.mimeType,
+    { model: gate.model, onUsage: (usage) => void recordAiUsage(req.userId!, "exercise", usage) },
+  );
 
   const imageUrl = photo ? saveUploadedImage(photo.buffer) : null;
   const timestamp = new Date();

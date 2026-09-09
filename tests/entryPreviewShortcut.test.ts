@@ -11,13 +11,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   users: [] as any[],
+  estimatesToday: 0,
+  spentMicros: 0,
   library: [] as any[],
   products: [] as any[],
   nextId: 1,
 }));
 
 vi.mock("../src/config", () => ({
-  config: { TIMEZONE: "Europe/London", GOOGLE_SIGNIN_CLIENT_ID: undefined },
+  config: {
+    TIMEZONE: "Europe/London",
+    GOOGLE_SIGNIN_CLIENT_ID: undefined,
+    GBP_PER_USD: 0.8,
+    ANTHROPIC_MODEL: "claude-sonnet-5",
+    ANTHROPIC_MODEL_FREE: "claude-haiku-4-5",
+  },
 }));
 
 vi.mock("../src/db", () => {
@@ -34,6 +42,12 @@ vi.mock("../src/db", () => {
       count: vi.fn(async () => state.users.length),
     },
     setting: { upsert: vi.fn(async ({ where, create }: any) => ({ key: where.key, value: create.value })) },
+    // The plan gate reads these before every model call.
+    aiUsage: {
+      count: vi.fn(async () => state.estimatesToday),
+      aggregate: vi.fn(async () => ({ _sum: { costMicros: state.spentMicros } })),
+      create: vi.fn(async ({ data }: any) => data),
+    },
     matchWeek: { updateMany: vi.fn(async () => ({ count: 0 })) },
     $transaction: vi.fn(async (arg: any) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma))),
   };
@@ -64,6 +78,8 @@ let baseUrl: string;
 
 beforeEach(async () => {
   state.users.length = 0;
+  state.estimatesToday = 0;
+  state.spentMicros = 0;
   state.library.length = 0;
   state.products.length = 0;
   state.nextId = 1;
@@ -168,5 +184,55 @@ describe("POST /api/entries/preview — the model is a last resort", () => {
     expect(body.source).toBe("ai");
     expect(body.from).toBeNull();
     expect(estimateMeal).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("POST /api/entries/preview — the plan gate", () => {
+  it("refuses once the day's estimates are gone, and says what still works", async () => {
+    const cookie = await signUp();
+    // A fresh account is on the free plan's three a day.
+    state.estimatesToday = 3;
+
+    const { status, body } = await preview(cookie, "chicken stir fry with a naan");
+
+    expect(status).toBe(429);
+    expect(body.limit).toBe("daily");
+    expect(body.error).toMatch(/search, barcodes/i);
+    expect(estimateMeal).not.toHaveBeenCalled();
+  });
+
+  it("refuses once the month's spend is gone", async () => {
+    const cookie = await signUp();
+    state.spentMicros = 999_999;
+
+    const { status, body } = await preview(cookie, "chicken stir fry with a naan");
+
+    // 402 rather than 429: waiting a few minutes will not fix this one.
+    expect(status).toBe(402);
+    expect(body.limit).toBe("monthly");
+    expect(estimateMeal).not.toHaveBeenCalled();
+  });
+
+  it("never spends a limit on an answer it already had", async () => {
+    const cookie = await signUp();
+    state.estimatesToday = 3;
+    state.library.push({
+      label: "Porridge", kcal: 380, proteinG: 12, carbsG: 62, fatG: 8,
+      fibreG: null, sugarG: null, satFatG: null, saltG: null, count: 4,
+    });
+
+    // Out of estimates, but this one needs none — the shortcut answers it.
+    const { status, body } = await preview(cookie, "porridge");
+
+    expect(status).toBe(200);
+    expect(body.from).toBe("library");
+  });
+
+  it("runs a free account on the cheaper model", async () => {
+    const cookie = await signUp();
+    await preview(cookie, "chicken stir fry with a naan");
+    expect(estimateMeal).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "claude-haiku-4-5" }),
+    );
   });
 });

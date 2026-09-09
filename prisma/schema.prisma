@@ -144,6 +144,24 @@ model User {
   // would mean a migration to change a price. Anything unrecognised reads as
   // free, which is the safe direction.
   plan               String               @default("free")
+  // Who can see the admin screen: sign-ups, plans, and what the AI is costing.
+  // The first account ever created gets it, because otherwise nobody can
+  // grant it to anybody and the screen is unreachable on a fresh deployment.
+  isAdmin            Boolean              @default(false)
+  // Stripe's own id for this person, kept so a second subscription doesn't
+  // create a second customer. Set on the first checkout and never cleared:
+  // a cancelled subscription still has a billing history worth keeping
+  // attached to the same customer.
+  stripeCustomerId   String?              @unique
+  stripeSubscriptionId String?            @unique
+  // Stripe's word for where the subscription stands — "active", "past_due",
+  // "canceled" and so on. Stored rather than derived so the app can say why
+  // a plan lapsed without calling Stripe on every request.
+  subscriptionStatus String?
+  // When the paid period runs out. A cancellation at period end leaves the
+  // plan in place until this passes, which is what someone who has paid for
+  // the month is owed.
+  subscriptionEndsAt DateTime?
   aiUsage            AiUsage[]
   // Gram targets for the nutrients that aren't energy macros, each with its
   // own comparison. They are rarely wanted the same way round — fibre is a

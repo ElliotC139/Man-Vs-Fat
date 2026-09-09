@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config";
 import { recordError } from "./errorLog";
+import type { ModelUsage } from "./modelPricing";
 
 const client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
 
@@ -58,21 +59,36 @@ function parseResponse(raw: string): ExerciseEstimate {
   return { description, kcalBurned };
 }
 
+/** Which model to run on, and where to report what it used. */
+export interface EstimateOptions {
+  model?: string;
+  onUsage?: (usage: ModelUsage) => void;
+}
+
 export async function estimateExercise(
   text?: string,
   imageBase64?: string,
   imageMediaType?: string,
+  options: EstimateOptions = {},
 ): Promise<ExerciseEstimate> {
   if (!text?.trim() && !imageBase64) {
     throw new Error("estimateExercise requires text and/or an image");
   }
 
   try {
+    const model = options.model ?? config.ANTHROPIC_MODEL;
     const message = await client.messages.create({
-      model: config.ANTHROPIC_MODEL,
+      model,
       max_tokens: 100,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: buildContent(text, imageBase64, imageMediaType) }],
+    });
+    options.onUsage?.({
+      model,
+      inputTokens: message.usage.input_tokens,
+      outputTokens: message.usage.output_tokens,
+      cacheReadTokens: message.usage.cache_read_input_tokens ?? 0,
+      cacheWriteTokens: message.usage.cache_creation_input_tokens ?? 0,
     });
     const textBlock = message.content.find((b) => b.type === "text");
     if (!textBlock || textBlock.type !== "text") throw new Error("No text in response");

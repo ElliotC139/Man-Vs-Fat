@@ -13,6 +13,8 @@ import multer from "multer";
 import { estimateRecipeFromPhoto } from "../estimateRecipe";
 import { normalizeUploadedImage } from "../lib/imageProcessing";
 import { consumeAll, AI_BURST, AI_DAILY } from "../rateLimit";
+import { gateAiCall, gateFeature } from "./planGate";
+import { recordAiUsage } from "../entitlements";
 
 // Same ceiling as a meal photo: an un-normalized phone original is large.
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
@@ -241,8 +243,11 @@ mealsRouter.post("/scan", upload.single("photo"), async (req, res) => {
     return;
   }
 
-  // Reading a page of a cookbook costs a vision call, so it is metered like
-  // every other estimate rather than being a free door into the model.
+  // Reading a page of a cookbook is an image in and up to 2,000 tokens back —
+  // roughly six typed estimates, and the dearest single call the app makes.
+  // It is a Pro feature for that reason, and metered like everything else on
+  // top rather than being a free door into the model.
+  if (!(await gateFeature(req, res, "recipeScan"))) return;
   const verdict = consumeAll(`ai:${req.userId!}`, [AI_BURST, AI_DAILY]);
   if (!verdict.allowed) {
     res.status(429)
@@ -250,6 +255,8 @@ mealsRouter.post("/scan", upload.single("photo"), async (req, res) => {
       .json({ error: "That's a lot of scanning at once — give it a minute and try again." });
     return;
   }
+  const gate = await gateAiCall(req, res, "recipe");
+  if (!gate) return;
 
   let photo: { buffer: Buffer; mimeType: "image/jpeg" };
   try {
@@ -261,7 +268,10 @@ mealsRouter.post("/scan", upload.single("photo"), async (req, res) => {
   }
 
   try {
-    const draft = await estimateRecipeFromPhoto(photo.buffer.toString("base64"), photo.mimeType);
+    const draft = await estimateRecipeFromPhoto(photo.buffer.toString("base64"), photo.mimeType, {
+      model: gate.model,
+      onUsage: (usage) => void recordAiUsage(req.userId!, "recipe", usage),
+    });
     if (draft.items.length === 0) {
       res.status(422).json({ error: "Couldn't find a recipe in that photo — try a clearer shot of the ingredients." });
       return;

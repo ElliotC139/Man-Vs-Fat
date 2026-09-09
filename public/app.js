@@ -1306,6 +1306,443 @@ async function repeatEntry(id) {
   refreshCurrentView();
 }
 
+// ── What plan you're on, and what's left of it ──────────────────────────────
+//
+// A limit you discover by being refused is a limit that feels like a fault, so
+// the allowance is visible before it runs out — but only once it starts
+// mattering. A counter sitting there all day is a nag; one that appears with
+// three left is information.
+//
+// The money never appears here. What an account costs to run is the operator's
+// business, and "you have used 43p of your £2" is both a strange thing to tell
+// a customer and an invitation to game it.
+
+const planCardEl = document.getElementById("plan-card");
+const planNameEl = document.getElementById("plan-name");
+const planPriceEl = document.getElementById("plan-price");
+const planUsageEl = document.getElementById("plan-usage");
+const planOptionsEl = document.getElementById("plan-options");
+const planAllowanceEl = document.getElementById("plan-allowance");
+
+/** Where the allowance stops being background and starts being news. */
+const ALLOWANCE_WARN_AT = 3;
+
+let currentPlan = null;
+
+function priceText(pence) {
+  return pence === 0 ? "Free" : `£${(pence / 100).toFixed(2)}/mo`;
+}
+
+async function loadPlan() {
+  try {
+    const res = await fetch("/api/plan");
+    if (!res.ok) throw new Error();
+    currentPlan = await res.json();
+    renderPlan();
+  } catch {
+    // The diary works without knowing the plan. Failing quietly is right:
+    // there is nothing the person could do about it, and a banner about
+    // billing on a screen they came to log lunch on is worse than silence.
+    planCardEl.hidden = true;
+    planAllowanceEl.hidden = true;
+  }
+}
+
+function renderPlan() {
+  if (!currentPlan) return;
+  const { plan, estimates, monthlyCapReached } = currentPlan;
+
+  planCardEl.hidden = false;
+  planNameEl.textContent = plan.name;
+  planPriceEl.textContent = priceText(plan.pricePence);
+  planUsageEl.textContent = monthlyCapReached
+    ? "This month's AI estimates are used up. Search, barcodes and your saved meals still work."
+    : `${estimates.remaining} of ${estimates.allowance} AI estimates left today.`;
+
+  renderPlanOptions(plan.id);
+  renderAds(currentPlan.ads);
+
+  // The line under the log button: silent until it isn't.
+  const low = !monthlyCapReached && estimates.remaining <= ALLOWANCE_WARN_AT;
+  planAllowanceEl.hidden = !(low || monthlyCapReached);
+  if (monthlyCapReached) {
+    planAllowanceEl.textContent = "No AI estimates left this month — search and barcodes still work.";
+  } else if (low) {
+    planAllowanceEl.textContent = estimates.remaining === 0
+      ? "No AI estimates left today — search and barcodes still work."
+      : `${estimates.remaining} AI ${estimates.remaining === 1 ? "estimate" : "estimates"} left today.`;
+  }
+}
+
+/** The plans above this one, as what they add rather than as a price list. */
+async function renderPlanOptions(currentId) {
+  planOptionsEl.innerHTML = "";
+  try {
+    const [catalogueRes, billingRes] = await Promise.all([
+      fetch("/api/plan/catalogue"),
+      fetch("/api/billing/status"),
+    ]);
+    if (!catalogueRes.ok) return;
+    const { plans } = await catalogueRes.json();
+    const billing = billingRes.ok ? await billingRes.json() : { purchasable: [], canManage: false };
+    const index = plans.findIndex((p) => p.id === currentId);
+
+    // Somewhere to cancel, change card or see invoices. Stripe's own portal
+    // does all of that properly, and a half-built copy of it here would be a
+    // worse one that also has to be kept in step with their billing rules.
+    if (billing.canManage) {
+      const manage = document.createElement("button");
+      manage.type = "button";
+      manage.className = "ghost-sm plan-manage";
+      manage.textContent = "Manage subscription";
+      manage.addEventListener("click", () => openBillingPortal(manage));
+      planOptionsEl.appendChild(manage);
+    }
+
+    for (const plan of plans.slice(index + 1)) {
+      const row = document.createElement("div");
+      row.className = "plan-option";
+
+      const head = document.createElement("div");
+      head.className = "plan-option-head";
+      const name = document.createElement("span");
+      name.className = "plan-option-name";
+      name.textContent = plan.name;
+      const price = document.createElement("span");
+      price.className = "plan-option-price";
+      price.textContent = priceText(plan.pricePence);
+      head.append(name, price);
+
+      const tagline = document.createElement("p");
+      tagline.className = "plan-option-tagline";
+      tagline.textContent = plan.tagline;
+
+      const list = document.createElement("ul");
+      list.className = "plan-option-list";
+      for (const line of plan.highlights) {
+        const li = document.createElement("li");
+        li.textContent = line;
+        list.appendChild(li);
+      }
+
+      row.append(head, tagline, list);
+
+      // After the list, not before it: the button is what you press once the
+      // plan has made its case. Only offered where this deployment actually
+      // has a Stripe price for it — a button that leads to "that plan isn't
+      // available" is worse than no button.
+      if (billing.purchasable?.includes(plan.id)) {
+        const buy = document.createElement("button");
+        buy.type = "button";
+        buy.className = "plan-buy";
+        buy.textContent = `Get ${plan.name}`;
+        buy.addEventListener("click", () => startCheckout(plan.id, buy));
+        row.appendChild(buy);
+      }
+
+      planOptionsEl.appendChild(row);
+    }
+  } catch {
+    // Same reasoning as loadPlan: nothing useful to say about it.
+  }
+}
+
+/**
+ * Says what happened after a trip to Stripe, then tidies the URL.
+ *
+ * Deliberately says "will appear shortly" rather than claiming the plan is
+ * live: the plan changes when Stripe's webhook arrives, which is usually
+ * immediate but is not this redirect. Telling someone they are on Pro and
+ * then showing them Free would be worse than asking them to wait a moment.
+ */
+function handleBillingRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const billing = params.get("billing");
+  if (!billing) return;
+
+  if (billing === "done") {
+    showToast("Payment taken — your new plan will appear in a moment.");
+    // Stripe's webhook and this redirect race, and the webhook usually wins.
+    // One look a few seconds later covers the times it doesn't.
+    setTimeout(loadPlan, 4000);
+  } else if (billing === "cancelled") {
+    showToast("Checkout cancelled — nothing was charged.");
+  }
+
+  params.delete("billing");
+  const query = params.toString();
+  window.history.replaceState({}, "", window.location.pathname + (query ? `?${query}` : ""));
+}
+
+// ── The admin screen ────────────────────────────────────────────────────────
+//
+// Only rendered for an admin, and the server 404s the whole API for anyone
+// else — so hiding it here is a convenience, not the protection.
+//
+// It shows the money, which nothing else in the app does. That is deliberate:
+// what an account costs to serve is the operator's business, and the person
+// using the app should never be shown a running total of themselves.
+
+const adminCardEl = document.getElementById("admin-card");
+const adminSummaryEl = document.getElementById("admin-summary");
+const adminUsersEl = document.getElementById("admin-users");
+const adminErrorEl = document.getElementById("admin-error");
+const adminRefreshBtn = document.getElementById("admin-refresh");
+const adminSignupsOpenBtn = document.getElementById("admin-signups-open");
+const adminSignupsClosedBtn = document.getElementById("admin-signups-closed");
+
+const PLAN_ORDER = ["free", "plus", "pro"];
+
+async function loadAdmin() {
+  if (!currentUser?.isAdmin) {
+    adminCardEl.hidden = true;
+    return;
+  }
+  try {
+    const res = await fetch("/api/admin/overview");
+    if (!res.ok) throw new Error();
+    renderAdmin(await res.json());
+    adminCardEl.hidden = false;
+  } catch {
+    adminCardEl.hidden = true;
+  }
+}
+
+function statTile(value, caption) {
+  const cell = document.createElement("div");
+  cell.className = "admin-stat";
+  const number = document.createElement("span");
+  number.className = "admin-stat-number";
+  number.textContent = value;
+  const label = document.createElement("span");
+  label.className = "admin-stat-caption";
+  label.textContent = caption;
+  cell.append(number, label);
+  return cell;
+}
+
+function renderAdmin(data) {
+  adminErrorEl.hidden = true;
+  adminSummaryEl.innerHTML = "";
+
+  const margin = data.month.marginPence;
+  adminSummaryEl.append(
+    statTile(data.month.cost, "AI this month"),
+    statTile(`£${(data.month.revenuePence / 100).toFixed(2)}`, "plans"),
+    statTile(`${margin < 0 ? "-" : ""}£${Math.abs(margin / 100).toFixed(2)}`, "margin"),
+    statTile(String(data.month.calls), "calls"),
+  );
+  // The one number the whole pricing structure exists to keep positive.
+  adminSummaryEl.lastElementChild?.previousElementSibling
+    ?.classList.toggle("admin-stat--bad", margin < 0);
+
+  adminSignupsOpenBtn.classList.toggle("meal-kind-btn--active", data.signupsOpen);
+  adminSignupsClosedBtn.classList.toggle("meal-kind-btn--active", !data.signupsOpen);
+
+  adminUsersEl.innerHTML = "";
+  const counts = document.createElement("p");
+  counts.className = "muted admin-counts";
+  counts.textContent = data.plans.map((p) => `${p.users} ${p.name}`).join(" · ");
+  adminUsersEl.appendChild(counts);
+
+  for (const user of data.users) adminUsersEl.appendChild(adminUserRow(user));
+}
+
+function adminUserRow(user) {
+  const row = document.createElement("div");
+  row.className = `admin-user${user.atCap ? " admin-user--at-cap" : ""}`;
+
+  const name = document.createElement("div");
+  name.className = "admin-user-name";
+  name.textContent = user.username;
+  if (user.isAdmin) {
+    const pill = document.createElement("span");
+    pill.className = "admin-pill";
+    pill.textContent = "Admin";
+    name.appendChild(pill);
+  }
+
+  const meta = document.createElement("div");
+  meta.className = "admin-user-meta";
+  meta.textContent = [
+    `${user.monthCalls} calls`,
+    user.monthCost,
+    user.subscriptionStatus,
+    user.atCap ? "at cap" : null,
+  ].filter(Boolean).join(" · ");
+
+  const select = document.createElement("select");
+  select.className = "admin-user-plan";
+  select.setAttribute("aria-label", `Plan for ${user.username}`);
+  for (const id of PLAN_ORDER) {
+    const option = document.createElement("option");
+    option.value = id;
+    // Named the way the rest of the app names them, not as the raw id.
+    option.textContent = id.charAt(0).toUpperCase() + id.slice(1);
+    option.selected = user.plan === id;
+    select.appendChild(option);
+  }
+  select.addEventListener("change", () => patchAdminUser(user.id, { plan: select.value }));
+
+  row.append(name, meta, select);
+  return row;
+}
+
+async function patchAdminUser(id, body) {
+  try {
+    const res = await fetch(`/api/admin/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const answer = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(answer.error || "Couldn't change that.");
+    showToast("Saved");
+    await loadAdmin();
+  } catch (error) {
+    adminErrorEl.textContent = error.message;
+    adminErrorEl.hidden = false;
+  }
+}
+
+async function setSignups(open) {
+  try {
+    const res = await fetch("/api/admin/signups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ open }),
+    });
+    if (!res.ok) throw new Error("Couldn't change sign-ups.");
+    showToast(open ? "Sign-ups open" : "Sign-ups closed");
+    await loadAdmin();
+  } catch (error) {
+    adminErrorEl.textContent = error.message;
+    adminErrorEl.hidden = false;
+  }
+}
+
+adminSignupsOpenBtn.addEventListener("click", () => setSignups(true));
+adminSignupsClosedBtn.addEventListener("click", () => setSignups(false));
+adminRefreshBtn.addEventListener("click", loadAdmin);
+
+// ── Ads, on the free tier only ──────────────────────────────────────────────
+//
+// What pays for the free tier. Three rules:
+//
+//   - The publisher id only reaches accounts that get ads, so for anyone
+//     paying the advertising script is never loaded rather than loaded and
+//     hidden. That is the difference between "no ads" meaning something and
+//     it being decoration — nothing is fetched, nothing is measured, nothing
+//     of theirs goes anywhere.
+//   - One slot, at the bottom of Today, below everything they came for. An ad
+//     between someone and their own diary is the kind that makes people leave.
+//   - It says it is an ad, and it says how to be rid of it.
+
+const adTodayEl = document.getElementById("ad-today");
+const adTodayUnitEl = document.getElementById("ad-today-unit");
+const adRemoveBtn = document.getElementById("ad-remove");
+
+/** Loaded once per page, and only if there is an ad to show. */
+let adScriptLoaded = false;
+let adRendered = false;
+
+function loadAdScript(client) {
+  if (adScriptLoaded) return;
+  adScriptLoaded = true;
+  const script = document.createElement("script");
+  script.async = true;
+  script.crossOrigin = "anonymous";
+  script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}`;
+  document.head.appendChild(script);
+}
+
+function renderAds(ads) {
+  // No ads configured, or this account pays: nothing to show and nothing to
+  // fetch. The element stays empty rather than being filled and hidden.
+  if (!ads?.client || !ads.slots?.today) {
+    adTodayEl.hidden = true;
+    return;
+  }
+
+  adTodayEl.hidden = false;
+  loadAdScript(ads.client);
+
+  // Rendered once. Asking adsbygoogle to fill the same slot twice is how you
+  // get its "already have ads in it" error, and re-rendering on every refresh
+  // of the Today screen would do exactly that.
+  if (adRendered) return;
+  adRendered = true;
+
+  const unit = document.createElement("ins");
+  unit.className = "adsbygoogle";
+  unit.style.display = "block";
+  unit.dataset.adClient = ads.client;
+  unit.dataset.adSlot = ads.slots.today;
+  unit.dataset.adFormat = "auto";
+  unit.dataset.fullWidthResponsive = "true";
+  adTodayUnitEl.appendChild(unit);
+
+  try {
+    (window.adsbygoogle = window.adsbygoogle || []).push({});
+  } catch {
+    // Blocked, offline, or refused: leave the space empty rather than showing
+    // a broken frame. Nobody needs to be told their ad blocker worked.
+    adTodayEl.hidden = true;
+  }
+}
+
+adRemoveBtn.addEventListener("click", () => {
+  navTo("settings");
+  planCardEl.scrollIntoView({ behavior: "smooth", block: "center" });
+});
+
+/** Sends someone to Stripe's hosted checkout. */
+async function startCheckout(planId, button) {
+  button.disabled = true;
+  const previous = button.textContent;
+  button.textContent = "Opening…";
+  try {
+    const res = await fetch("/api/billing/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan: planId, interval: "monthly" }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.url) throw new Error(body.error || "Couldn't start checkout.");
+    window.location.href = body.url;
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+    button.textContent = previous;
+  }
+}
+
+async function openBillingPortal(button) {
+  button.disabled = true;
+  try {
+    const res = await fetch("/api/billing/portal", { method: "POST" });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.url) throw new Error(body.error || "Couldn't open the billing page.");
+    window.location.href = body.url;
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+  }
+}
+
+/**
+ * What to say when the server refuses on plan grounds.
+ *
+ * Every one of these names something that still works. A limit that only says
+ * no reads as the app being broken rather than as a choice someone can make.
+ */
+function showPlanLimit(body) {
+  formError.textContent = body.error ?? "That needs a different plan.";
+  formError.hidden = false;
+  // Refresh so the count under the button agrees with what just happened.
+  void loadPlan();
+}
+
 // ── Matches as you type ─────────────────────────────────────────────────────
 //
 // The databases should answer before the model does, and the moment to offer
@@ -1471,10 +1908,19 @@ form.addEventListener("submit", async (event) => {
     }
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
+      // A plan limit is not an error, it is an answer — and it comes with
+      // somewhere to go. Anything else falls through to the message.
+      if (body.limit) {
+        showPlanLimit(body);
+        return;
+      }
       throw new Error(body.error ? JSON.stringify(body.error) : "Failed to estimate that.");
     }
     const preview = await res.json();
     haptic();
+    // The estimate that just happened is one off today's allowance, so the
+    // count on screen is stale the moment it returns.
+    void loadPlan();
 
     form.reset();
     photoStatus.textContent = "Add a photo (optional)";
@@ -1819,6 +2265,9 @@ async function showApp(user, { firstRun = false } = {}) {
   refreshOfflineBanner();
   flushQueue();
   loadWater();
+  loadPlan();
+  loadAdmin();
+  handleBillingRedirect();
   // Last, and only once there is a diary to add to: someone who followed a
   // shared link straight into a sign-up lands on the sheet rather than losing
   // the link to the redirect.

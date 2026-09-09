@@ -4,6 +4,7 @@ import { generateMatchWeekReport } from "../pdf/generateReport";
 import { uploadReportToDrive } from "../drive/uploadToDrive";
 import { localDayKey } from "../matchWeek";
 import { recordError } from "../errorLog";
+import { planFor } from "../plans";
 
 /**
  * Closes any match week whose boundary has passed but hasn't had a report
@@ -14,10 +15,20 @@ export async function closeMatchWeeksNeedingReport(): Promise<void> {
   const dueWeeks = await prisma.matchWeek.findMany({
     where: { endsAt: { lte: new Date() }, reportGeneratedAt: null },
     orderBy: { startsAt: "asc" },
-    include: { entries: true },
+    include: { entries: true, user: { select: { plan: true } } },
   });
 
   for (const week of dueWeeks) {
+    // The report is a Pro feature. Marked as handled rather than skipped, so
+    // a week belonging to a free account isn't reconsidered on every hourly
+    // run for the rest of time.
+    if (!planFor(week.user?.plan).weeklyReport) {
+      await prisma.matchWeek.update({
+        where: { id: week.id },
+        data: { reportGeneratedAt: new Date() },
+      });
+      continue;
+    }
     try {
       const pdfBuffer = await generateMatchWeekReport(week, config.TIMEZONE);
       const fileName = `${localDayKey(week.startsAt, config.TIMEZONE)}.pdf`;
