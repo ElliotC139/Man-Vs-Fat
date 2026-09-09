@@ -18,6 +18,21 @@ const envSchema = z.object({
   // Set it high rather than low: a rate that under-states the cost is a
   // ceiling that lets more through than it was set to allow.
   GBP_PER_USD: z.coerce.number().positive().default(0.82),
+  // Stripe. All optional, and the whole billing surface reports itself
+  // unconfigured without them — same as WHOOP and Nutritionix. A deployment
+  // with no card processor should run as a free app, not fail to boot.
+  STRIPE_SECRET_KEY: z.string().optional(),
+  // The signing secret for the webhook endpoint. Without it a webhook can't
+  // be trusted, so it isn't accepted at all — an unverified webhook is an
+  // unauthenticated request that hands out paid plans.
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  // One Stripe price per plan and interval. The plan catalogue holds what
+  // each tier costs and includes; Stripe holds the object that gets charged,
+  // and these are the join between them.
+  STRIPE_PRICE_PLUS_MONTHLY: z.string().optional(),
+  STRIPE_PRICE_PLUS_YEARLY: z.string().optional(),
+  STRIPE_PRICE_PRO_MONTHLY: z.string().optional(),
+  STRIPE_PRICE_PRO_YEARLY: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REFRESH_TOKEN: z.string().optional(),
@@ -67,5 +82,11 @@ export const driveConfigured = Boolean(
 );
 
 export const whoopConfigured = Boolean(config.WHOOP_CLIENT_ID && config.WHOOP_CLIENT_SECRET);
+/**
+ * Billing is on only with both halves: a key to charge with, and a secret to
+ * verify Stripe's callbacks with. A key without a webhook secret would take
+ * money and never hear that it had, which is worse than not taking it.
+ */
+export const stripeConfigured = Boolean(config.STRIPE_SECRET_KEY && config.STRIPE_WEBHOOK_SECRET);
 
 export const mailConfigured = Boolean(config.RESEND_API_KEY);

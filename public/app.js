@@ -1377,10 +1377,26 @@ function renderPlan() {
 async function renderPlanOptions(currentId) {
   planOptionsEl.innerHTML = "";
   try {
-    const res = await fetch("/api/plan/catalogue");
-    if (!res.ok) return;
-    const { plans } = await res.json();
+    const [catalogueRes, billingRes] = await Promise.all([
+      fetch("/api/plan/catalogue"),
+      fetch("/api/billing/status"),
+    ]);
+    if (!catalogueRes.ok) return;
+    const { plans } = await catalogueRes.json();
+    const billing = billingRes.ok ? await billingRes.json() : { purchasable: [], canManage: false };
     const index = plans.findIndex((p) => p.id === currentId);
+
+    // Somewhere to cancel, change card or see invoices. Stripe's own portal
+    // does all of that properly, and a half-built copy of it here would be a
+    // worse one that also has to be kept in step with their billing rules.
+    if (billing.canManage) {
+      const manage = document.createElement("button");
+      manage.type = "button";
+      manage.className = "ghost-sm plan-manage";
+      manage.textContent = "Manage subscription";
+      manage.addEventListener("click", () => openBillingPortal(manage));
+      planOptionsEl.appendChild(manage);
+    }
 
     for (const plan of plans.slice(index + 1)) {
       const row = document.createElement("div");
@@ -1409,10 +1425,85 @@ async function renderPlanOptions(currentId) {
       }
 
       row.append(head, tagline, list);
+
+      // After the list, not before it: the button is what you press once the
+      // plan has made its case. Only offered where this deployment actually
+      // has a Stripe price for it — a button that leads to "that plan isn't
+      // available" is worse than no button.
+      if (billing.purchasable?.includes(plan.id)) {
+        const buy = document.createElement("button");
+        buy.type = "button";
+        buy.className = "plan-buy";
+        buy.textContent = `Get ${plan.name}`;
+        buy.addEventListener("click", () => startCheckout(plan.id, buy));
+        row.appendChild(buy);
+      }
+
       planOptionsEl.appendChild(row);
     }
   } catch {
     // Same reasoning as loadPlan: nothing useful to say about it.
+  }
+}
+
+/**
+ * Says what happened after a trip to Stripe, then tidies the URL.
+ *
+ * Deliberately says "will appear shortly" rather than claiming the plan is
+ * live: the plan changes when Stripe's webhook arrives, which is usually
+ * immediate but is not this redirect. Telling someone they are on Pro and
+ * then showing them Free would be worse than asking them to wait a moment.
+ */
+function handleBillingRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const billing = params.get("billing");
+  if (!billing) return;
+
+  if (billing === "done") {
+    showToast("Payment taken — your new plan will appear in a moment.");
+    // Stripe's webhook and this redirect race, and the webhook usually wins.
+    // One look a few seconds later covers the times it doesn't.
+    setTimeout(loadPlan, 4000);
+  } else if (billing === "cancelled") {
+    showToast("Checkout cancelled — nothing was charged.");
+  }
+
+  params.delete("billing");
+  const query = params.toString();
+  window.history.replaceState({}, "", window.location.pathname + (query ? `?${query}` : ""));
+}
+
+/** Sends someone to Stripe's hosted checkout. */
+async function startCheckout(planId, button) {
+  button.disabled = true;
+  const previous = button.textContent;
+  button.textContent = "Opening…";
+  try {
+    const res = await fetch("/api/billing/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan: planId, interval: "monthly" }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.url) throw new Error(body.error || "Couldn't start checkout.");
+    window.location.href = body.url;
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+    button.textContent = previous;
+  }
+}
+
+async function openBillingPortal(button) {
+  button.disabled = true;
+  try {
+    const res = await fetch("/api/billing/portal", { method: "POST" });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.url) throw new Error(body.error || "Couldn't open the billing page.");
+    window.location.href = body.url;
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
   }
 }
 
@@ -1952,6 +2043,7 @@ async function showApp(user, { firstRun = false } = {}) {
   flushQueue();
   loadWater();
   loadPlan();
+  handleBillingRedirect();
   // Last, and only once there is a diary to add to: someone who followed a
   // shared link straight into a sign-up lands on the sheet rather than losing
   // the link to the redirect.

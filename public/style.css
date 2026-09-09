@@ -2196,6 +2196,20 @@ tr.has-tooltip:active {
   margin-bottom: 2px;
 }
 
+.plan-buy {
+  width: auto;
+  align-self: flex-start;
+  min-height: 38px;
+  margin-top: 6px;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+}
+.plan-manage {
+  width: auto;
+  align-self: flex-start;
+  margin-bottom: 4px;
+}
+
 /* The line under the log button. Amber rather than red: running low is not
    an error, and colouring it like one would make the app look broken. */
 .plan-allowance {
