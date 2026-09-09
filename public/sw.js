@@ -18,7 +18,7 @@
  */
 
 // Bumped on every deploy that changes a shell file, so old caches are dropped.
-const VERSION = "v41";
+const VERSION = "v42";
 const SHELL_CACHE = `shell-${VERSION}`;
 const API_CACHE = `api-${VERSION}`;
 
@@ -28,7 +28,7 @@ const SHELL_ASSETS = [
   "/app.js",
   "/style.css",
   "/manifest.webmanifest",
-  "/icons/mark.png",
+  "/icons/mark-inverse.svg",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
   "/404.html",
