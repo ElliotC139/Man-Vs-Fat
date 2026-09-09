@@ -222,14 +222,19 @@ body {
   letter-spacing: 0.18em;
   line-height: 1.2;
   color: rgba(255, 255, 255, 0.62);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* The clipping that keeps a long title on one line lives on the wordmark
+     itself (see .brand-word), not here. On the heading it also clipped the
+     mark, which now deliberately overflows this line box — a disc cropped
+     into a horizontal band is not a logo. */
 }
+/* On the fixture screens the line the mark shares is a 0.7rem eyebrow, so
+   there is much less line box to fall back into — the disc is a little
+   smaller and the margin correspondingly larger to land on the same 28px. */
 .banner--fixture h1 .brand-mark {
-  width: 28px;
-  height: 28px;
-  padding: 3px;
+  width: 56px;
+  height: 56px;
+  margin-block: -14px;
+  padding: 7px;
 }
 
 /* Three header icons on the main app-shell banner (food library, stats,
@@ -263,18 +268,27 @@ body {
   justify-content: flex-start;
 }
 /* The mark was disappearing into the header: a 24px disc at 14% white on a
-   green ground is a smudge rather than a logo. It is bigger now, sits on a
-   brighter disc with a hairline to hold its edge, and casts a small shadow so
-   it reads as an object on the banner rather than a stain in it. */
+   green ground is a smudge rather than a logo. It sits on a brighter disc
+   with a hairline to hold its edge, and casts a small shadow so it reads as
+   an object on the banner rather than a stain in it.
+
+   It is now roughly twice the size it was, and the header is exactly as tall
+   as it was before. Those two facts are held together by the negative block
+   margins: the banner's height is set by the text line the mark sits on, so
+   the mark is allowed to overflow that line box into the padding the header
+   already had rather than pushing it open. The margin is half the difference
+   between the disc and the line it has to fit back into — change one and the
+   other has to move with it, or the banner grows. */
 .brand-mark {
   display: block;
-  width: 34px;
-  height: 34px;
+  width: 68px;
+  height: 68px;
+  margin-block: -18px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.5);
-  padding: 4px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
+  padding: 8px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.24);
   flex-shrink: 0;
 }
 
@@ -286,7 +300,14 @@ body {
 .brand-word {
   font-family: var(--font-brand);
   letter-spacing: -0.02em;
+  /* Kept on one line, and truncated here rather than on the heading: the
+     heading also holds the mark, which overflows its line box on purpose. */
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* A flex item won't shrink below its content without this, so without it
+     the ellipsis never gets the chance to appear. */
+  min-width: 0;
   /* Larger than the heading it sits in, so the name reads as the name rather
      than as more of the same text. */
   font-size: 1.35em;
