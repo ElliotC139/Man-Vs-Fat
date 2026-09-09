@@ -87,7 +87,7 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   // The From: address for those emails. Must be on a domain verified with
   // Resend, or delivery is rejected.
-  MAIL_FROM: z.string().default("Food Diary <onboarding@resend.dev>"),
+  MAIL_FROM: z.string().default("QuicKcals <onboarding@resend.dev>"),
   // Optional Nutritionix credentials. These are what put restaurant and pub
   // menus into food search — Open Food Facts is packaged groceries only, so
   // without a key nothing off a menu is findable. See src/foodSearchProviders.ts.
