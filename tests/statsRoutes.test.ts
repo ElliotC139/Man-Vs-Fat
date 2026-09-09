@@ -192,6 +192,26 @@ function daysAgo(n: number): Date {
 }
 
 /**
+ * Midday, local time, on the day n days ago.
+ *
+ * daysAgo() is "now minus 24 hours", which carries the current time of day
+ * with it — so a test that puts an hour-long event at daysAgo(1) has that
+ * event straddle local midnight whenever the suite runs in the last hour of
+ * the day, and the day-attribution logic then splits it correctly across two
+ * dates and the assertion fails. Anchoring to midday leaves twelve hours of
+ * clearance either side, so the time the suite happens to run stops being a
+ * variable.
+ *
+ * Midday in the app's TIMEZONE, not the machine's: setHours(12) would be
+ * midday wherever the test happens to be running, which is the same figure
+ * only for as long as CI stays on UTC.
+ */
+function middayDaysAgo(n: number): Date {
+  const { year, month, day } = getLocalParts(daysAgo(n), TIMEZONE);
+  return zonedTimeToUtc(year, month, day, 12, 0, TIMEZONE);
+}
+
+/**
  * Midday on the nth date of the current match week, counting the rollover
  * date as 0.
  *
@@ -329,7 +349,9 @@ describe("GET /api/stats/balance", () => {
 
   it("computes kcal in/out and balance for a day with entries and a scored WHOOP cycle", async () => {
     const { cookie, userId } = await signUp("alice");
-    const day = daysAgo(1);
+    // Midday, so the hour-long cycle below is nowhere near a local midnight
+    // whatever time of day the suite runs — see middayDaysAgo.
+    const day = middayDaysAgo(1);
     state.entries.push({ userId, timestamp: day, kcal: 1800 });
     // end an hour after start, well inside the same calendar day, so the
     // whole cycle lands on one day rather than getting split across two.
@@ -567,13 +589,6 @@ interface StreakResponse {
 async function fetchStreak(cookie: string): Promise<StreakResponse> {
   const res = await fetch(`${baseUrl}/api/stats/deficit-streak`, { headers: { Cookie: cookie } });
   return (await res.json()) as StreakResponse;
-}
-
-/** Midday local on the day `n` days ago, so nothing drifts across a boundary. */
-function middayDaysAgo(n: number): Date {
-  const d = daysAgo(n);
-  d.setHours(12, 0, 0, 0);
-  return d;
 }
 
 describe("GET /api/stats/deficit-streak", () => {

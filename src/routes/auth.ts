@@ -673,7 +673,7 @@ authRouter.post("/forgot", async (req, res) => {
     const link = `${config.APP_BASE_URL}/?reset=${token}`;
     await sendMail({
       to: user.email,
-      subject: "Reset your food diary password",
+      subject: "Reset your QuicKcals password",
       text: `Someone asked to reset the password for "${user.username}".\n\nOpen this link within the hour to choose a new one:\n${link}\n\nIf that wasn't you, ignore this email — nothing has changed.`,
     });
   }
