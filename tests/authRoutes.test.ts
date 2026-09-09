@@ -25,6 +25,8 @@ vi.mock("../src/mailer", () => ({
 const { verifyIdTokenMock } = vi.hoisted(() => ({ verifyIdTokenMock: vi.fn() }));
 
 vi.mock("../src/config", () => ({
+  // reconcileAdmin and toPublicUser both read this on every sign-in.
+  adminUsernames: [],
   config: { GOOGLE_SIGNIN_CLIENT_ID: "test-google-client-id", APP_BASE_URL: "https://example.test" },
 }));
 

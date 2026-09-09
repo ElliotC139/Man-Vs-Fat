@@ -44,8 +44,12 @@ export function isAdminUser(user: { username: string; isAdmin?: boolean | null }
  * admin screen's list of users tells the truth, not to enforce anything.
  */
 export async function reconcileAdmin(userId: number): Promise<void> {
-  if (!adminListConfigured()) return;
   try {
+    // Inside the try, not in front of it: reading the configured list is
+    // itself something that can fail, and a guard that throws on the way to
+    // deciding there is nothing to do is the worst possible version of
+    // "never throws".
+    if (!adminListConfigured()) return;
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, username: true, isAdmin: true },

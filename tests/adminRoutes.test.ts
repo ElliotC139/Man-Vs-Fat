@@ -16,6 +16,8 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("../src/config", () => ({
+  // reconcileAdmin and toPublicUser both read this on every sign-in.
+  adminUsernames: [],
   config: {
     TIMEZONE: "Europe/London",
     GOOGLE_SIGNIN_CLIENT_ID: undefined,
@@ -79,6 +81,7 @@ vi.mock("../src/db", () => {
 
 import { authRouter } from "../src/routes/auth";
 import { adminRouter, forgetSignupsSetting } from "../src/routes/admin";
+import { planFor } from "../src/plans";
 
 let server: http.Server;
 let baseUrl: string;
@@ -210,11 +213,16 @@ describe("the figures", () => {
     state.users[1]!.plan = "pro";
     state.usage.push({ userId: 2, costMicros: 1_000_000 }, { userId: 2, costMicros: 500_000 });
 
+    // Against the catalogue rather than a number typed in here: this test is
+    // about the arithmetic — one Pro subscriber, £1.50 spent — and a price
+    // change should move the deployment, not break the sums.
+    const proPence = planFor("pro").pricePence;
+
     const body = (await (await get("/overview", cookie)).json()) as any;
     expect(body.month.calls).toBe(2);
     expect(body.month.cost).toBe("£1.50");
-    expect(body.month.revenuePence).toBe(799);
-    expect(body.month.marginPence).toBe(799 - 150);
+    expect(body.month.revenuePence).toBe(proPence);
+    expect(body.month.marginPence).toBe(proPence - 150);
     expect(body.plans.find((p: any) => p.id === "pro").users).toBe(1);
   });
 

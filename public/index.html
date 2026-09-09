@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <!-- Kept in step with VERSION in sw.js by hand; it is what a suggestion
          reports as the version somebody was on. -->
-    <meta name="app-version" content="v39" />
+    <meta name="app-version" content="v40" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="description" content="QuicKcals — a fast, honest food diary. Learns what you actually burn, tells you what still fits in the day, and never tells you what to eat." />
     <title>QuicKcals</title>
@@ -29,6 +29,10 @@
     <div id="auth-screen" class="auth-screen" hidden>
       <div class="card auth-card">
         <h1 class="auth-title"><img src="/icons/icon-192.png" alt="" class="auth-brand-mark" width="56" height="56" /><span class="brand-word"><span class="brand-word-a">Quic</span><span class="brand-word-k">K</span><span class="brand-word-b">cals</span></span></h1>
+        <!-- Shown only when someone arrived on a working invite link. It
+             names who invited them, because "someone invited you" reads like
+             a trick and a name reads like a friend. -->
+        <p id="auth-invite" class="auth-invite" hidden></p>
         <div id="google-signin-btn" class="google-signin-btn" hidden></div>
         <p id="auth-divider" class="auth-divider" hidden><span>or</span></p>
         <form id="auth-form">
@@ -725,6 +729,23 @@
             </div>
             <p id="plan-usage" class="plan-usage"></p>
             <div id="plan-options" class="plan-options"></div>
+          </section>
+
+          <!-- Invites. Sits under the plan card because the offer on both
+               sides of it is a month of a plan, and it reads as nonsense
+               anywhere the reader hasn't just been told what a plan costs. -->
+          <section id="referral-card" class="referral-card" hidden>
+            <div class="referral-head">
+              <h2 class="referral-title">Invite a friend</h2>
+              <span id="referral-reward" class="referral-reward"></span>
+            </div>
+            <p id="referral-pitch" class="referral-pitch"></p>
+            <div class="referral-code-row">
+              <code id="referral-code" class="referral-code"></code>
+              <button type="button" id="referral-share" class="referral-share">Share link</button>
+            </div>
+            <p id="referral-note" class="muted" hidden></p>
+            <div id="referral-stats" class="referral-stats"></div>
           </section>
 
           <!-- Only rendered for an admin. The server 404s the API for anyone

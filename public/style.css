@@ -290,9 +290,14 @@ body {
   /* Larger than the heading it sits in, so the name reads as the name rather
      than as more of the same text. */
   font-size: 1.35em;
-  /* Full white, not the 62% the fixture strap around it uses. That strap is a
-     label and is meant to recede; the name of the app is not, and inheriting
-     the label's colour was most of why the logo got lost. */
+}
+/* Full white on the banner, not the 62% the fixture strap around it uses.
+   That strap is a label and is meant to recede; the name of the app is not,
+   and inheriting the label's colour was most of why the logo got lost.
+   Scoped to the banner rather than set on .brand-word itself, because the
+   same wordmark also sits on the white sign-in card — where white on white
+   is no wordmark at all. */
+.banner h1 .brand-word {
   color: #fff;
 }
 .brand-word-a {
@@ -2224,6 +2229,117 @@ tr.has-tooltip:active {
   width: auto;
   align-self: flex-start;
   margin-bottom: 4px;
+}
+
+/* ── Invites ──────────────────────────────────────────────────────────────
+   The one card in Settings with a colour behind it, because it is the only
+   one making an offer rather than reporting a state. A tinted panel in the
+   brand green rather than a second white box in a column of white boxes. */
+.referral-card {
+  border: 1px solid color-mix(in srgb, var(--pitch) 28%, var(--hairline));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--pitch) 7%, var(--card));
+  padding: 12px 14px;
+  margin-bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.referral-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.referral-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+.referral-reward {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--pitch);
+  font-variant-numeric: tabular-nums;
+}
+.referral-pitch {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.referral-code-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/* The code has to survive being read aloud and typed on a phone, so it gets
+   the widest tracking in the app and a monospaced face. */
+.referral-code {
+  flex: 1 1 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 1px dashed color-mix(in srgb, var(--pitch) 40%, var(--hairline));
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  /* The tracking above adds a gap after the last character, which reads as
+     off-centre unless it is taken back. */
+  text-indent: 0.18em;
+  color: var(--ink);
+}
+.referral-share {
+  width: auto;
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+}
+.referral-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--pitch) 20%, var(--hairline));
+}
+.referral-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: center;
+}
+.referral-stat-value {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.referral-stat-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+/* The line on the sign-in card naming who invited them. */
+.auth-invite {
+  margin: 0 0 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--pitch) 10%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--pitch) 25%, var(--hairline));
+  font-size: 0.85rem;
+  color: var(--ink);
+  text-align: center;
 }
 
 /* ── The admin screen ─────────────────────────────────────────────────────

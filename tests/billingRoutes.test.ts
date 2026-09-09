@@ -12,9 +12,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({
   users: [] as any[],
   constructEvent: null as any,
+  /** Credits issued through Stripe, so a test can assert one landed. */
+  credits: [] as any[],
+  /** Set to make the credit call fail, which is how a retry gets tested. */
+  creditFails: false,
+  nextCustomer: 1,
 }));
 
 vi.mock("../src/config", () => ({
+  // reconcileAdmin and toPublicUser both read this on every sign-in.
+  adminUsernames: [],
   config: {
     TIMEZONE: "Europe/London",
     GOOGLE_SIGNIN_CLIENT_ID: undefined,
@@ -36,9 +43,19 @@ vi.mock("../src/billing", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/billing")>();
   return {
     ...actual,
-    // The real client would reach for the network; the signature check is the
-    // only part of it these tests care about.
-    stripe: () => ({ webhooks: { constructEvent: (...args: any[]) => state.constructEvent(...args) } }),
+    // The real client would reach for the network. The signature check and
+    // the customer-balance credit are the parts these tests care about.
+    stripe: () => ({
+      webhooks: { constructEvent: (...args: any[]) => state.constructEvent(...args) },
+      customers: {
+        create: async (data: any) => ({ id: `cus_new_${state.nextCustomer++}`, ...data }),
+        createBalanceTransaction: async (customer: string, data: any) => {
+          if (state.creditFails) throw new Error("Stripe is down");
+          state.credits.push({ customer, ...data });
+          return data;
+        },
+      },
+    }),
   };
 });
 
@@ -59,6 +76,16 @@ vi.mock("../src/db", () => {
         Object.assign(user, data);
         return user;
       }),
+      updateMany: vi.fn(async ({ where, data }: any) => {
+        const matched = state.users.filter((u) =>
+          u.id === where.id
+          && (where.referralRewardedAt === undefined || u.referralRewardedAt === where.referralRewardedAt));
+        for (const user of matched) Object.assign(user, data);
+        return { count: matched.length };
+      }),
+      count: vi.fn(async ({ where }: any) =>
+        state.users.filter((u) =>
+          u.referredById === where.referredById && u.referralRewardedAt != null).length),
     },
   };
   return { prisma };
@@ -71,6 +98,9 @@ let baseUrl: string;
 
 beforeEach(async () => {
   state.users.length = 0;
+  state.credits.length = 0;
+  state.creditFails = false;
+  state.nextCustomer = 1;
   state.constructEvent = () => { throw new Error("no signature configured"); };
   vi.clearAllMocks();
 
@@ -204,5 +234,154 @@ describe("POST /api/billing/webhook", () => {
     (prisma.user.update as any).mockRejectedValueOnce(new Error("db down"));
 
     expect((await post(subscriptionEvent())).status).toBe(500);
+  });
+});
+
+/**
+ * The referral reward. Every one of these is guarding the same promise: the
+ * scheme pays out of money that has arrived, exactly once, and never more
+ * than the payment funding it. See src/referrals.ts.
+ */
+describe("the referral reward", () => {
+  function invoiceEvent(over: Record<string, unknown> = {}) {
+    return {
+      type: "invoice.payment_succeeded",
+      data: { object: { id: "in_1", customer: "cus_bob", amount_paid: 499, currency: "gbp", ...over } },
+    };
+  }
+
+  /** Alice invited Bob, and Bob's first month has just been paid for. */
+  function aliceAndBob(over: { alice?: any; bob?: any } = {}) {
+    state.users.push({
+      id: 1, plan: "free", username: "alice", email: "alice@example.test",
+      stripeCustomerId: "cus_alice", referredById: null, referralRewardedAt: null, ...over.alice,
+    });
+    state.users.push({
+      id: 2, plan: "plus", username: "bob", email: null,
+      stripeCustomerId: "cus_bob", referredById: 1, referralRewardedAt: null, ...over.bob,
+    });
+  }
+
+  it("credits the referrer when the first real payment lands", async () => {
+    aliceAndBob();
+    const event = invoiceEvent();
+    state.constructEvent = () => event;
+
+    expect((await post(event)).status).toBe(200);
+    // A free-tier referrer earns a month of Plus, which lands as credit and
+    // becomes real the moment they subscribe.
+    expect(state.credits).toEqual([
+      { customer: "cus_alice", amount: -499, currency: "gbp", description: "QuicKcals referral reward" },
+    ]);
+    expect(state.users[1]!.referralRewardedAt).toBeInstanceOf(Date);
+  });
+
+  it("ignores the £0 invoice that opens a free month", async () => {
+    // This is the whole design. Paying out here would make the free month the
+    // trigger, which is the thing the scheme is built not to do.
+    aliceAndBob();
+    const event = invoiceEvent({ amount_paid: 0 });
+    state.constructEvent = () => event;
+
+    expect((await post(event)).status).toBe(200);
+    expect(state.credits).toHaveLength(0);
+    expect(state.users[1]!.referralRewardedAt).toBeNull();
+  });
+
+  it("pays once, however many times Stripe delivers the event", async () => {
+    aliceAndBob();
+    const event = invoiceEvent();
+    state.constructEvent = () => event;
+
+    await post(event);
+    await post(event);
+    await post(event);
+    expect(state.credits).toHaveLength(1);
+  });
+
+  it("never credits more than the payment that funds it", async () => {
+    // A Pro referrer whose friend bought Plus gets the £4.99 that arrived,
+    // not the £9.99 they pay.
+    aliceAndBob({ alice: { plan: "pro" } });
+    const event = invoiceEvent({ amount_paid: 499 });
+    state.constructEvent = () => event;
+
+    await post(event);
+    expect(state.credits[0]).toMatchObject({ amount: -499 });
+  });
+
+  it("pays a paying referrer a month of their own plan", async () => {
+    aliceAndBob({ alice: { plan: "pro" } });
+    const event = invoiceEvent({ amount_paid: 999 });
+    state.constructEvent = () => event;
+
+    await post(event);
+    expect(state.credits[0]).toMatchObject({ amount: -999 });
+  });
+
+  it("creates a Stripe customer for a referrer who has never checked out", async () => {
+    // "Your first month is on us when you upgrade" is the offer, so the
+    // credit has to have somewhere to sit before they subscribe.
+    aliceAndBob({ alice: { stripeCustomerId: null } });
+    const event = invoiceEvent();
+    state.constructEvent = () => event;
+
+    await post(event);
+    expect(state.users[0]!.stripeCustomerId).toBe("cus_new_1");
+    expect(state.credits[0]).toMatchObject({ customer: "cus_new_1" });
+  });
+
+  it("pays nothing on a payment from an account nobody invited", async () => {
+    aliceAndBob({ bob: { referredById: null } });
+    const event = invoiceEvent();
+    state.constructEvent = () => event;
+
+    expect((await post(event)).status).toBe(200);
+    expect(state.credits).toHaveLength(0);
+  });
+
+  it("stops paying at the cap, without breaking the invite", async () => {
+    aliceAndBob();
+    // 25 conversions already banked.
+    for (let i = 0; i < 25; i += 1) {
+      state.users.push({ id: 100 + i, referredById: 1, referralRewardedAt: new Date() });
+    }
+    const event = invoiceEvent();
+    state.constructEvent = () => event;
+
+    expect((await post(event)).status).toBe(200);
+    expect(state.credits).toHaveLength(0);
+  });
+
+  it("hands the claim back when the credit fails, so the retry can pay it", async () => {
+    aliceAndBob();
+    const event = invoiceEvent();
+    state.constructEvent = () => event;
+    state.creditFails = true;
+
+    // A 500 is how Stripe is told to come back.
+    expect((await post(event)).status).toBe(500);
+    expect(state.users[1]!.referralRewardedAt).toBeNull();
+
+    state.creditFails = false;
+    expect((await post(event)).status).toBe(200);
+    expect(state.credits).toHaveLength(1);
+  });
+
+  it("marks the free month spent once the trial actually starts", async () => {
+    state.users.push({ id: 1, plan: "free", stripeCustomerId: "cus_1", referralTrialUsed: false });
+    const event = subscriptionEvent({ status: "trialing", trial_end: 1_800_000_000 });
+    state.constructEvent = () => event;
+
+    await post(event);
+    expect(state.users[0]!.referralTrialUsed).toBe(true);
+  });
+
+  it("leaves the free month alone for a subscription without one", async () => {
+    state.users.push({ id: 1, plan: "free", stripeCustomerId: "cus_1", referralTrialUsed: false });
+    state.constructEvent = () => subscriptionEvent();
+
+    await post(subscriptionEvent());
+    expect(state.users[0]!.referralTrialUsed).toBe(false);
   });
 });

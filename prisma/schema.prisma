@@ -162,6 +162,26 @@ model User {
   // plan in place until this passes, which is what someone who has paid for
   // the month is owed.
   subscriptionEndsAt DateTime?
+  // The referral scheme (src/referrals.ts). The code is this account's own,
+  // handed out to be shared; referredById is who handed them theirs, set once
+  // at signup and never afterwards — a referral that can be re-pointed later
+  // is a referral that can be re-sold.
+  //
+  // Null codes are normal: a code is minted the first time someone opens the
+  // invite screen, so accounts that predate the scheme, and accounts that
+  // never look at it, simply don't have one.
+  referralCode       String?              @unique
+  referredById       Int?
+  referredBy         User?                @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals          User[]               @relation("Referrals")
+  // When the person who invited this account was paid for it. Set once, on
+  // the invited account rather than the referrer's, because that is what
+  // makes "pay at most once per referral" a uniqueness fact rather than a
+  // count somebody has to get right.
+  referralRewardedAt DateTime?
+  // Whether this account has already had its free month. Stops a second
+  // checkout — cancel, re-subscribe, switch plan — starting the trial again.
+  referralTrialUsed  Boolean              @default(false)
   aiUsage            AiUsage[]
   suggestions        Suggestion[]
   // Gram targets for the nutrients that aren't energy macros, each with its
@@ -237,6 +257,8 @@ model User {
   waterLogs          WaterLog[]
   foodShares         FoodShare[]
   teamMemberships    TeamMember[]
+
+  @@index([referredById])
 }
 
 // A single-use token for resetting a forgotten password. Only the hash is

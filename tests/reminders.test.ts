@@ -13,7 +13,9 @@ const state = vi.hoisted(() => ({
   deliverCount: 1,
 }));
 
-vi.mock("../src/config", () => ({ config: { TIMEZONE: "Europe/London" } }));
+vi.mock("../src/config", () => ({
+  // reconcileAdmin and toPublicUser both read this on every sign-in.
+  adminUsernames: [], config: { TIMEZONE: "Europe/London" } }));
 
 vi.mock("../src/db", () => ({
   prisma: {

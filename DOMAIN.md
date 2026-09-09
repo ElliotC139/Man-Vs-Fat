@@ -45,9 +45,13 @@ below rather than after:
 - password-reset links in email
 - Stripe's success, cancel and portal return URLs
 - share links (`/s/<token>`)
+- referral invite links (`/?ref=<code>`)
 
 Setting a secret restarts the app. Existing share links on the old address
-keep working as long as the old address still resolves, which it does.
+keep working as long as the old address still resolves, which it does. So do
+invite links: the code is what matters and it is read the same either way.
+Referral codes themselves never change, so nothing anybody has already shared
+is invalidated by the move.
 
 ## 3. Update the accounts that hold a copy of the URL
 

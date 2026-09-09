@@ -13,6 +13,8 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("../src/config", () => ({
+  // reconcileAdmin and toPublicUser both read this on every sign-in.
+  adminUsernames: [],
   config: {
     TIMEZONE: "Europe/London",
     GBP_PER_USD: 0.8,

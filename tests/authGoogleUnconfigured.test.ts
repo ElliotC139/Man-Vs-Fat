@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Deliberately omits GOOGLE_SIGNIN_CLIENT_ID, unlike authRoutes.test.ts —
 // covers the deployment-without-Drive-style fallback where the button/endpoint
 // are simply unavailable rather than erroring.
-vi.mock("../src/config", () => ({ config: {} }));
+vi.mock("../src/config", () => ({
+  // reconcileAdmin and toPublicUser both read this on every sign-in.
+  adminUsernames: [], config: {} }));
 
 vi.mock("../src/db", () => ({
   prisma: {

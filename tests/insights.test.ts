@@ -9,6 +9,8 @@ vi.mock("@anthropic-ai/sdk", () => ({
 }));
 
 vi.mock("../src/config", () => ({
+  // reconcileAdmin and toPublicUser both read this on every sign-in.
+  adminUsernames: [],
   config: { ANTHROPIC_API_KEY: "test-key", ANTHROPIC_MODEL: "test-model" },
 }));
 

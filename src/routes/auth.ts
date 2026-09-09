@@ -27,12 +27,17 @@ import { LOG_METHODS, readLogMethods, writeLogMethods } from "../logMethods";
 import { refileMatchWeeks } from "../refileMatchWeeks";
 import { signupsOpen } from "./admin";
 import { isAdminUser, reconcileAdmin } from "../adminAccess";
+import { referrerIdForCode } from "../referralSignup";
 
 export const authRouter = Router();
 
 const signupSchema = z.object({
   username: z.string().trim().min(3).max(40),
   password: z.string().min(8).max(200),
+  // A referral code, if they arrived on someone's link. Optional and
+  // deliberately forgiving: a code that doesn't resolve is ignored rather than
+  // refused, because a mistyped invite should still get somebody an account.
+  ref: z.string().max(32).optional(),
 });
 
 const loginSchema = z.object({
@@ -143,6 +148,9 @@ const settingsSchema = z.object({
 
 const googleSchema = z.object({
   credential: z.string().min(10),
+  // Same referral code the password form takes. An invite has to survive
+  // someone choosing the Google button, or half the links quietly don't count.
+  ref: z.string().max(32).optional(),
 });
 
 // Undefined (not just falsy) when GOOGLE_SIGNIN_CLIENT_ID is unset, so the
@@ -313,7 +321,7 @@ authRouter.post("/signup", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const { username, password } = parsed.data;
+  const { username, password, ref } = parsed.data;
 
   const existing = await prisma.user.findUnique({ where: { username } });
   if (existing) {
@@ -330,11 +338,17 @@ authRouter.post("/signup", async (req, res) => {
     return;
   }
 
+  // Resolved before the transaction: it is a read, it may legitimately find
+  // nothing, and a bad code must not roll back an account someone is waiting on.
+  const referredById = await referrerIdForCode(ref);
+
   const user = await prisma.$transaction(async (tx) => {
     const isFirstUser = (await tx.user.count()) === 0;
     // The first account gets the admin screen, because otherwise nobody can
     // grant it to anybody and it is unreachable.
-    const created = await tx.user.create({ data: { username, passwordHash, isAdmin: isFirstUser } });
+    const created = await tx.user.create({
+      data: { username, passwordHash, isAdmin: isFirstUser, referredById },
+    });
     if (isFirstUser) {
       await tx.matchWeek.updateMany({ where: { userId: null }, data: { userId: created.id } });
     }
@@ -441,10 +455,14 @@ authRouter.post("/google", async (req, res) => {
 
   const username = await uniqueUsernameFromEmail(email);
 
+  const referredById = await referrerIdForCode(parsed.data.ref);
+
   // Same "first account ever claims pre-multi-user history" rule as /signup.
   const user = await prisma.$transaction(async (tx) => {
     const isFirstUser = (await tx.user.count()) === 0;
-    const created = await tx.user.create({ data: { username, googleId, email, isAdmin: isFirstUser } });
+    const created = await tx.user.create({
+      data: { username, googleId, email, isAdmin: isFirstUser, referredById },
+    });
     if (isFirstUser) {
       await tx.matchWeek.updateMany({ where: { userId: null }, data: { userId: created.id } });
     }

@@ -6,7 +6,9 @@ const state = vi.hoisted(() => ({
   cycles: [] as { start: Date; kcalBurned: number }[],
 }));
 
-vi.mock("../src/config", () => ({ config: { TIMEZONE: "Europe/London" } }));
+vi.mock("../src/config", () => ({
+  // reconcileAdmin and toPublicUser both read this on every sign-in.
+  adminUsernames: [], config: { TIMEZONE: "Europe/London" } }));
 
 vi.mock("../src/db", () => ({
   prisma: {

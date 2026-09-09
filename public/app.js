@@ -1495,6 +1495,184 @@ function handleBillingRedirect() {
   window.history.replaceState({}, "", window.location.pathname + (query ? `?${query}` : ""));
 }
 
+// ── Invites ─────────────────────────────────────────────────────────────────
+//
+// The offer is the same on both sides and the app says so plainly: the person
+// invited gets their first month free, and the person who invited them gets a
+// month back when that first month is actually paid for. See src/referrals.ts
+// for why it is built to pay on a payment rather than on a signup.
+//
+// The code is stored per-device rather than per-session because the gap
+// between following a link and finishing a sign-up runs through an email
+// confirmation, a Google account chooser and, often, a different day.
+
+const REFERRAL_KEY = "referralCode";
+
+const referralCardEl = document.getElementById("referral-card");
+const referralRewardEl = document.getElementById("referral-reward");
+const referralPitchEl = document.getElementById("referral-pitch");
+const referralCodeEl = document.getElementById("referral-code");
+const referralShareBtn = document.getElementById("referral-share");
+const referralNoteEl = document.getElementById("referral-note");
+const referralStatsEl = document.getElementById("referral-stats");
+const authInviteEl = document.getElementById("auth-invite");
+
+/**
+ * Takes ?ref= off the URL and keeps it.
+ *
+ * Stripped from the address bar for the same reason the billing params are:
+ * a code left in the URL gets bookmarked, shared onward, and re-applied to
+ * somebody who was never invited. The stored copy is what the sign-up uses.
+ */
+function captureReferral() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("ref");
+  if (!code) return;
+
+  try {
+    localStorage.setItem(REFERRAL_KEY, code.trim().slice(0, 32));
+  } catch {
+    // Private browsing. The invite is lost, which costs a free month and
+    // nothing else — not a reason to stop them signing up.
+  }
+
+  params.delete("ref");
+  const query = params.toString();
+  window.history.replaceState({}, "", window.location.pathname + (query ? `?${query}` : ""));
+}
+
+function storedReferral() {
+  try {
+    return localStorage.getItem(REFERRAL_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+function clearStoredReferral() {
+  try {
+    localStorage.removeItem(REFERRAL_KEY);
+  } catch {
+    // Nothing to do, and nothing that depends on it.
+  }
+}
+
+/**
+ * Names who invited them, on the sign-in card.
+ *
+ * Silent when the code doesn't resolve. Someone following a stale link is
+ * still here to sign up, and "that invite isn't valid" is a bad first thing
+ * for an app to say to a new person.
+ */
+async function showInviteBanner() {
+  const code = storedReferral();
+  if (!code) return;
+  try {
+    const res = await fetch(`/api/referrals/invite/${encodeURIComponent(code)}`);
+    if (!res.ok) return;
+    const invite = await res.json();
+    if (!invite.valid) return;
+    authInviteEl.textContent = `${invite.name} invited you — your first month of Plus or Pro is free.`;
+    authInviteEl.hidden = false;
+    // Straight to the sign-up form: someone arriving on an invite has no
+    // account to log into, and making them find the toggle first is a step
+    // between them and the thing they were invited to.
+    setAuthMode("signup");
+  } catch {
+    // Offline, most likely. The code is still stored and still counts.
+  }
+}
+
+async function loadReferrals() {
+  try {
+    const res = await fetch("/api/referrals");
+    if (!res.ok) throw new Error();
+    renderReferrals(await res.json());
+  } catch {
+    referralCardEl.hidden = true;
+  }
+}
+
+function poundsText(pence) {
+  return `£${(pence / 100).toFixed(2)}`;
+}
+
+function renderReferrals(referral) {
+  // No card processor means no free month to give and no credit to pay it
+  // with. A card offering both would be a card making a promise the server
+  // can't keep.
+  if (!referral.configured || !referral.code) {
+    referralCardEl.hidden = true;
+    return;
+  }
+  referralCardEl.hidden = false;
+
+  referralRewardEl.textContent = referral.capReached
+    ? "Thank you"
+    : `${poundsText(referral.nextRewardPence)} each`;
+
+  referralPitchEl.textContent = referral.capReached
+    ? `You've been rewarded for ${referral.rewardCap} invites, which is the most the scheme pays. Your link still works — it just stops earning here.`
+    : `They get their first ${referral.trialDays} days free. You get ${poundsText(referral.nextRewardPence)} off your next bill once they've paid for their first month.`;
+
+  referralCodeEl.textContent = referral.code;
+  referralShareBtn.dataset.url = referral.url ?? "";
+
+  referralStatsEl.innerHTML = "";
+  const stats = [
+    ["Invited", String(referral.invited)],
+    ["Subscribed", String(referral.converted)],
+    ["Earned", poundsText(referral.earnedPence)],
+  ];
+  for (const [label, value] of stats) {
+    const cell = document.createElement("div");
+    cell.className = "referral-stat";
+    const figure = document.createElement("span");
+    figure.className = "referral-stat-value";
+    figure.textContent = value;
+    const caption = document.createElement("span");
+    caption.className = "referral-stat-label";
+    caption.textContent = label;
+    cell.append(figure, caption);
+    referralStatsEl.appendChild(cell);
+  }
+
+  // Their own free month, if they were invited and haven't used it. Told here
+  // rather than at the checkout, where finding out is too late to be an offer.
+  referralNoteEl.hidden = !referral.trialWaiting;
+  if (referral.trialWaiting) {
+    referralNoteEl.textContent = `You were invited, so your first ${referral.trialDays} days on Plus or Pro are free.`;
+  }
+}
+
+referralShareBtn?.addEventListener("click", async () => {
+  const url = referralShareBtn.dataset.url;
+  if (!url) return;
+
+  // The share sheet where there is one, because a link shared from it lands
+  // in a message with the sender's name on it — which is most of what makes a
+  // referral work. Clipboard everywhere else.
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: "QuicKcals",
+        text: "I use this to keep a food diary — your first month is free on me.",
+        url,
+      });
+      return;
+    } catch {
+      // Dismissed, or refused. Fall through to the copy, which always works.
+    }
+  }
+
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast("Invite link copied");
+  } catch {
+    showToast("Couldn't copy — the link is on your invite card");
+  }
+});
+
 // ── The admin screen ────────────────────────────────────────────────────────
 //
 // Only rendered for an admin, and the server 404s the whole API for anyone
@@ -2152,7 +2330,14 @@ authForm.addEventListener("submit", async (event) => {
     const res = await fetch(`/api/auth/${authMode === "login" ? "login" : "signup"}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
+      // The code goes with the sign-up only. Attaching it to a login would
+      // mean an existing account could be re-pointed at a referrer by opening
+      // one link, which is a referral that can be bought after the fact.
+      body: JSON.stringify({
+        username,
+        password,
+        ...(authMode === "signup" ? { ref: storedReferral() ?? undefined } : {}),
+      }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -2160,6 +2345,9 @@ authForm.addEventListener("submit", async (event) => {
     }
     authForm.reset();
     const isNewAccount = res.status === 201;
+    // Spent, whether or not the server could use it. Keeping it would attach
+    // the same invite to the next account created on this device.
+    if (isNewAccount) clearStoredReferral();
     await showApp(body, { firstRun: isNewAccount });
   } catch (error) {
     authError.textContent = error.message;
@@ -2248,12 +2436,16 @@ async function handleGoogleCredential(response) {
     const res = await fetch("/api/auth/google", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ credential: response.credential }),
+      // Sent on every Google request because this one endpoint is both the
+      // sign-in and the sign-up; the server only reads it when it is about to
+      // create an account.
+      body: JSON.stringify({ credential: response.credential, ref: storedReferral() ?? undefined }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(typeof body.error === "string" ? body.error : "Google sign-in failed.");
     }
+    if (res.status === 201) clearStoredReferral();
     showApp(body);
   } catch (error) {
     authError.textContent = error.message;
@@ -2426,6 +2618,7 @@ async function showApp(user, { firstRun = false } = {}) {
   flushQueue();
   loadWater();
   loadPlan();
+  loadReferrals();
   loadAdmin();
   handleBillingRedirect();
   // Last, and only once there is a diary to add to: someone who followed a
@@ -2543,6 +2736,10 @@ function showAuthScreen() {
   authScreen.hidden = false;
   setAuthMode("login");
   authForm.reset();
+  // After setAuthMode, which resets the form to "log in" — showInviteBanner
+  // switches it to sign-up when there is an invite to honour.
+  authInviteEl.hidden = true;
+  showInviteBanner();
   // Back to the top, so the form is where it should be rather than wherever
   // the last screen happened to be scrolled to.
   window.scrollTo(0, 0);
@@ -10848,6 +11045,9 @@ resetForm.addEventListener("submit", async (event) => {
 
 // ── Bootstrap ──────────────────────────────────────────────────────────────
 // Last, so every const above it is initialised before anything runs.
+// Before checkAuth, so the code is off the URL and in hand whichever way
+// the session resolves.
+captureReferral();
 checkAuth();
 loadGoogleConfig();
 

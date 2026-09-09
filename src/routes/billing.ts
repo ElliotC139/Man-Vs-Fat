@@ -14,6 +14,8 @@ import { prisma } from "../db";
 import { config, stripeConfigured } from "../config";
 import { requireAuth } from "../auth";
 import { recordError } from "../errorLog";
+import { planFor } from "../plans";
+import { REFERRAL_REWARD_CAP, REFERRAL_TRIAL_DAYS, rewardPence } from "../referrals";
 import {
   endsAtOfSubscription,
   planFromSubscription,
@@ -84,7 +86,14 @@ billingRouter.post("/checkout", requireAuth, async (req, res) => {
 
   const user = await prisma.user.findUnique({
     where: { id: req.userId! },
-    select: { id: true, username: true, email: true, stripeCustomerId: true },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      stripeCustomerId: true,
+      referredById: true,
+      referralTrialUsed: true,
+    },
   });
   if (!user) {
     res.status(401).json({ error: "Not signed in" });
@@ -104,6 +113,12 @@ billingRouter.post("/checkout", requireAuth, async (req, res) => {
       await prisma.user.update({ where: { id: user.id }, data: { stripeCustomerId: customerId } });
     }
 
+    // The free month someone was invited with. Granted by Stripe rather than
+    // by this app, which is what puts a card on file before it starts — see
+    // src/referrals.ts for why that is the property the whole scheme rests on.
+    // Offered once: a cancel-and-resubscribe doesn't earn a second one.
+    const trialDays = user.referredById && !user.referralTrialUsed ? REFERRAL_TRIAL_DAYS : null;
+
     const session = await client.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
@@ -113,7 +128,10 @@ billingRouter.post("/checkout", requireAuth, async (req, res) => {
       // Carried so the webhook can find the account even if the customer
       // record is somehow not the one on file.
       client_reference_id: String(user.id),
-      subscription_data: { metadata: { userId: String(user.id) } },
+      subscription_data: {
+        metadata: { userId: String(user.id) },
+        ...(trialDays ? { trial_period_days: trialDays } : {}),
+      },
       allow_promotion_codes: true,
     });
 
@@ -215,6 +233,9 @@ async function applyEvent(event: Stripe.Event): Promise<void> {
     case "customer.subscription.deleted":
       await applySubscription(event.data.object as Stripe.Subscription);
       return;
+    case "invoice.payment_succeeded":
+      await applyReferralReward(event.data.object as Stripe.Invoice);
+      return;
     default:
       return;
   }
@@ -256,6 +277,114 @@ async function applySubscription(subscription: Stripe.Subscription): Promise<voi
       stripeSubscriptionId: subscription.id,
       subscriptionStatus: subscription.status,
       subscriptionEndsAt: endsAt,
+      // Their invited free month has started, so it is spent. Recorded here
+      // rather than at checkout because a checkout somebody abandoned should
+      // not cost them the offer.
+      ...(subscription.trial_end ? { referralTrialUsed: true } : {}),
     },
+  });
+}
+
+/**
+ * Pays the person who invited this customer, once, when money actually
+ * arrives.
+ *
+ * Every guard here is load-bearing:
+ *
+ *   - **amount_paid > 0.** The invoice that opens a referred subscription is
+ *     for nothing, because the first month is free. Paying out on it would
+ *     make the free month the trigger, which is the exact thing this scheme
+ *     is built not to do.
+ *   - **referralRewardedAt claimed before the credit is issued.** Stripe
+ *     retries webhooks, and a reward paid twice is a reward that can be made
+ *     to pay indefinitely by failing on purpose. The claim is a conditional
+ *     update, so only one attempt can win it; if the credit then fails, the
+ *     claim is released and the 500 that follows brings Stripe back.
+ *   - **capped at what was paid.** See rewardPence in src/referrals.ts. The
+ *     credit can never exceed the payment that funds it.
+ */
+async function applyReferralReward(invoice: Stripe.Invoice): Promise<void> {
+  const paid = invoice.amount_paid ?? 0;
+  if (paid <= 0) return;
+
+  const customerId = typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id;
+  if (!customerId) return;
+
+  const payer = await prisma.user.findFirst({
+    where: { stripeCustomerId: customerId },
+    select: { id: true, referredById: true, referralRewardedAt: true },
+  });
+  if (!payer?.referredById || payer.referralRewardedAt) return;
+
+  const referrer = await prisma.user.findUnique({
+    where: { id: payer.referredById },
+    select: { id: true, username: true, email: true, plan: true, stripeCustomerId: true },
+  });
+  if (!referrer) return;
+
+  // The cap is a liability limit, not an arithmetic one — see src/referrals.ts.
+  // Past it the invite still worked and still converted; it just doesn't pay.
+  const alreadyRewarded = await prisma.user.count({
+    where: { referredById: referrer.id, referralRewardedAt: { not: null } },
+  });
+  if (alreadyRewarded >= REFERRAL_REWARD_CAP) return;
+
+  const pence = rewardPence({
+    referrerPlanPence: planFor(referrer.plan).pricePence,
+    fallbackPence: planFor("plus").pricePence,
+    paidPence: paid,
+  });
+  if (pence <= 0) return;
+
+  // Claim it first. Only one webhook delivery can turn this row from null.
+  const claimed = await prisma.user.updateMany({
+    where: { id: payer.id, referralRewardedAt: null },
+    data: { referralRewardedAt: new Date() },
+  });
+  if (claimed.count !== 1) return;
+
+  try {
+    await creditReferrer(referrer, pence, invoice.currency ?? "gbp");
+  } catch (error) {
+    // Hand the claim back so the retry can try again, then let the caller
+    // answer 500 so there is a retry to hand it to.
+    await prisma.user.updateMany({ where: { id: payer.id }, data: { referralRewardedAt: null } });
+    throw error;
+  }
+}
+
+/**
+ * Puts the reward on the referrer's Stripe customer as credit.
+ *
+ * Credit rather than a month granted in this app's own database because it
+ * survives a plan change and works for a referrer who hasn't subscribed yet —
+ * which is why the customer is created here if there isn't one. It then sits
+ * on their record and eats their first invoice whenever they do subscribe,
+ * which turns "a friend paid" into a reason for the referrer to upgrade too.
+ *
+ * A negative amount is a credit in Stripe's sign convention.
+ */
+async function creditReferrer(
+  referrer: { id: number; username: string; email: string | null; stripeCustomerId: string | null },
+  pence: number,
+  currency: string,
+): Promise<void> {
+  const client = stripe();
+  if (!client) return;
+
+  let customerId = referrer.stripeCustomerId;
+  if (!customerId) {
+    const customer = await client.customers.create({
+      email: referrer.email ?? undefined,
+      metadata: { userId: String(referrer.id), username: referrer.username },
+    });
+    customerId = customer.id;
+    await prisma.user.update({ where: { id: referrer.id }, data: { stripeCustomerId: customerId } });
+  }
+
+  await client.customers.createBalanceTransaction(customerId, {
+    amount: -pence,
+    currency,
+    description: "QuicKcals referral reward",
   });
 }
