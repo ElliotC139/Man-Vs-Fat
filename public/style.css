@@ -7,9 +7,13 @@
   --pitch: #1f9d52;
   --pitch-light: #2ec26b;
   --pitch-dark: #12602f;
-  /* The touchline at night — the header's ground. Deliberately a saturated
-     dark green, not a neutral near-black. */
-  --pitch-deep: #0b3a22;
+  /* The header's ground, and the exact green of the QuicKcals mark, taken from
+     the brand artwork itself — so the app icon on the home screen and the
+     banner behind it are the same colour rather than two greens that nearly
+     match. White on it measures 6.6:1, so the header text passes AA. */
+  --brand: #176B3A;
+  --brand-ink: #ffffff;
+  --pitch-deep: var(--brand);
   --ink: #0f1417;
   --muted: #6e7b74;
   /* Pitch-marking white, warm-neutral. Not cream. */
@@ -34,11 +38,14 @@
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
   --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  /* Barlow Condensed is the fixture list, the league table, the number on
-     the back of a shirt. Poppins — which this replaces — is the face you
-     reach for on any project, which is exactly the problem. Inter stays for
-     body copy: the boldness is spent in one place. */
+  /* Barlow Condensed carries the headings and the numbers. It is narrow, and
+     several headers are sized against that: swapping it for a normal-width
+     face wraps the Today date onto two lines at every phone width. Montserrat
+     is scoped to the wordmark instead, where it matches the logo exactly and
+     costs no layout. Inter stays for body copy. */
   --font-heading: "Barlow Condensed", "Oswald", "Arial Narrow", -apple-system, BlinkMacSystemFont, sans-serif;
+  /* The logo's own face, for the wordmark and nothing else. */
+  --font-brand: "Montserrat", "Avenir Next", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
 
   /* The raised "selected" pill shared by the stats tabs, the daily/weekly
      toggle and the units switch. A token because all three were the same
@@ -262,6 +269,22 @@ body {
   padding: 4px;
   box-shadow: none;
   flex-shrink: 0;
+}
+
+/* The wordmark. "Quick" carries the weight and "cals" steps back, exactly as
+   the logo sets it; the K is split out so it can hold the join between the
+   two halves — it is the K the mark is built from, and the k of kcal. */
+.brand-word {
+  font-family: var(--font-brand);
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.brand-word-a,
+.brand-word-k {
+  font-weight: 800;
+}
+.brand-word-b {
+  font-weight: 500;
 }
 
 .week-nav {
@@ -2572,7 +2595,8 @@ tr.has-tooltip:active {
   /* The header ground has to stay clearly above the page in dark mode; the
      light-mode value sits at almost the same luminance as the dark page and
      the scoreboard would dissolve into it. */
-  --pitch-deep: #0f2e1e;
+  --brand: #124F2B;
+  --pitch-deep: var(--brand);
   --floodlight: #e8a91f;
 }
 
@@ -2602,7 +2626,8 @@ tr.has-tooltip:active {
     /* The header ground has to stay clearly above the page in dark mode; the
        light-mode value sits at almost the same luminance as the dark page and
        the scoreboard would dissolve into it. */
-    --pitch-deep: #0f2e1e;
+    --brand: #124F2B;
+  --pitch-deep: var(--brand);
     --floodlight: #e8a91f;
   }
 }
@@ -5376,4 +5401,15 @@ body.hide-entry-times .entry-time {
 .list-more {
   width: 100%;
   margin-top: 8px;
+}
+
+/* The search card is the last thing on the Today screen, so on its own it can
+   never be scrolled to the top of the viewport — the page bottoms out first
+   and the card stays where it was, which is what "search jumps to the bottom"
+   was. Giving the card the rest of the screen while it is open makes that
+   scroll possible, and fills the room it opens up rather than leaving a gap
+   under a three-line card: searching becomes its own view, which is what it
+   already was in everything but layout. */
+body.search-open #food-search-card {
+  min-height: calc(100dvh - 104px - env(safe-area-inset-bottom));
 }

@@ -18,7 +18,7 @@
  */
 
 // Bumped on every deploy that changes a shell file, so old caches are dropped.
-const VERSION = "v22";
+const VERSION = "v24";
 const SHELL_CACHE = `shell-${VERSION}`;
 const API_CACHE = `api-${VERSION}`;
 
@@ -135,7 +135,7 @@ self.addEventListener("push", (event) => {
     payload = { body: event.data ? event.data.text() : "" };
   }
 
-  const title = payload.title || "Match Week Food Diary";
+  const title = payload.title || "QuicKcals";
   event.waitUntil(
     self.registration.showNotification(title, {
       body: payload.body || "",

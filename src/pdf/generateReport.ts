@@ -41,7 +41,7 @@ function drawHeader(doc: PDFKit.PDFDocument, week: MatchWeek, timeZone: string) 
     .fillColor("#ffffff")
     .font("Helvetica-Bold")
     .fontSize(22)
-    .text("Match Week Food Diary", MARGIN, 30);
+    .text("QuicKcals", MARGIN, 30);
 
   doc
     .font("Helvetica")

@@ -466,11 +466,16 @@ entriesRouter.patch("/:id", async (req, res) => {
       const [year, month, day] = date
         ? (date.split("-").map(Number) as [number, number, number])
         : [localTime.year, localTime.month, localTime.day];
-      // An untagged entry has no meal hour to move to, so it keeps the time
-      // of day it already had rather than being pushed to a slot it isn't in.
-      const effectiveMealType = (rest.mealType !== undefined ? rest.mealType : existing.mealType) as MealType | null;
+      // Moving an entry INTO a meal moves it to that meal's slot; nothing else
+      // touches the time of day. The edit form sends `date` on every save, so
+      // deriving the hour from whatever meal the entry already had meant a
+      // quantity edit silently dragged a 2pm entry tagged Breakfast back to
+      // 8am — and, since the diary sorts on timestamp, jumped it up the list.
+      const mealTypeChanged = rest.mealType !== undefined && rest.mealType !== existing.mealType;
       const resolvedHour = hour
-        ?? (effectiveMealType ? MEAL_TYPE_DEFAULT_HOUR[effectiveMealType] : localTime.hour);
+        ?? (mealTypeChanged && rest.mealType
+          ? MEAL_TYPE_DEFAULT_HOUR[rest.mealType as MealType]
+          : localTime.hour);
       const newTimestamp = zonedTimeToUtc(year, month, day, resolvedHour, localTime.minute, config.TIMEZONE);
       const weekStart = await getUserWeekStart(req.userId!);
       const matchWeek = await findOrCreateMatchWeek(newTimestamp, config.TIMEZONE, req.userId!, weekStart);
