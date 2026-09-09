@@ -18,7 +18,7 @@
  */
 
 // Bumped on every deploy that changes a shell file, so old caches are dropped.
-const VERSION = "v42";
+const VERSION = "v43";
 const SHELL_CACHE = `shell-${VERSION}`;
 const API_CACHE = `api-${VERSION}`;
 
@@ -97,7 +97,16 @@ async function networkFirst(request) {
 }
 
 async function cacheFirst(request) {
-  const cached = await caches.match(request);
+  // Scoped to this version's cache, not caches.match() across all of them.
+  // caches.match() searches every cache in the origin, so while a previous
+  // version's shell still exists — the moment after a deploy, and for as long
+  // as an old worker is the one running — it can answer for some assets and
+  // this version's cache for others. index.html from one build with app.js
+  // from another is a blank screen: the script reaches for an element the
+  // markup doesn't have, throws at the top level, and nothing renders. Either
+  // this version has the file or we go to the network for it.
+  const cache = await caches.open(SHELL_CACHE);
+  const cached = await cache.match(request);
   if (cached) {
     // Refresh in the background so the next load has the new deploy, without
     // making this one wait for the network.
@@ -110,7 +119,7 @@ async function cacheFirst(request) {
     // A navigation with nothing cached still deserves the app shell rather
     // than the browser's offline dinosaur.
     if (request.mode === "navigate") {
-      const shell = await caches.match("/index.html");
+      const shell = await cache.match("/index.html");
       if (shell) return shell;
     }
     throw new Error("Offline and not cached");
