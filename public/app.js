@@ -8575,13 +8575,19 @@ function renderNutrientToday(today) {
 //
 // Stats already reports the window that happened — first meal to last meal,
 // worked out from timestamps with nothing extra logged. This is the forward
-// half of the same idea: a target length, and a countdown while the day is
-// still running.
+// half of the same idea, and it runs both ways round the clock: how long is
+// left to eat while the window is open, and how long the fast has run once it
+// has closed. An 8-hour window IS a 16-hour fast, so one setting drives both.
 //
 // The window opens at the first thing logged rather than at a clock time,
 // because that is how time-restricted eating is actually practised. A target
 // that started at 12:00 whether or not you had eaten would be wrong on every
-// morning that ran late.
+// morning that ran late. The fast is measured from the last thing eaten
+// rather than from when the window closed, so eating late restarts it.
+//
+// The instants all come from the server (see src/fasting.ts) and only the
+// comparison against the clock happens here, which is what lets the card tick
+// without asking again and keeps the rules in one place.
 
 const fastingCard = document.getElementById("fasting-card");
 const fastingState = document.getElementById("fasting-state");
@@ -8597,47 +8603,72 @@ function durationText(minutes) {
   return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
 }
 
-function renderFasting(today, entries) {
-  const windowHours = currentUser?.eatingWindowHours ?? null;
+/** The instants from the last Today payload, or null when the card is off. */
+let fastingAnchors = null;
+let fastingTicker = null;
+
+function renderFasting(today) {
   // Off by default, and only ever about today — a countdown on a day that
   // finished last Tuesday is nonsense.
-  if (!windowHours || !today?.isToday) {
-    fastingCard.hidden = true;
-    return;
-  }
-  fastingCard.hidden = false;
+  fastingAnchors = today?.isToday ? today.fasting ?? null : null;
+  fastingCard.hidden = !fastingAnchors;
+  if (!fastingAnchors) return;
 
-  const times = (entries ?? [])
-    .map((entry) => new Date(entry.timestamp).getTime())
-    .filter((t) => Number.isFinite(t));
+  paintFasting();
+  // A timer nobody can see is a timer nobody believes. One tick a minute is
+  // enough for a figure written in whole minutes, and costs nothing.
+  if (!fastingTicker) fastingTicker = setInterval(paintFasting, 60_000);
+}
 
-  if (times.length === 0) {
+// Coming back to a backgrounded tab, the clock has moved further than the
+// interval noticed — a phone that slept for three hours would otherwise show
+// a three-hour-old figure until the next tick.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) paintFasting();
+});
+
+function paintFasting() {
+  const anchors = fastingAnchors;
+  if (!anchors || fastingCard.hidden) return;
+  const now = Date.now();
+
+  if (anchors.lastMealAt === null) {
     fastingState.textContent = "Window hasn't opened";
-    fastingDetail.textContent = `${durationText(windowHours * 60)} once you start`;
+    fastingDetail.textContent = `${durationText(anchors.windowHours * 60)} once you start`;
     fastingFill.style.width = "0%";
     fastingFill.className = "fasting-fill fasting-fill--waiting";
     return;
   }
 
-  const openedAt = Math.min(...times);
-  const closesAt = openedAt + windowHours * 3600_000;
-  const now = Date.now();
-  const elapsedMin = (now - openedAt) / 60000;
-  const windowMin = windowHours * 60;
-  const openedText = timeFmt.format(new Date(openedAt));
-
-  if (now < closesAt) {
-    fastingState.textContent = `${durationText((closesAt - now) / 60000)} left to eat`;
-    fastingDetail.textContent = `Opened ${openedText} · closes ${timeFmt.format(new Date(closesAt))}`;
+  if (anchors.closesAt !== null && now < anchors.closesAt) {
+    const opened = anchors.openedAt;
+    fastingState.textContent = `${durationText((anchors.closesAt - now) / 60000)} left to eat`;
+    fastingDetail.textContent =
+      `Opened ${timeFmt.format(new Date(opened))} · closes ${timeFmt.format(new Date(anchors.closesAt))}`;
     fastingFill.className = "fasting-fill";
-  } else {
-    // Reported, not scolded: the app says what happened and leaves it there,
-    // same stance as everything else that judges a day.
-    fastingState.textContent = `Window closed ${durationText((now - closesAt) / 60000)} ago`;
-    fastingDetail.textContent = `Opened ${openedText} · ${durationText(windowMin)} target`;
-    fastingFill.className = "fasting-fill fasting-fill--over";
+    fastingFill.style.width = `${Math.min(100, ((now - opened) / (anchors.closesAt - opened)) * 100)}%`;
+    return;
   }
-  fastingFill.style.width = `${Math.min(100, (elapsedMin / windowMin) * 100)}%`;
+
+  // The window has closed, so the clock now runs the other way.
+  const elapsedMin = Math.max(0, (now - anchors.lastMealAt) / 60000);
+  const targetMin = anchors.fastTargetMin;
+  const since = `since ${timeFmt.format(new Date(anchors.lastMealAt))}`;
+
+  if (elapsedMin >= targetMin) {
+    // Said once and left there. The app reports what happened rather than
+    // congratulating anyone, same stance as everything else that judges a day.
+    fastingState.textContent = `${durationText(targetMin)} fast done`;
+    fastingDetail.textContent = `Fasting ${durationText(elapsedMin)} · ${since}`;
+    fastingFill.className = "fasting-fill fasting-fill--done";
+    fastingFill.style.width = "100%";
+    return;
+  }
+
+  fastingState.textContent = `Fasting ${durationText(elapsedMin)}`;
+  fastingDetail.textContent = `${durationText(targetMin - elapsedMin)} to ${durationText(targetMin)} · ${since}`;
+  fastingFill.className = "fasting-fill fasting-fill--fasting";
+  fastingFill.style.width = `${(elapsedMin / targetMin) * 100}%`;
 }
 
 
@@ -10635,7 +10666,7 @@ function renderToday(data) {
   if (data.isToday) loadTargetReview();
   else targetReviewCard.hidden = true;
 
-  renderFasting(data, data.entries);
+  renderFasting(data);
 
   renderTodayBody(data.whoop);
   renderTodayInsights(data.insights);

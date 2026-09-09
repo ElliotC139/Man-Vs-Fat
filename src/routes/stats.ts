@@ -2,6 +2,7 @@ import { z } from "zod";
 import { Router } from "express";
 import { prisma } from "../db";
 import { config } from "../config";
+import { fastingAnchors } from "../fasting";
 import { requireAuth } from "../auth";
 import { sexConstant } from "../sexConstant";
 import {
@@ -779,7 +780,7 @@ statsRouter.get("/today", async (req, res) => {
   const dayEnd = zonedTimeToUtc(ny, nm, nd, 0, 0, config.TIMEZONE);
   const trailingSince = new Date(subject.getTime() - TODAY_AVERAGE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
-  const [user, entriesToday, exercisesToday, trailingEntries, water, note, whoopRecent, cycles] = await Promise.all([
+  const [user, entriesToday, exercisesToday, trailingEntries, water, note, whoopRecent, cycles, entryBefore] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId } }),
     prisma.entry.findMany({
       where: { matchWeek: { userId }, timestamp: { gte: dayStart, lt: dayEnd } },
@@ -800,6 +801,15 @@ statsRouter.get("/today", async (req, res) => {
     prisma.whoopCycle.findMany({
       where: { userId, scoreState: "SCORED", kcalBurned: { not: null }, start: { gte: trailingSince } },
       select: { start: true, end: true, kcalBurned: true },
+    }),
+    // The last thing eaten before this day started. A fast that began at
+    // dinner and is still running at breakfast spans midnight, so without
+    // this the fasting card could never show a fast longer than the time
+    // since midnight — which is the fast nobody needs a timer for.
+    prisma.entry.findFirst({
+      where: { matchWeek: { userId }, timestamp: { lt: dayStart } },
+      orderBy: { timestamp: "desc" },
+      select: { timestamp: true },
     }),
   ]);
 
@@ -926,6 +936,17 @@ statsRouter.get("/today", async (req, res) => {
       },
     },
     entries: entriesToday,
+    // The instants the fasting card runs its clock against, or null when no
+    // eating window is set. Sent as anchors rather than as a state so the
+    // card can tick against the browser's own clock without asking again,
+    // and without the rules living in two places. See src/fasting.ts.
+    fasting: user?.eatingWindowHours
+      ? fastingAnchors({
+          windowHours: user.eatingWindowHours,
+          entryTimes: entriesToday.map((entry) => entry.timestamp.getTime()),
+          lastEntryBefore: entryBefore?.timestamp.getTime() ?? null,
+        })
+      : null,
     exercises: exercisesToday.map(({ whoopWorkoutId, ...rest }) => ({ ...rest, fromWhoop: whoopWorkoutId !== null })),
     waterMl: water?.ml ?? 0,
     note: note?.note ?? null,

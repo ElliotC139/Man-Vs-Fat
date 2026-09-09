@@ -5252,9 +5252,12 @@ body.hide-entry-times .entry-time {
   background: var(--pitch);
   transition: width 0.3s var(--ease);
 }
-/* Past the window: the same warning colour the macro bars use for a ceiling
-   that's been passed, so "over" means one thing across the screen. */
-.fasting-fill--over { background: var(--floodlight); }
+/* The fast itself fills the other way — toward a target rather than up to a
+   ceiling — so it gets its own colour rather than borrowing the warning one. */
+.fasting-fill--fasting { background: var(--amber); }
+/* Target reached. The green the rest of the screen uses for a figure that has
+   landed where it was meant to. */
+.fasting-fill--done { background: var(--pitch); }
 /* Before the first thing is eaten there is nothing to fill, and an empty
    track reads better than a bar claiming zero progress. */
 .fasting-fill--waiting { background: var(--hairline); }
