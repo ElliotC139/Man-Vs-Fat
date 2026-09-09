@@ -22,6 +22,7 @@ import { requireAuth } from "../auth";
 import { planFor, PLAN_IDS, isPlanId } from "../plans";
 import { formatMicros } from "../modelPricing";
 import { config } from "../config";
+import { adminListConfigured, isAdminUser } from "../adminAccess";
 import { getLocalParts, zonedTimeToUtc } from "../matchWeek";
 
 export const adminRouter = Router();
@@ -43,12 +44,31 @@ export const SIGNUPS_OPEN_KEY = "signupsOpen";
  * would fail on its own if the database were genuinely down, with a far
  * better error than this one could give.
  */
-export async function signupsOpen(): Promise<boolean> {
+/**
+ * Cached briefly, because this sits in front of every sign-up and the answer
+ * changes about once a year. Short enough that closing the door takes effect
+ * while the operator is still looking at the screen.
+ */
+const SIGNUPS_CACHE_MS = 30_000;
+let signupsCache: { at: number; open: boolean } | null = null;
+
+/** Clears the cache, so a change made in the admin screen lands at once. */
+export function forgetSignupsSetting(): void {
+  signupsCache = null;
+}
+
+export async function signupsOpen(now = Date.now()): Promise<boolean> {
+  if (signupsCache && now - signupsCache.at < SIGNUPS_CACHE_MS) return signupsCache.open;
   try {
     const row = await prisma.setting.findUnique({ where: { key: SIGNUPS_OPEN_KEY } });
-    return row?.value !== "false";
+    const open = row?.value !== "false";
+    signupsCache = { at: now, open };
+    return open;
   } catch (error) {
     console.error("Couldn't read whether sign-ups are open; treating them as open:", error);
+    // Cached like any other answer, so a settings table that isn't there
+    // doesn't log once per sign-up for the life of the process.
+    signupsCache = { at: now, open: true };
     return true;
   }
 }
@@ -63,9 +83,12 @@ export async function signupsOpen(): Promise<boolean> {
 adminRouter.use(async (req, res, next) => {
   const user = await prisma.user.findUnique({
     where: { id: req.userId! },
-    select: { isAdmin: true },
+    select: { username: true, isAdmin: true },
   });
-  if (!user?.isAdmin) {
+  // Through isAdminUser rather than off the stored flag: where the deployment
+  // names its admins, that list is the answer and the flag is only a record
+  // of it. See src/adminAccess.ts.
+  if (!user || !isAdminUser(user)) {
     res.status(404).json({ error: "Not found" });
     return;
   }
@@ -160,6 +183,7 @@ adminRouter.post("/signups", async (req, res) => {
     create: { key: SIGNUPS_OPEN_KEY, value: String(open) },
     update: { value: String(open) },
   });
+  forgetSignupsSetting();
   res.json({ signupsOpen: open });
 });
 
@@ -187,6 +211,16 @@ adminRouter.patch("/users/:id", async (req, res) => {
   // should not be able to do it.
   if (parsed.data.isAdmin === false && target.id === req.userId!) {
     res.status(400).json({ error: "You can't remove your own admin access." });
+    return;
+  }
+
+  // Where the deployment names its admins, changing the flag here would last
+  // until that account's next sign-in and no longer. Refusing says so;
+  // accepting it would be a button that appears to work and doesn't.
+  if (parsed.data.isAdmin !== undefined && adminListConfigured()) {
+    res.status(400).json({
+      error: "Admin access is set by this deployment's ADMIN_USERNAMES, not from here.",
+    });
     return;
   }
 

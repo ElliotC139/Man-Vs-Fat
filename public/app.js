@@ -887,7 +887,7 @@ function renderMealGroup(group, container) {
     // The whole header is the open/close target, so the button has to say it
     // meant something else.
     event.stopPropagation();
-    repeatEntries(group.entries.map((entry) => entry.id), group.name);
+    repeatEntries(group.entries, group.name);
   });
   actions.appendChild(repeatBtn);
 
@@ -1026,7 +1026,7 @@ function renderEntryRow(entry) {
   repeatBtn.className = "entry-action-icon";
   repeatBtn.title = "Add to today";
   repeatBtn.setAttribute("aria-label", "Add to today");
-  repeatBtn.addEventListener("click", () => repeatEntry(entry.id));
+  repeatBtn.addEventListener("click", () => repeatEntry(entry));
   const delBtn = document.createElement("button");
   delBtn.innerHTML = ICONS.x;
   delBtn.type = "button";
@@ -1270,40 +1270,61 @@ async function deleteEntry(id) {
 }
 
 /**
- * Repeats several entries onto today, as one meal again.
+ * Adding something to today from the diary, or from the food library.
  *
- * The server gives them a fresh group id, so what was one line in the diary is
- * one line again rather than four loose rows arriving at once.
+ * These used to write straight through: one tap and yesterday's entry was on
+ * today at exactly the figures it had then. That is right when it was the same
+ * plate of food and wrong the rest of the time — 40g of oats one morning and
+ * 60g the next is the same entry at a different amount, and copying it silently
+ * logged a figure nobody chose.
+ *
+ * So they go through the confirm sheet instead, which already knows how to
+ * rescale a row by its quantity. One extra tap when the amount is the same,
+ * and the only way to get it right when it isn't.
+ *
+ * Nothing here costs a model call: the figures are already known.
  */
-async function repeatEntries(ids, name) {
-  try {
-    const res = await fetch("/api/entries/repeat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids }),
-    });
-    if (!res.ok) throw new Error();
-    const created = await res.json();
-    weeksAgo = 0;
-    haptic();
-    showToast(`${name || "Meal"} added again`, {
-      actionLabel: "Undo",
-      onAction: () => undoEntries(created.map((entry) => entry.id)),
-    });
-    await refreshCurrentView();
-  } catch {
-    showToast("Couldn't add that again — please try again.");
-  }
+function openRepeatSheet(items, { title, note } = {}) {
+  openConfirmSheet({
+    items: items.map((item) => ({
+      label: item.label,
+      kcal: item.kcal,
+      proteinG: item.proteinG,
+      carbsG: item.carbsG,
+      fatG: item.fatG,
+      fibreG: item.fibreG,
+      sugarG: item.sugarG,
+      satFatG: item.satFatG,
+      saltG: item.saltG,
+      quantity: item.quantity ?? 1,
+      unitLabel: item.unitLabel ?? null,
+    })),
+    // Not "ai": these figures were approved once already, and re-approving
+    // them doesn't make them a fresh guess.
+    source: "manual",
+    date: loggingDate(),
+    mealType: chosenMealTag(),
+    sourceLabel: title ?? "From your diary",
+    note: note ?? "Change the amount if it was different, then log it.",
+  });
 }
 
-async function repeatEntry(id) {
-  const res = await fetch(`/api/entries/${id}/repeat`, { method: "POST" });
-  const created = await res.json().catch(() => null);
-  weeksAgo = 0;
-  if (created?.id) {
-    showToast(`${created.label} added again`, { actionLabel: "Undo", onAction: () => undoEntries([created.id]) });
-  }
-  refreshCurrentView();
+/**
+ * Repeats several entries onto today, as one meal again.
+ *
+ * The whole group goes into the sheet together, so each row's amount can be
+ * adjusted on its own — half the rice, all the chicken — which is what
+ * repeating a meal a week later usually means.
+ */
+function repeatEntries(entries, name) {
+  openRepeatSheet(entries, {
+    title: name || "From your diary",
+    note: "Change any amounts that were different, then log it.",
+  });
+}
+
+function repeatEntry(entry) {
+  openRepeatSheet([entry]);
 }
 
 // ── What plan you're on, and what's left of it ──────────────────────────────
@@ -1474,6 +1495,184 @@ function handleBillingRedirect() {
   window.history.replaceState({}, "", window.location.pathname + (query ? `?${query}` : ""));
 }
 
+// ── Invites ─────────────────────────────────────────────────────────────────
+//
+// The offer is the same on both sides and the app says so plainly: the person
+// invited gets their first month free, and the person who invited them gets a
+// month back when that first month is actually paid for. See src/referrals.ts
+// for why it is built to pay on a payment rather than on a signup.
+//
+// The code is stored per-device rather than per-session because the gap
+// between following a link and finishing a sign-up runs through an email
+// confirmation, a Google account chooser and, often, a different day.
+
+const REFERRAL_KEY = "referralCode";
+
+const referralCardEl = document.getElementById("referral-card");
+const referralRewardEl = document.getElementById("referral-reward");
+const referralPitchEl = document.getElementById("referral-pitch");
+const referralCodeEl = document.getElementById("referral-code");
+const referralShareBtn = document.getElementById("referral-share");
+const referralNoteEl = document.getElementById("referral-note");
+const referralStatsEl = document.getElementById("referral-stats");
+const authInviteEl = document.getElementById("auth-invite");
+
+/**
+ * Takes ?ref= off the URL and keeps it.
+ *
+ * Stripped from the address bar for the same reason the billing params are:
+ * a code left in the URL gets bookmarked, shared onward, and re-applied to
+ * somebody who was never invited. The stored copy is what the sign-up uses.
+ */
+function captureReferral() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("ref");
+  if (!code) return;
+
+  try {
+    localStorage.setItem(REFERRAL_KEY, code.trim().slice(0, 32));
+  } catch {
+    // Private browsing. The invite is lost, which costs a free month and
+    // nothing else — not a reason to stop them signing up.
+  }
+
+  params.delete("ref");
+  const query = params.toString();
+  window.history.replaceState({}, "", window.location.pathname + (query ? `?${query}` : ""));
+}
+
+function storedReferral() {
+  try {
+    return localStorage.getItem(REFERRAL_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+function clearStoredReferral() {
+  try {
+    localStorage.removeItem(REFERRAL_KEY);
+  } catch {
+    // Nothing to do, and nothing that depends on it.
+  }
+}
+
+/**
+ * Names who invited them, on the sign-in card.
+ *
+ * Silent when the code doesn't resolve. Someone following a stale link is
+ * still here to sign up, and "that invite isn't valid" is a bad first thing
+ * for an app to say to a new person.
+ */
+async function showInviteBanner() {
+  const code = storedReferral();
+  if (!code) return;
+  try {
+    const res = await fetch(`/api/referrals/invite/${encodeURIComponent(code)}`);
+    if (!res.ok) return;
+    const invite = await res.json();
+    if (!invite.valid) return;
+    authInviteEl.textContent = `${invite.name} invited you — your first month of Plus or Pro is free.`;
+    authInviteEl.hidden = false;
+    // Straight to the sign-up form: someone arriving on an invite has no
+    // account to log into, and making them find the toggle first is a step
+    // between them and the thing they were invited to.
+    setAuthMode("signup");
+  } catch {
+    // Offline, most likely. The code is still stored and still counts.
+  }
+}
+
+async function loadReferrals() {
+  try {
+    const res = await fetch("/api/referrals");
+    if (!res.ok) throw new Error();
+    renderReferrals(await res.json());
+  } catch {
+    referralCardEl.hidden = true;
+  }
+}
+
+function poundsText(pence) {
+  return `£${(pence / 100).toFixed(2)}`;
+}
+
+function renderReferrals(referral) {
+  // No card processor means no free month to give and no credit to pay it
+  // with. A card offering both would be a card making a promise the server
+  // can't keep.
+  if (!referral.configured || !referral.code) {
+    referralCardEl.hidden = true;
+    return;
+  }
+  referralCardEl.hidden = false;
+
+  referralRewardEl.textContent = referral.capReached
+    ? "Thank you"
+    : `${poundsText(referral.nextRewardPence)} each`;
+
+  referralPitchEl.textContent = referral.capReached
+    ? `You've been rewarded for ${referral.rewardCap} invites, which is the most the scheme pays. Your link still works — it just stops earning here.`
+    : `They get their first ${referral.trialDays} days free. You get ${poundsText(referral.nextRewardPence)} off your next bill once they've paid for their first month.`;
+
+  referralCodeEl.textContent = referral.code;
+  referralShareBtn.dataset.url = referral.url ?? "";
+
+  referralStatsEl.innerHTML = "";
+  const stats = [
+    ["Invited", String(referral.invited)],
+    ["Subscribed", String(referral.converted)],
+    ["Earned", poundsText(referral.earnedPence)],
+  ];
+  for (const [label, value] of stats) {
+    const cell = document.createElement("div");
+    cell.className = "referral-stat";
+    const figure = document.createElement("span");
+    figure.className = "referral-stat-value";
+    figure.textContent = value;
+    const caption = document.createElement("span");
+    caption.className = "referral-stat-label";
+    caption.textContent = label;
+    cell.append(figure, caption);
+    referralStatsEl.appendChild(cell);
+  }
+
+  // Their own free month, if they were invited and haven't used it. Told here
+  // rather than at the checkout, where finding out is too late to be an offer.
+  referralNoteEl.hidden = !referral.trialWaiting;
+  if (referral.trialWaiting) {
+    referralNoteEl.textContent = `You were invited, so your first ${referral.trialDays} days on Plus or Pro are free.`;
+  }
+}
+
+referralShareBtn?.addEventListener("click", async () => {
+  const url = referralShareBtn.dataset.url;
+  if (!url) return;
+
+  // The share sheet where there is one, because a link shared from it lands
+  // in a message with the sender's name on it — which is most of what makes a
+  // referral work. Clipboard everywhere else.
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: "QuicKcals",
+        text: "I use this to keep a food diary — your first month is free on me.",
+        url,
+      });
+      return;
+    } catch {
+      // Dismissed, or refused. Fall through to the copy, which always works.
+    }
+  }
+
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast("Invite link copied");
+  } catch {
+    showToast("Couldn't copy — the link is on your invite card");
+  }
+});
+
 // ── The admin screen ────────────────────────────────────────────────────────
 //
 // Only rendered for an admin, and the server 404s the whole API for anyone
@@ -1624,6 +1823,145 @@ async function setSignups(open) {
 adminSignupsOpenBtn.addEventListener("click", () => setSignups(true));
 adminSignupsClosedBtn.addEventListener("click", () => setSignups(false));
 adminRefreshBtn.addEventListener("click", loadAdmin);
+
+// ── Suggest an update ───────────────────────────────────────────────────────
+//
+// Deliberately not a mailto: link. The useful half of a suggestion is the
+// context around it — which version they were on, what kind of thing it is,
+// who to go back to — and an email loses all three.
+
+/**
+ * What the service worker is caching under, which is the closest thing the
+ * client has to a build number. Sent with a suggestion because "which version
+ * were you on" is most of the answer to "I can't reproduce that".
+ */
+const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content ?? "unknown";
+
+const suggestBodyEl = document.getElementById("suggest-body");
+const suggestSendBtn = document.getElementById("suggest-send");
+const suggestNoteEl = document.getElementById("suggest-note");
+const suggestErrorEl = document.getElementById("suggest-error");
+const suggestKindBtns = {
+  idea: document.getElementById("suggest-kind-idea"),
+  problem: document.getElementById("suggest-kind-problem"),
+  other: document.getElementById("suggest-kind-other"),
+};
+
+let suggestKind = "idea";
+
+function setSuggestKind(kind) {
+  suggestKind = kind;
+  for (const [id, btn] of Object.entries(suggestKindBtns)) {
+    btn.classList.toggle("meal-kind-btn--active", id === kind);
+  }
+}
+for (const [id, btn] of Object.entries(suggestKindBtns)) {
+  btn.addEventListener("click", () => setSuggestKind(id));
+}
+
+suggestSendBtn.addEventListener("click", async () => {
+  const body = suggestBodyEl.value.trim();
+  suggestErrorEl.hidden = true;
+  suggestNoteEl.hidden = true;
+  if (body.length < 4) {
+    suggestErrorEl.textContent = "Write a sentence or two about what you'd change.";
+    suggestErrorEl.hidden = false;
+    return;
+  }
+
+  suggestSendBtn.disabled = true;
+  suggestSendBtn.textContent = "Sending…";
+  try {
+    const res = await fetch("/api/suggestions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: suggestKind, body, appVersion: APP_VERSION }),
+    });
+    const answer = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(answer.error || "Couldn't send that — please try again.");
+    haptic();
+    suggestBodyEl.value = "";
+    setSuggestKind("idea");
+    // Said here rather than as a toast: they are looking at this box, and a
+    // toast at the bottom of a long settings screen is a message nobody sees.
+    suggestNoteEl.textContent = "Sent — thank you. It goes straight to whoever builds this.";
+    suggestNoteEl.hidden = false;
+  } catch (error) {
+    suggestErrorEl.textContent = error.message;
+    suggestErrorEl.hidden = false;
+  } finally {
+    suggestSendBtn.disabled = false;
+    suggestSendBtn.textContent = "Send it";
+  }
+});
+
+// ── The pile, for whoever acts on them ──────────────────────────────────────
+const adminSuggestionsEl = document.getElementById("admin-suggestions");
+const adminSuggestionsToggle = document.getElementById("admin-suggestions-toggle");
+
+adminSuggestionsToggle.addEventListener("click", async () => {
+  const showing = !adminSuggestionsEl.hidden;
+  adminSuggestionsEl.hidden = showing;
+  adminSuggestionsToggle.textContent = showing ? "Show" : "Hide";
+  if (!showing) await loadSuggestions();
+});
+
+async function loadSuggestions() {
+  try {
+    const res = await fetch("/api/suggestions");
+    if (!res.ok) throw new Error();
+    renderSuggestions((await res.json()).suggestions ?? []);
+  } catch {
+    adminSuggestionsEl.innerHTML = '<p class="muted">Couldn\'t load those.</p>';
+  }
+}
+
+const SUGGEST_KIND_LABEL = { idea: "Idea", problem: "Problem", other: "Other" };
+
+function renderSuggestions(suggestions) {
+  adminSuggestionsEl.innerHTML = "";
+  if (suggestions.length === 0) {
+    adminSuggestionsEl.innerHTML = '<p class="muted">Nothing suggested yet.</p>';
+    return;
+  }
+
+  for (const suggestion of suggestions) {
+    const row = document.createElement("div");
+    row.className = `suggestion${suggestion.handled ? " suggestion--handled" : ""}`;
+
+    const head = document.createElement("div");
+    head.className = "suggestion-head";
+    const kind = document.createElement("span");
+    kind.className = `suggestion-kind suggestion-kind--${suggestion.kind}`;
+    kind.textContent = SUGGEST_KIND_LABEL[suggestion.kind] ?? suggestion.kind;
+    const who = document.createElement("span");
+    who.className = "suggestion-who";
+    who.textContent = `${suggestion.from} · ${new Date(suggestion.createdAt).toLocaleDateString()}`;
+    head.append(kind, who);
+
+    const body = document.createElement("p");
+    body.className = "suggestion-body";
+    // textContent, not innerHTML: this is text somebody else typed.
+    body.textContent = suggestion.body;
+
+    const done = document.createElement("button");
+    done.type = "button";
+    done.className = "ghost-sm suggestion-done";
+    done.textContent = suggestion.handled ? "Reopen" : "Mark done";
+    done.addEventListener("click", async () => {
+      done.disabled = true;
+      await fetch(`/api/suggestions/${suggestion.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ handled: !suggestion.handled }),
+      }).catch(() => {});
+      await loadSuggestions();
+    });
+
+    row.append(head, body, done);
+    adminSuggestionsEl.appendChild(row);
+  }
+}
 
 // ── Ads, on the free tier only ──────────────────────────────────────────────
 //
@@ -1992,7 +2330,14 @@ authForm.addEventListener("submit", async (event) => {
     const res = await fetch(`/api/auth/${authMode === "login" ? "login" : "signup"}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
+      // The code goes with the sign-up only. Attaching it to a login would
+      // mean an existing account could be re-pointed at a referrer by opening
+      // one link, which is a referral that can be bought after the fact.
+      body: JSON.stringify({
+        username,
+        password,
+        ...(authMode === "signup" ? { ref: storedReferral() ?? undefined } : {}),
+      }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -2000,6 +2345,9 @@ authForm.addEventListener("submit", async (event) => {
     }
     authForm.reset();
     const isNewAccount = res.status === 201;
+    // Spent, whether or not the server could use it. Keeping it would attach
+    // the same invite to the next account created on this device.
+    if (isNewAccount) clearStoredReferral();
     await showApp(body, { firstRun: isNewAccount });
   } catch (error) {
     authError.textContent = error.message;
@@ -2088,12 +2436,16 @@ async function handleGoogleCredential(response) {
     const res = await fetch("/api/auth/google", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ credential: response.credential }),
+      // Sent on every Google request because this one endpoint is both the
+      // sign-in and the sign-up; the server only reads it when it is about to
+      // create an account.
+      body: JSON.stringify({ credential: response.credential, ref: storedReferral() ?? undefined }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(typeof body.error === "string" ? body.error : "Google sign-in failed.");
     }
+    if (res.status === 201) clearStoredReferral();
     showApp(body);
   } catch (error) {
     authError.textContent = error.message;
@@ -2266,6 +2618,7 @@ async function showApp(user, { firstRun = false } = {}) {
   flushQueue();
   loadWater();
   loadPlan();
+  loadReferrals();
   loadAdmin();
   handleBillingRedirect();
   // Last, and only once there is a diary to add to: someone who followed a
@@ -2357,13 +2710,49 @@ whoopDisconnectBtn.addEventListener("click", async () => {
   }
 });
 
+/**
+ * The sign-in form, and nothing else on the page.
+ *
+ * This used to hide three of the screens by name — the week, Today, and the
+ * tab bar — which was every screen the app had when it was written. Signing
+ * out from Settings, or Stats, or Food therefore left that screen sitting
+ * under the sign-in card, so the page scrolled and the diary of the person
+ * who had just signed out was still there to scroll to.
+ *
+ * Every screen goes now, from the same list navTo uses, so a screen added
+ * later cannot be forgotten here. The onboarding and review screens are named
+ * separately because they are detail views rather than tabs.
+ */
 function showAuthScreen() {
-  appShell.hidden = true;
-  todayScreen.hidden = true;
+  for (const screenFor of Object.values(TAB_SCREENS)) screenFor().hidden = true;
+  onboardingScreen.hidden = true;
+  reviewScreen.hidden = true;
   tabBar.hidden = true;
+
+  // Anything still open over the top of a screen goes with it: a sheet left
+  // hanging over the sign-in form belongs to a session that has ended.
+  closeAllSheets();
+
   authScreen.hidden = false;
   setAuthMode("login");
   authForm.reset();
+  // After setAuthMode, which resets the form to "log in" — showInviteBanner
+  // switches it to sign-up when there is an invite to honour.
+  authInviteEl.hidden = true;
+  showInviteBanner();
+  // Back to the top, so the form is where it should be rather than wherever
+  // the last screen happened to be scrolled to.
+  window.scrollTo(0, 0);
+}
+
+/** Every modal and sheet the app can leave open. */
+function closeAllSheets() {
+  for (const el of document.querySelectorAll(".sheet, .share-modal, .photo-modal, .scan-modal")) {
+    el.hidden = true;
+  }
+  document.body.classList.remove("sheet-open", "search-open");
+  const search = document.getElementById("food-search-card");
+  if (search) search.hidden = true;
 }
 
 async function checkAuth() {
@@ -2372,10 +2761,9 @@ async function checkAuth() {
   // set a password, whatever session the browser still has.
   const resetToken = new URLSearchParams(window.location.search).get("reset");
   if (resetToken) {
-    appShell.hidden = true;
-    todayScreen.hidden = true;
-    tabBar.hidden = true;
-    authScreen.hidden = false;
+    // Same clean sweep as signing out: whatever was on screen belongs to a
+    // session that is about to be replaced.
+    showAuthScreen();
     authForm.hidden = true;
     authToggleBtn.parentElement.hidden = true;
     authForgotBtn.parentElement.hidden = true;
@@ -3874,7 +4262,7 @@ function renderFoodRow(food) {
   logBtn.type = "button";
   logBtn.className = "food-log-btn";
   logBtn.textContent = "+Today";
-  logBtn.addEventListener("click", () => logFood(food, logBtn));
+  logBtn.addEventListener("click", () => logFood(food));
 
   actions.append(editBtn, logBtn);
   row.append(starBtn, info, actions);
@@ -4066,33 +4454,19 @@ async function removeTag(food, tag) {
   if (ok) loadFoods(foodSearchInput.value);
 }
 
-async function logFood(food, btn) {
-  btn.disabled = true;
-  btn.textContent = "Adding…";
-  try {
-    const res = await fetch("/api/foods/log", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ labelKey: food.labelKey, date: loggingDate() ?? undefined, mealType: chosenMealTag() }),
-    });
-    if (res.ok) {
-      const entry = await res.json();
-      haptic();
-      btn.textContent = "+Today";
-      flashSaved(btn);
-      showToast(`${food.label} logged`, { actionLabel: "Undo", onAction: () => undoEntries([entry.id]) });
-      await refreshCurrentView();
-      setTimeout(() => {
-        btn.disabled = false;
-      }, 1100);
-    } else {
-      btn.textContent = "+Today";
-      btn.disabled = false;
-    }
-  } catch {
-    btn.textContent = "+Today";
-    btn.disabled = false;
-  }
+/**
+ * A food from the library, onto today.
+ *
+ * Through the sheet for the same reason a repeated entry is: the library row
+ * holds the figures from the last time it was logged, and "the last time" is
+ * not always the same amount as this time.
+ */
+function logFood(food) {
+  haptic();
+  openRepeatSheet([food], {
+    title: "From your foods",
+    note: "Change the amount if it's different this time, then log it.",
+  });
 }
 
 
@@ -10671,6 +11045,9 @@ resetForm.addEventListener("submit", async (event) => {
 
 // ── Bootstrap ──────────────────────────────────────────────────────────────
 // Last, so every const above it is initialised before anything runs.
+// Before checkAuth, so the code is off the URL and in hand whichever way
+// the session resolves.
+captureReferral();
 checkAuth();
 loadGoogleConfig();
 

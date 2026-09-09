@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/config", () => ({
+  // reconcileAdmin and toPublicUser both read this on every sign-in.
+  adminUsernames: [],
   config: {
     GBP_PER_USD: 0.8,
     ANTHROPIC_MODEL: "claude-sonnet-5",
@@ -62,20 +64,31 @@ describe("the ceiling is what makes the promise, not the allowance", () => {
     expect(allowanceWorstCase).toBeGreaterThan(plan.monthlyCostCapMicros);
   });
 
-  it("leaves Pro no real margin on its allowance alone", () => {
-    // The clearest case for why a count is not a cost. Forty photo estimates
-    // a day for a long month comes to within a few percent of everything Pro
-    // brings in — which side of break-even it lands on depends on the
-    // exchange rate that month, and a business whose margin is decided by
-    // the exchange rate has no margin. The ceiling is what creates one.
+  it("keeps a guaranteed floor under Pro that the allowance alone doesn't", () => {
+    // Why a count is not a cost, stated as the thing that stays true when the
+    // price changes. Forty photo estimates a day for a long month eats most of
+    // what Pro brings in — the exact share moves with the exchange rate and
+    // with what a photo costs, and a margin decided by those is not a margin.
+    // The ceiling is a fixed floor that neither can move.
     const plan = planFor("pro");
     const net = netPence(plan.pricePence) * 10_000;
     const allowanceWorstCase = LONGEST_MONTH * plan.dailyEstimates * worstEstimateMicros(plan.model);
-    expect(allowanceWorstCase / net).toBeGreaterThan(0.9);
 
-    // Whereas the ceiling keeps at least 40% of the revenue, whatever anyone
-    // does with their allowance.
-    expect(plan.monthlyCostCapMicros / net).toBeLessThan(0.6);
+    // More than half the revenue can go on the allowance alone.
+    expect(allowanceWorstCase / net).toBeGreaterThan(0.5);
+    // The ceiling guarantees at least half of it stays, whatever anyone does.
+    expect(plan.monthlyCostCapMicros / net).toBeLessThan(0.5);
+  });
+
+  it("makes a year of either plan cheaper to serve than it is to buy", () => {
+    // The yearly price is nine months, so a year is twelve monthly ceilings
+    // against nine months of revenue. That has to still clear.
+    for (const plan of allPlans()) {
+      if (plan.yearlyPence === null) continue;
+      const yearlyNetMicros = netPence(plan.yearlyPence) * 10_000;
+      const worstYear = 12 * plan.monthlyCostCapMicros;
+      expect(worstYear, `a year of ${plan.name}`).toBeLessThan(yearlyNetMicros);
+    }
   });
 });
 

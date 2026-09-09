@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/config", () => ({
+  // reconcileAdmin and toPublicUser both read this on every sign-in.
+  adminUsernames: [],
   config: { TIMEZONE: "Europe/London" },
 }));
 

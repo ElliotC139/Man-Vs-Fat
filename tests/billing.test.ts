@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/config", () => ({
+  // reconcileAdmin and toPublicUser both read this on every sign-in.
+  adminUsernames: [],
   config: {
     GBP_PER_USD: 0.8,
     ANTHROPIC_MODEL: "claude-sonnet-5",

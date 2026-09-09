@@ -12,6 +12,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ users: [] as any[], nextId: 1 }));
 
 vi.mock("../src/config", () => ({
+  // reconcileAdmin and toPublicUser both read this on every sign-in.
+  adminUsernames: [],
   config: {
     TIMEZONE: "Europe/London",
     GOOGLE_SIGNIN_CLIENT_ID: undefined,

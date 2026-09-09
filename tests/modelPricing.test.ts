@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../src/config", () => ({ config: { GBP_PER_USD: 0.8 } }));
+vi.mock("../src/config", () => ({
+  // reconcileAdmin and toPublicUser both read this on every sign-in.
+  adminUsernames: [], config: { GBP_PER_USD: 0.8 } }));
 
 import { costMicros, formatMicros, isPricedModel, rateFor } from "../src/modelPricing";
 

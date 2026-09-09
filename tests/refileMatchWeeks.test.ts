@@ -12,7 +12,9 @@ const state = vi.hoisted(() => ({
   nextWeekId: 100,
 }));
 
-vi.mock("../src/config", () => ({ config: { TIMEZONE: "Europe/London" } }));
+vi.mock("../src/config", () => ({
+  // reconcileAdmin and toPublicUser both read this on every sign-in.
+  adminUsernames: [], config: { TIMEZONE: "Europe/London" } }));
 
 vi.mock("../src/db", () => {
   const prisma: any = {

@@ -26,12 +26,18 @@ import { readMealReminders, writeMealReminders } from "../mealReminders";
 import { LOG_METHODS, readLogMethods, writeLogMethods } from "../logMethods";
 import { refileMatchWeeks } from "../refileMatchWeeks";
 import { signupsOpen } from "./admin";
+import { isAdminUser, reconcileAdmin } from "../adminAccess";
+import { referrerIdForCode } from "../referralSignup";
 
 export const authRouter = Router();
 
 const signupSchema = z.object({
   username: z.string().trim().min(3).max(40),
   password: z.string().min(8).max(200),
+  // A referral code, if they arrived on someone's link. Optional and
+  // deliberately forgiving: a code that doesn't resolve is ignored rather than
+  // refused, because a mistyped invite should still get somebody an account.
+  ref: z.string().max(32).optional(),
 });
 
 const loginSchema = z.object({
@@ -142,6 +148,9 @@ const settingsSchema = z.object({
 
 const googleSchema = z.object({
   credential: z.string().min(10),
+  // Same referral code the password form takes. An invite has to survive
+  // someone choosing the Google button, or half the links quietly don't count.
+  ref: z.string().max(32).optional(),
 });
 
 // Undefined (not just falsy) when GOOGLE_SIGNIN_CLIENT_ID is unset, so the
@@ -252,7 +261,7 @@ function toPublicUser(user: {
     nutrientsShown: readDiaryFields(user),
     carbMode: user.carbMode === "net" ? "net" : "total",
     ketoMode: user.ketoMode ?? false,
-    isAdmin: user.isAdmin ?? false,
+    isAdmin: isAdminUser(user),
     fibreTargetG: user.fibreTargetG ?? null,
     sugarTargetG: user.sugarTargetG ?? null,
     satFatTargetG: user.satFatTargetG ?? null,
@@ -312,7 +321,7 @@ authRouter.post("/signup", async (req, res) => {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const { username, password } = parsed.data;
+  const { username, password, ref } = parsed.data;
 
   const existing = await prisma.user.findUnique({ where: { username } });
   if (existing) {
@@ -329,11 +338,17 @@ authRouter.post("/signup", async (req, res) => {
     return;
   }
 
+  // Resolved before the transaction: it is a read, it may legitimately find
+  // nothing, and a bad code must not roll back an account someone is waiting on.
+  const referredById = await referrerIdForCode(ref);
+
   const user = await prisma.$transaction(async (tx) => {
     const isFirstUser = (await tx.user.count()) === 0;
     // The first account gets the admin screen, because otherwise nobody can
     // grant it to anybody and it is unreachable.
-    const created = await tx.user.create({ data: { username, passwordHash, isAdmin: isFirstUser } });
+    const created = await tx.user.create({
+      data: { username, passwordHash, isAdmin: isFirstUser, referredById },
+    });
     if (isFirstUser) {
       await tx.matchWeek.updateMany({ where: { userId: null }, data: { userId: created.id } });
     }
@@ -341,6 +356,9 @@ authRouter.post("/signup", async (req, res) => {
   });
 
   await setSessionCookie(res, user.id);
+  // Brings the stored flag into line with ADMIN_USERNAMES, where the
+  // deployment sets one. See src/adminAccess.ts.
+  await reconcileAdmin(user.id);
   res.status(201).json(toPublicUser(user));
 });
 
@@ -376,6 +394,9 @@ authRouter.post("/login", async (req, res) => {
   // right doesn't leave the account near its limit for the next quarter hour.
   resetRateLimit(throttleKey);
   await setSessionCookie(res, user.id);
+  // Brings the stored flag into line with ADMIN_USERNAMES, where the
+  // deployment sets one. See src/adminAccess.ts.
+  await reconcileAdmin(user.id);
   res.json(toPublicUser(user));
 });
 
@@ -417,6 +438,9 @@ authRouter.post("/google", async (req, res) => {
   const existing = await prisma.user.findUnique({ where: { googleId } });
   if (existing) {
     await setSessionCookie(res, existing.id);
+  // Brings the stored flag into line with ADMIN_USERNAMES, where the
+  // deployment sets one. See src/adminAccess.ts.
+  await reconcileAdmin(existing.id);
     res.json(toPublicUser(existing));
     return;
   }
@@ -431,10 +455,14 @@ authRouter.post("/google", async (req, res) => {
 
   const username = await uniqueUsernameFromEmail(email);
 
+  const referredById = await referrerIdForCode(parsed.data.ref);
+
   // Same "first account ever claims pre-multi-user history" rule as /signup.
   const user = await prisma.$transaction(async (tx) => {
     const isFirstUser = (await tx.user.count()) === 0;
-    const created = await tx.user.create({ data: { username, googleId, email, isAdmin: isFirstUser } });
+    const created = await tx.user.create({
+      data: { username, googleId, email, isAdmin: isFirstUser, referredById },
+    });
     if (isFirstUser) {
       await tx.matchWeek.updateMany({ where: { userId: null }, data: { userId: created.id } });
     }
@@ -442,6 +470,9 @@ authRouter.post("/google", async (req, res) => {
   });
 
   await setSessionCookie(res, user.id);
+  // Brings the stored flag into line with ADMIN_USERNAMES, where the
+  // deployment sets one. See src/adminAccess.ts.
+  await reconcileAdmin(user.id);
   res.status(201).json(toPublicUser(user));
 });
 
@@ -694,6 +725,9 @@ authRouter.post("/reset", async (req, res) => {
     return;
   }
   await setSessionCookie(res, user.id);
+  // Brings the stored flag into line with ADMIN_USERNAMES, where the
+  // deployment sets one. See src/adminAccess.ts.
+  await reconcileAdmin(user.id);
   res.json(toPublicUser(user));
 });
 
@@ -737,6 +771,9 @@ authRouter.post("/password", requireAuth, async (req, res) => {
   // The device that just changed the password shouldn't be signed out by its
   // own action, so it gets a fresh token on the way out.
   await setSessionCookie(res, user.id);
+  // Brings the stored flag into line with ADMIN_USERNAMES, where the
+  // deployment sets one. See src/adminAccess.ts.
+  await reconcileAdmin(user.id);
   res.json({ ok: true });
 });
 
