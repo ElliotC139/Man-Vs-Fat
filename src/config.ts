@@ -7,6 +7,17 @@ const envSchema = z.object({
   DATABASE_URL: z.string(),
   ANTHROPIC_API_KEY: z.string().min(1, "ANTHROPIC_API_KEY is required"),
   ANTHROPIC_MODEL: z.string().default("claude-sonnet-4-5-20250929"),
+  // What the free tier's estimates run on. Deliberately a cheaper model than
+  // the paid tiers: the free tier is funded by ads, which bring in pennies a
+  // month, so the model it runs on has to cost pennies a month. See
+  // src/plans.ts for the arithmetic.
+  ANTHROPIC_MODEL_FREE: z.string().default("claude-haiku-4-5"),
+  // Pounds per dollar, for turning published API rates into what a call costs
+  // this business. It moves, and every spend ceiling in src/plans.ts is
+  // denominated in pounds, so it is configuration rather than a constant.
+  // Set it high rather than low: a rate that under-states the cost is a
+  // ceiling that lets more through than it was set to allow.
+  GBP_PER_USD: z.coerce.number().positive().default(0.82),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REFRESH_TOKEN: z.string().optional(),

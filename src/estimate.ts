@@ -6,6 +6,7 @@ import { clampNutrients } from "./nutrients";
 import { statesExplicitQuantity } from "./quantity";
 import { bufferMultiplier, resolveBuffer, type BufferSettings, type ResolvedBuffer } from "./kcalBuffer";
 import type { EstimateReference } from "./estimateGrounding";
+import type { ModelUsage } from "./modelPricing";
 
 function round1(value: number | null): number | null {
   return value === null ? null : Math.round(value * 10) / 10;
@@ -94,6 +95,21 @@ export interface EstimateInput {
    * 12% the diary applied to everyone before this was a choice.
    */
   buffer?: BufferSettings | null;
+  /**
+   * Which model to run on. Absent uses the configured default; the plans
+   * pass their own, because which model an account's estimates run on is
+   * part of what it is paying for (see src/plans.ts).
+   */
+  model?: string;
+  /**
+   * Called with what the API reported using, once per successful call.
+   *
+   * The caller records it rather than this module, because metering is
+   * per-account and this module has no idea whose estimate it is. A retried
+   * attempt reports only the attempt that succeeded — a failed call returns
+   * no usage to report.
+   */
+  onUsage?: (usage: ModelUsage) => void;
 }
 
 export interface EstimateItem {
@@ -301,13 +317,24 @@ export async function estimateMeal(input: EstimateInput): Promise<EstimateResult
 
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
+      const model = input.model ?? config.ANTHROPIC_MODEL;
       const message = await client.messages.create({
-        model: config.ANTHROPIC_MODEL,
+        model,
         // Room for eight figures per item and for the handful of items a
         // grounded entry can legitimately split into.
         max_tokens: 900,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: buildUserContent(input) }],
+      });
+
+      // Reported before the response is parsed: the tokens were spent whether
+      // or not the JSON that came back turns out to be readable.
+      input.onUsage?.({
+        model,
+        inputTokens: message.usage.input_tokens,
+        outputTokens: message.usage.output_tokens,
+        cacheReadTokens: message.usage.cache_read_input_tokens ?? 0,
+        cacheWriteTokens: message.usage.cache_creation_input_tokens ?? 0,
       });
 
       const textBlock = message.content.find((block) => block.type === "text");
