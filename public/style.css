@@ -5403,13 +5403,72 @@ body.hide-entry-times .entry-time {
   margin-top: 8px;
 }
 
-/* The search card is the last thing on the Today screen, so on its own it can
-   never be scrolled to the top of the viewport — the page bottoms out first
-   and the card stays where it was, which is what "search jumps to the bottom"
-   was. Giving the card the rest of the screen while it is open makes that
-   scroll possible, and fills the room it opens up rather than leaving a gap
-   under a three-line card: searching becomes its own view, which is what it
-   already was in everything but layout. */
-body.search-open #food-search-card {
-  min-height: calc(100dvh - 104px - env(safe-area-inset-bottom));
+/* The search card sits last on the Today screen, and opening it used to ask
+   the page to scroll it up into view. That only ever worked if there was
+   enough room below it to scroll into, and with the keyboard up on a phone
+   there isn't — so the box stayed down at the bottom, under the keyboard.
+   It is now lifted out of the page: while it is open it is a fixed panel over
+   the screen, so where it lands owes nothing to how far the page can scroll or
+   to what the keyboard has done to the viewport. Searching becomes its own
+   view, which is what it already was in everything but layout. */
+/* .card is named in the selector on purpose: the Today screen's entrance rule
+   (#today-screen main > .card) would otherwise out-specify a plain id here and
+   hand the card back its in-flow animation and transform. */
+#food-search-card.card:not([hidden]) {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  /* The panel itself doesn't scroll: the header and the query box stay put and
+     only the results move, so the box you are typing in can't drift away. */
+  overflow: hidden;
+  padding: calc(14px + env(safe-area-inset-top)) 16px calc(14px + env(safe-area-inset-bottom));
+  animation: search-rise 0.18s var(--ease);
+}
+#food-search-card.card:not([hidden]) .food-search-results {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overscroll-behavior: contain;
+}
+/* The estimate fallback is the last resort under the results, not something to
+   push off the bottom of a full-height panel. */
+#food-search-card.card:not([hidden]) .food-search-estimate {
+  flex: none;
+}
+@keyframes search-rise {
+  from { transform: translateY(10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #food-search-card.card:not([hidden]) { animation: none; }
+}
+/* With room to spare it goes back to being a dialog over the page rather than
+   taking the whole window, so the diary stays visible behind it. */
+@media (min-width: 720px) {
+  #food-search-card.card:not([hidden]) {
+    inset: 5vh auto auto 50%;
+    transform: translateX(-50%);
+    width: min(560px, calc(100vw - 32px));
+    height: min(680px, 84vh);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    padding: 18px;
+    animation: search-fade 0.18s var(--ease);
+  }
+  @keyframes search-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  body.search-open::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 69;
+    background: rgba(8, 14, 11, 0.45);
+  }
 }

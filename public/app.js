@@ -5916,10 +5916,10 @@ function foodBrandRow(group) {
 /**
  * Opens the search card on a query and runs it.
  *
- * The card is the last thing on the Today screen, so letting focus() do the
- * scrolling threw the page to the very bottom and left the search box under
- * the keyboard. The card is put at the top of the viewport deliberately, and
- * the caret is taken without moving anything.
+ * The card is a fixed panel over the screen while it is open (see the CSS), so
+ * nothing here has to scroll it anywhere: it covers the phone and floats as a
+ * dialog on anything wider. focus() still gets preventScroll so that taking
+ * the caret can't shift the page behind it.
  */
 function openSearchFor(query) {
   foodSearchCard.hidden = false;
@@ -5930,12 +5930,10 @@ function openSearchFor(query) {
   foodMenuBack.hidden = true;
   menuBrand = null;
   renderMenuSuggestions();
-  // The card is the last thing on the screen, so without this the page simply
-  // bottoms out and the card stays where it was — which is the "search jumps
-  // to the bottom" complaint. The class opens up enough room below it that
-  // scrolling its top to the top of the viewport is actually possible.
+  // The class is what the CSS keys the backdrop off; the panel itself goes
+  // fixed as soon as it stops being hidden.
   document.body.classList.add("search-open");
-  foodSearchCard.scrollIntoView({ behavior: "smooth", block: "start" });
+  foodSearchResults.scrollTop = 0;
   foodSearchQuery.focus({ preventScroll: true });
   if (query) runFoodSearch(query);
 }
@@ -5951,6 +5949,21 @@ foodSearchBtn.addEventListener("click", () => {
 });
 
 foodSearchClose.addEventListener("click", closeFoodSearch);
+
+// A panel covering the screen needs a way out that isn't hunting for a button.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !foodSearchCard.hidden) {
+    closeFoodSearch();
+    textInput.focus();
+  }
+});
+
+// On a wide screen the panel floats over a dimmed page, and the dimming is a
+// body::before — so a click that lands on the backdrop reports body as its
+// target. Tapping outside a dialog to dismiss it is what everyone expects.
+document.addEventListener("click", (e) => {
+  if (e.target === document.body && !foodSearchCard.hidden) closeFoodSearch();
+});
 
 foodSearchQuery.addEventListener("input", () => {
   clearTimeout(dbSearchTimer);
