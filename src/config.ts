@@ -53,6 +53,17 @@ const envSchema = z.object({
   // Unset, nothing is enforced and the flag works as it did: the first
   // account created has it, and admins grant it to each other.
   ADMIN_USERNAMES: z.string().optional(),
+  // Send every request to the host in APP_BASE_URL, permanently.
+  //
+  // Off unless set, because it is only right once a domain is actually live:
+  // turned on against a hostname that doesn't resolve yet, it redirects the
+  // whole app into nothing. Set it in the same breath as pointing DNS.
+  //
+  // What it fixes is one app reachable at three addresses — the apex, the www,
+  // and the old fly.dev — which is three sets of cookies, three PWA installs
+  // and a share link that works or doesn't depending on which one somebody
+  // happened to bookmark.
+  CANONICAL_HOST: z.coerce.boolean().default(false),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REFRESH_TOKEN: z.string().optional(),

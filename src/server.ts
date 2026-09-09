@@ -47,6 +47,33 @@ const app = express();
  * phone remembers "allow" for this site alone or for everything is a device
  * setting, and Settings > Camera & microphone says where to find it.
  */
+/**
+ * One app, one address.
+ *
+ * Fly hands the same app out on its own *.fly.dev name as well as any domain
+ * pointed at it, and a domain usually answers on both the apex and the www.
+ * Three addresses is three sets of cookies, three PWA installs, and a share
+ * link that works or doesn't depending on which one somebody bookmarked.
+ *
+ * Only on when CANONICAL_HOST is set, because against a hostname that isn't
+ * live yet this redirects the whole app into nothing. 308 rather than 301: it
+ * preserves the method, so a POST that arrives on the wrong host is replayed
+ * rather than silently turned into a GET.
+ */
+if (config.CANONICAL_HOST) {
+  const canonical = new URL(config.APP_BASE_URL).host;
+  app.use((req, res, next) => {
+    const host = req.headers.host;
+    // Health checks arrive without a host header, and Fly's internal checks
+    // use the machine's own address — neither should be redirected away.
+    if (!host || host === canonical || req.path === "/healthz") {
+      next();
+      return;
+    }
+    res.redirect(308, `${config.APP_BASE_URL}${req.originalUrl}`);
+  });
+}
+
 app.use((_req, res, next) => {
   res.setHeader("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(), payment=()");
   // Nothing here should ever be framed by another site — the app holds a
