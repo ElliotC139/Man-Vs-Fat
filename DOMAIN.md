@@ -7,6 +7,23 @@ app itself needs no code change — the only thing that knows the address is
 Do it in this order. Steps 1–4 are safe at any time and change nothing for
 anyone using the app; step 5 is the switch.
 
+## You do not need flyctl installed
+
+Every `fly ...` command below has a point-and-click equivalent in the Fly
+dashboard at <https://fly.io/dashboard>, and this deployment is set up so that
+you never install the CLI: `.github/workflows/deploy.yml` runs it on GitHub's
+runners instead. Open the app (`match-week-food-diary`) and use:
+
+- **Certificates** — for `fly certs add` and `fly certs show`. Adding a
+  hostname there prints the same DNS records the CLI does, and the page shows
+  the certificate's status as it is issued.
+- **Secrets** — for every `fly secrets set` below. Setting one restarts the
+  app exactly as the CLI does.
+
+The commands are given as commands because they are the shortest way to write
+a step down, not because the CLI is required. The dashboard works from a
+phone, which the CLI does not.
+
 ---
 
 ## 1. Point the domain at Fly
