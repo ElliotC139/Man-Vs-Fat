@@ -33,6 +33,15 @@ const envSchema = z.object({
   STRIPE_PRICE_PLUS_YEARLY: z.string().optional(),
   STRIPE_PRICE_PRO_MONTHLY: z.string().optional(),
   STRIPE_PRICE_PRO_YEARLY: z.string().optional(),
+  // Google AdSense, which is what pays for the free tier. Optional: with no
+  // publisher id nothing is loaded and the free tier simply runs at a small
+  // loss against its 20p ceiling, which is a deployment's own business.
+  //
+  // The publisher id ("ca-pub-...") and one slot id per placement. Slots are
+  // named rather than numbered so adding a second placement is a config key
+  // rather than an index nobody can read.
+  ADSENSE_CLIENT_ID: z.string().optional(),
+  ADSENSE_SLOT_TODAY: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REFRESH_TOKEN: z.string().optional(),
@@ -88,5 +97,8 @@ export const whoopConfigured = Boolean(config.WHOOP_CLIENT_ID && config.WHOOP_CL
  * money and never hear that it had, which is worse than not taking it.
  */
 export const stripeConfigured = Boolean(config.STRIPE_SECRET_KEY && config.STRIPE_WEBHOOK_SECRET);
+
+/** Ads need a publisher id and at least one slot to put one in. */
+export const adsConfigured = Boolean(config.ADSENSE_CLIENT_ID && config.ADSENSE_SLOT_TODAY);
 
 export const mailConfigured = Boolean(config.RESEND_API_KEY);

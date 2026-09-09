@@ -353,6 +353,15 @@
         </div>
         </section>
 
+        <!-- Free tier only, and only where a publisher id is configured. The
+             slot stays empty and hidden otherwise; nothing is loaded at all
+             for anyone paying. -->
+        <section id="ad-today" class="ad-slot" hidden>
+          <span class="ad-label">Ad</span>
+          <div id="ad-today-unit" class="ad-unit"></div>
+          <button type="button" id="ad-remove" class="link-btn ad-remove">Remove ads</button>
+        </section>
+
         <section id="today-note-card" class="card today-note-card" data-module="today:note" data-module-name="Note">
           <div class="section-header">
             <h2>Note</h2>

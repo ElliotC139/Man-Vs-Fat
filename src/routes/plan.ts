@@ -11,6 +11,7 @@ import { Router } from "express";
 import { requireAuth } from "../auth";
 import { readAllowance } from "../entitlements";
 import { allPlans } from "../plans";
+import { adsConfigured, config } from "../config";
 
 export const planRouter = Router();
 
@@ -59,5 +60,12 @@ planRouter.get("/", requireAuth, async (req, res) => {
     // have used 43p of your £2" is a strange thing to tell a customer, and it
     // invites them to game it. The admin dashboard sees the money.
     monthlyCapReached: allowance.spentMicros >= allowance.capMicros,
+    // Sent only to accounts that actually get ads. A paying account never
+    // receives the publisher id at all, so the advertising script is never
+    // loaded for them rather than being loaded and hidden — which is the
+    // difference between "no ads" meaning something and it being decoration.
+    ads: plan.ads && adsConfigured
+      ? { client: config.ADSENSE_CLIENT_ID, slots: { today: config.ADSENSE_SLOT_TODAY } }
+      : null,
   });
 });

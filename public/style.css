@@ -2210,6 +2210,35 @@ tr.has-tooltip:active {
   margin-bottom: 4px;
 }
 
+/* ── The ad slot ──────────────────────────────────────────────────────────
+   Below everything on Today, labelled, and with the way out attached. An ad
+   between someone and their own diary is the kind that makes people leave. */
+.ad-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+  padding: 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+.ad-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ad-unit {
+  min-height: 90px;
+  overflow: hidden;
+}
+.ad-remove {
+  align-self: flex-end;
+  font-size: 0.78rem;
+}
+
 /* The line under the log button. Amber rather than red: running low is not
    an error, and colouring it like one would make the app look broken. */
 .plan-allowance {

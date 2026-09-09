@@ -1360,6 +1360,7 @@ function renderPlan() {
     : `${estimates.remaining} of ${estimates.allowance} AI estimates left today.`;
 
   renderPlanOptions(plan.id);
+  renderAds(currentPlan.ads);
 
   // The line under the log button: silent until it isn't.
   const low = !monthlyCapReached && estimates.remaining <= ALLOWANCE_WARN_AT;
@@ -1472,6 +1473,77 @@ function handleBillingRedirect() {
   const query = params.toString();
   window.history.replaceState({}, "", window.location.pathname + (query ? `?${query}` : ""));
 }
+
+// ── Ads, on the free tier only ──────────────────────────────────────────────
+//
+// What pays for the free tier. Three rules:
+//
+//   - The publisher id only reaches accounts that get ads, so for anyone
+//     paying the advertising script is never loaded rather than loaded and
+//     hidden. That is the difference between "no ads" meaning something and
+//     it being decoration — nothing is fetched, nothing is measured, nothing
+//     of theirs goes anywhere.
+//   - One slot, at the bottom of Today, below everything they came for. An ad
+//     between someone and their own diary is the kind that makes people leave.
+//   - It says it is an ad, and it says how to be rid of it.
+
+const adTodayEl = document.getElementById("ad-today");
+const adTodayUnitEl = document.getElementById("ad-today-unit");
+const adRemoveBtn = document.getElementById("ad-remove");
+
+/** Loaded once per page, and only if there is an ad to show. */
+let adScriptLoaded = false;
+let adRendered = false;
+
+function loadAdScript(client) {
+  if (adScriptLoaded) return;
+  adScriptLoaded = true;
+  const script = document.createElement("script");
+  script.async = true;
+  script.crossOrigin = "anonymous";
+  script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}`;
+  document.head.appendChild(script);
+}
+
+function renderAds(ads) {
+  // No ads configured, or this account pays: nothing to show and nothing to
+  // fetch. The element stays empty rather than being filled and hidden.
+  if (!ads?.client || !ads.slots?.today) {
+    adTodayEl.hidden = true;
+    return;
+  }
+
+  adTodayEl.hidden = false;
+  loadAdScript(ads.client);
+
+  // Rendered once. Asking adsbygoogle to fill the same slot twice is how you
+  // get its "already have ads in it" error, and re-rendering on every refresh
+  // of the Today screen would do exactly that.
+  if (adRendered) return;
+  adRendered = true;
+
+  const unit = document.createElement("ins");
+  unit.className = "adsbygoogle";
+  unit.style.display = "block";
+  unit.dataset.adClient = ads.client;
+  unit.dataset.adSlot = ads.slots.today;
+  unit.dataset.adFormat = "auto";
+  unit.dataset.fullWidthResponsive = "true";
+  adTodayUnitEl.appendChild(unit);
+
+  try {
+    (window.adsbygoogle = window.adsbygoogle || []).push({});
+  } catch {
+    // Blocked, offline, or refused: leave the space empty rather than showing
+    // a broken frame. Nobody needs to be told their ad blocker worked.
+    adTodayEl.hidden = true;
+  }
+}
+
+adRemoveBtn.addEventListener("click", () => {
+  navTo("settings");
+  planCardEl.scrollIntoView({ behavior: "smooth", block: "center" });
+});
 
 /** Sends someone to Stripe's hosted checkout. */
 async function startCheckout(planId, button) {
