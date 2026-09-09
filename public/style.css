@@ -228,13 +228,12 @@ body {
      into a horizontal band is not a logo. */
 }
 /* On the fixture screens the line the mark shares is a 0.7rem eyebrow, so
-   there is much less line box to fall back into — the disc is a little
+   there is much less line box to fall back into — the mark is a little
    smaller and the margin correspondingly larger to land on the same 28px. */
 .banner--fixture h1 .brand-mark {
   width: 56px;
   height: 56px;
   margin-block: -14px;
-  padding: 7px;
 }
 
 /* Three header icons on the main app-shell banner (food library, stats,
@@ -267,28 +266,35 @@ body {
 #app-shell .banner h1.brand {
   justify-content: flex-start;
 }
-/* The mark was disappearing into the header: a 24px disc at 14% white on a
-   green ground is a smudge rather than a logo. It sits on a brighter disc
-   with a hairline to hold its edge, and casts a small shadow so it reads as
-   an object on the banner rather than a stain in it.
+/* The mark used to be a green bubble on a white disc this stylesheet drew
+   behind it — a badge on a badge, and the reason it read as a sticker stuck
+   to the header rather than as the header's own mark.
 
-   It is now roughly twice the size it was, and the header is exactly as tall
-   as it was before. Those two facts are held together by the negative block
-   margins: the banner's height is set by the text line the mark sits on, so
-   the mark is allowed to overflow that line box into the padding the header
-   already had rather than pushing it open. The margin is half the difference
-   between the disc and the line it has to fit back into — change one and the
-   other has to move with it, or the banner grows. */
+   It is now inverted (icons/mark-inverse.svg): the bubble is the white shape
+   and the cutlery is knocked out of it, so the banner shows through the K.
+   That removes the need for the disc, the hairline and the shadow entirely —
+   there is no plate to hold an edge, just the mark. It also hands the whole
+   box back to the artwork: with no disc there is no padding to inset it, so
+   the drawing is the full 68px rather than 52px of it.
+
+   It is twice the size it was, and the header is exactly as tall as it was
+   before. Those two facts are held together by the negative block margins:
+   the banner's height is set by the text line the mark sits on, so the mark
+   is allowed to overflow that line box into the padding the header already
+   had rather than pushing it open. The margin is half the difference between
+   the mark and the line it has to fit back into — change one and the other
+   has to move with it, or the banner grows.
+
+   The knockout is why this file names no colour for it. A cutout is
+   transparent, so the mark takes whatever green is behind it and needs no
+   second asset for the dark theme. The corollary: it is invisible on a light
+   ground, which is why the sign-in card keeps its own green-on-white asset
+   (.auth-brand-mark) rather than sharing this one. */
 .brand-mark {
   display: block;
   width: 68px;
   height: 68px;
   margin-block: -18px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  padding: 8px;
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.24);
   flex-shrink: 0;
 }
 
