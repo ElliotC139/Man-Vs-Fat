@@ -2210,6 +2210,139 @@ tr.has-tooltip:active {
   margin-bottom: 4px;
 }
 
+/* ── The admin screen ─────────────────────────────────────────────────────
+   A working screen rather than a designed one: dense, scannable, and the only
+   place in the app that shows money. */
+.admin-card {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.admin-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.admin-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+}
+.admin-summary {
+  display: grid;
+  /* Two across on a phone. Four squeezed "AI this month" onto three lines
+     beside captions that fitted on one, which made the row read as broken
+     rather than dense. */
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px 12px;
+}
+@media (min-width: 520px) {
+  .admin-summary { grid-template-columns: repeat(4, 1fr); }
+}
+.admin-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.admin-stat-number {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-stat-caption {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+/* A margin that has gone negative is the one thing on this screen that has to
+   be impossible to scroll past. */
+.admin-stat--bad .admin-stat-number { color: var(--danger); }
+
+.admin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.admin-row-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.admin-signups {
+  flex: 0 0 auto;
+}
+.admin-counts {
+  margin: 0 0 4px;
+  font-size: 0.78rem;
+}
+.admin-users {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.admin-user {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name plan" "meta plan";
+  align-items: center;
+  gap: 2px 10px;
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+.admin-user--at-cap {
+  box-shadow: inset 3px 0 0 var(--floodlight);
+}
+.admin-user-name {
+  grid-area: name;
+  font-size: 0.85rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.admin-user-meta {
+  grid-area: meta;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.admin-user-plan {
+  grid-area: plan;
+  /* Wide enough for the longest plan name plus the dropdown arrow. Left to
+     size itself, the arrow sat on top of the text. */
+  width: auto;
+  min-width: 96px;
+  min-height: 34px;
+  margin: 0;
+  padding: 4px 26px 4px 10px;
+  font-size: 0.8rem;
+}
+.admin-pill {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--pill-active-bg);
+  color: var(--pill-active-ink);
+}
+
 /* ── The ad slot ──────────────────────────────────────────────────────────
    Below everything on Today, labelled, and with the way out attached. An ad
    between someone and their own diary is the kind that makes people leave. */

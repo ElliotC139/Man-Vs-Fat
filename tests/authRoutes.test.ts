@@ -205,6 +205,9 @@ describe("POST /api/auth/signup", () => {
       nutrientsShown: ["protein", "carbs", "fat"],
       carbMode: "total",
       ketoMode: false,
+      // The first account ever created gets the admin screen — otherwise
+      // nobody can grant it to anybody and it is unreachable.
+      isAdmin: true,
       fibreTargetG: null,
       sugarTargetG: null,
       satFatTargetG: null,

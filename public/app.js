@@ -1474,6 +1474,157 @@ function handleBillingRedirect() {
   window.history.replaceState({}, "", window.location.pathname + (query ? `?${query}` : ""));
 }
 
+// ── The admin screen ────────────────────────────────────────────────────────
+//
+// Only rendered for an admin, and the server 404s the whole API for anyone
+// else — so hiding it here is a convenience, not the protection.
+//
+// It shows the money, which nothing else in the app does. That is deliberate:
+// what an account costs to serve is the operator's business, and the person
+// using the app should never be shown a running total of themselves.
+
+const adminCardEl = document.getElementById("admin-card");
+const adminSummaryEl = document.getElementById("admin-summary");
+const adminUsersEl = document.getElementById("admin-users");
+const adminErrorEl = document.getElementById("admin-error");
+const adminRefreshBtn = document.getElementById("admin-refresh");
+const adminSignupsOpenBtn = document.getElementById("admin-signups-open");
+const adminSignupsClosedBtn = document.getElementById("admin-signups-closed");
+
+const PLAN_ORDER = ["free", "plus", "pro"];
+
+async function loadAdmin() {
+  if (!currentUser?.isAdmin) {
+    adminCardEl.hidden = true;
+    return;
+  }
+  try {
+    const res = await fetch("/api/admin/overview");
+    if (!res.ok) throw new Error();
+    renderAdmin(await res.json());
+    adminCardEl.hidden = false;
+  } catch {
+    adminCardEl.hidden = true;
+  }
+}
+
+function statTile(value, caption) {
+  const cell = document.createElement("div");
+  cell.className = "admin-stat";
+  const number = document.createElement("span");
+  number.className = "admin-stat-number";
+  number.textContent = value;
+  const label = document.createElement("span");
+  label.className = "admin-stat-caption";
+  label.textContent = caption;
+  cell.append(number, label);
+  return cell;
+}
+
+function renderAdmin(data) {
+  adminErrorEl.hidden = true;
+  adminSummaryEl.innerHTML = "";
+
+  const margin = data.month.marginPence;
+  adminSummaryEl.append(
+    statTile(data.month.cost, "AI this month"),
+    statTile(`£${(data.month.revenuePence / 100).toFixed(2)}`, "plans"),
+    statTile(`${margin < 0 ? "-" : ""}£${Math.abs(margin / 100).toFixed(2)}`, "margin"),
+    statTile(String(data.month.calls), "calls"),
+  );
+  // The one number the whole pricing structure exists to keep positive.
+  adminSummaryEl.lastElementChild?.previousElementSibling
+    ?.classList.toggle("admin-stat--bad", margin < 0);
+
+  adminSignupsOpenBtn.classList.toggle("meal-kind-btn--active", data.signupsOpen);
+  adminSignupsClosedBtn.classList.toggle("meal-kind-btn--active", !data.signupsOpen);
+
+  adminUsersEl.innerHTML = "";
+  const counts = document.createElement("p");
+  counts.className = "muted admin-counts";
+  counts.textContent = data.plans.map((p) => `${p.users} ${p.name}`).join(" · ");
+  adminUsersEl.appendChild(counts);
+
+  for (const user of data.users) adminUsersEl.appendChild(adminUserRow(user));
+}
+
+function adminUserRow(user) {
+  const row = document.createElement("div");
+  row.className = `admin-user${user.atCap ? " admin-user--at-cap" : ""}`;
+
+  const name = document.createElement("div");
+  name.className = "admin-user-name";
+  name.textContent = user.username;
+  if (user.isAdmin) {
+    const pill = document.createElement("span");
+    pill.className = "admin-pill";
+    pill.textContent = "Admin";
+    name.appendChild(pill);
+  }
+
+  const meta = document.createElement("div");
+  meta.className = "admin-user-meta";
+  meta.textContent = [
+    `${user.monthCalls} calls`,
+    user.monthCost,
+    user.subscriptionStatus,
+    user.atCap ? "at cap" : null,
+  ].filter(Boolean).join(" · ");
+
+  const select = document.createElement("select");
+  select.className = "admin-user-plan";
+  select.setAttribute("aria-label", `Plan for ${user.username}`);
+  for (const id of PLAN_ORDER) {
+    const option = document.createElement("option");
+    option.value = id;
+    // Named the way the rest of the app names them, not as the raw id.
+    option.textContent = id.charAt(0).toUpperCase() + id.slice(1);
+    option.selected = user.plan === id;
+    select.appendChild(option);
+  }
+  select.addEventListener("change", () => patchAdminUser(user.id, { plan: select.value }));
+
+  row.append(name, meta, select);
+  return row;
+}
+
+async function patchAdminUser(id, body) {
+  try {
+    const res = await fetch(`/api/admin/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const answer = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(answer.error || "Couldn't change that.");
+    showToast("Saved");
+    await loadAdmin();
+  } catch (error) {
+    adminErrorEl.textContent = error.message;
+    adminErrorEl.hidden = false;
+  }
+}
+
+async function setSignups(open) {
+  try {
+    const res = await fetch("/api/admin/signups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ open }),
+    });
+    if (!res.ok) throw new Error("Couldn't change sign-ups.");
+    showToast(open ? "Sign-ups open" : "Sign-ups closed");
+    await loadAdmin();
+  } catch (error) {
+    adminErrorEl.textContent = error.message;
+    adminErrorEl.hidden = false;
+  }
+}
+
+adminSignupsOpenBtn.addEventListener("click", () => setSignups(true));
+adminSignupsClosedBtn.addEventListener("click", () => setSignups(false));
+adminRefreshBtn.addEventListener("click", loadAdmin);
+
 // ── Ads, on the free tier only ──────────────────────────────────────────────
 //
 // What pays for the free tier. Three rules:
@@ -2115,6 +2266,7 @@ async function showApp(user, { firstRun = false } = {}) {
   flushQueue();
   loadWater();
   loadPlan();
+  loadAdmin();
   handleBillingRedirect();
   // Last, and only once there is a diary to add to: someone who followed a
   // shared link straight into a sign-up lands on the sheet rather than losing

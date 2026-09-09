@@ -24,6 +24,7 @@ import { teamsRouter } from "./routes/teams";
 import { weighInsRouter } from "./routes/weighIns";
 import { whoopRouter } from "./routes/whoop";
 import { planRouter } from "./routes/plan";
+import { adminRouter } from "./routes/admin";
 import { billingRouter, billingWebhookRouter } from "./routes/billing";
 import { sharesRouter } from "./routes/shares";
 import { startScheduler } from "./jobs/scheduler";
@@ -86,6 +87,7 @@ app.use("/api/teams", teamsRouter);
 app.use("/api/weigh-ins", weighInsRouter);
 app.use("/api/whoop", whoopRouter);
 app.use("/api/plan", planRouter);
+app.use("/api/admin", adminRouter);
 app.use("/api/billing", billingRouter);
 app.use("/api/shares", sharesRouter);
 

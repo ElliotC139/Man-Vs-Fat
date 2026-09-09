@@ -724,6 +724,25 @@
             <div id="plan-options" class="plan-options"></div>
           </section>
 
+          <!-- Only rendered for an admin. The server 404s the API for anyone
+               else, so this is a convenience rather than the protection. -->
+          <section id="admin-card" class="admin-card" hidden>
+            <div class="admin-head">
+              <h2 class="admin-title">Admin</h2>
+              <button type="button" id="admin-refresh" class="ghost-sm">Refresh</button>
+            </div>
+            <div id="admin-summary" class="admin-summary"></div>
+            <div class="admin-row">
+              <span class="admin-row-label">New sign-ups</span>
+              <div class="meal-kind-btns admin-signups">
+                <button type="button" id="admin-signups-open" class="meal-kind-btn">Open</button>
+                <button type="button" id="admin-signups-closed" class="meal-kind-btn">Closed</button>
+              </div>
+            </div>
+            <div id="admin-users" class="admin-users"></div>
+            <p id="admin-error" class="error" hidden></p>
+          </section>
+
           <h2 class="settings-group">Your week</h2>
           <section class="settings-section" data-settings-section>
             <button type="button" class="settings-section-head" aria-expanded="false">

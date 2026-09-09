@@ -95,8 +95,15 @@ export function costMicros(usage: ModelUsage): number {
   return Math.ceil(microDollars * config.GBP_PER_USD - FLOAT_DUST);
 }
 
-/** Micros as money, for anywhere a person reads it. */
+/**
+ * Micros as money, for anywhere a person reads it.
+ *
+ * The pence-or-pounds choice is made on the rounded figure rather than the
+ * raw one. Deciding it on the raw value put 999,999 micros — a hair under a
+ * pound — through the pence branch, where rounding to one decimal turned it
+ * into "100.0p": correct to the penny and nonsense to read.
+ */
 export function formatMicros(micros: number): string {
-  const pounds = micros / 1_000_000;
-  return pounds < 1 ? `${(pounds * 100).toFixed(1)}p` : `£${pounds.toFixed(2)}`;
+  const pence = Math.round(micros / 10_000 * 10) / 10;
+  return pence < 100 ? `${pence.toFixed(1)}p` : `£${(pence / 100).toFixed(2)}`;
 }

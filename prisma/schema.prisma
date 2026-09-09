@@ -144,6 +144,10 @@ model User {
   // would mean a migration to change a price. Anything unrecognised reads as
   // free, which is the safe direction.
   plan               String               @default("free")
+  // Who can see the admin screen: sign-ups, plans, and what the AI is costing.
+  // The first account ever created gets it, because otherwise nobody can
+  // grant it to anybody and the screen is unreachable on a fresh deployment.
+  isAdmin            Boolean              @default(false)
   // Stripe's own id for this person, kept so a second subscription doesn't
   // create a second customer. Set on the first checkout and never cleared:
   // a cancelled subscription still has a billing history worth keeping

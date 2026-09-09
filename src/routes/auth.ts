@@ -25,6 +25,7 @@ import { ketoDiaryFields, ketoSettings } from "../keto";
 import { readMealReminders, writeMealReminders } from "../mealReminders";
 import { LOG_METHODS, readLogMethods, writeLogMethods } from "../logMethods";
 import { refileMatchWeeks } from "../refileMatchWeeks";
+import { signupsOpen } from "./admin";
 
 export const authRouter = Router();
 
@@ -193,6 +194,7 @@ function toPublicUser(user: {
   nutrientsShown?: string | null;
   carbMode?: string | null;
   ketoMode?: boolean;
+  isAdmin?: boolean;
   fibreTargetG?: number | null;
   sugarTargetG?: number | null;
   satFatTargetG?: number | null;
@@ -250,6 +252,7 @@ function toPublicUser(user: {
     nutrientsShown: readDiaryFields(user),
     carbMode: user.carbMode === "net" ? "net" : "total",
     ketoMode: user.ketoMode ?? false,
+    isAdmin: user.isAdmin ?? false,
     fibreTargetG: user.fibreTargetG ?? null,
     sugarTargetG: user.sugarTargetG ?? null,
     satFatTargetG: user.satFatTargetG ?? null,
@@ -321,9 +324,16 @@ authRouter.post("/signup", async (req, res) => {
 
   // The very first account ever created claims any match weeks logged before
   // multi-user support existed, so existing history isn't orphaned.
+  if (!(await signupsOpen())) {
+    res.status(403).json({ error: "New accounts are closed at the moment." });
+    return;
+  }
+
   const user = await prisma.$transaction(async (tx) => {
     const isFirstUser = (await tx.user.count()) === 0;
-    const created = await tx.user.create({ data: { username, passwordHash } });
+    // The first account gets the admin screen, because otherwise nobody can
+    // grant it to anybody and it is unreachable.
+    const created = await tx.user.create({ data: { username, passwordHash, isAdmin: isFirstUser } });
     if (isFirstUser) {
       await tx.matchWeek.updateMany({ where: { userId: null }, data: { userId: created.id } });
     }
@@ -411,12 +421,20 @@ authRouter.post("/google", async (req, res) => {
     return;
   }
 
+  // Closed sign-ups close this door too. Signing in with Google is still a
+  // new account when there isn't one already, and a gate only the password
+  // form honours is not a gate.
+  if (!(await signupsOpen())) {
+    res.status(403).json({ error: "New accounts are closed at the moment." });
+    return;
+  }
+
   const username = await uniqueUsernameFromEmail(email);
 
   // Same "first account ever claims pre-multi-user history" rule as /signup.
   const user = await prisma.$transaction(async (tx) => {
     const isFirstUser = (await tx.user.count()) === 0;
-    const created = await tx.user.create({ data: { username, googleId, email } });
+    const created = await tx.user.create({ data: { username, googleId, email, isAdmin: isFirstUser } });
     if (isFirstUser) {
       await tx.matchWeek.updateMany({ where: { userId: null }, data: { userId: created.id } });
     }
