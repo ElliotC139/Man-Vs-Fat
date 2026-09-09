@@ -3,6 +3,7 @@ import { config } from "../config";
 import { findOrCreateMatchWeek, getUserWeekStart, localDayKey, matchWeekCalendarDays, zonedTimeToUtc } from "../matchWeek";
 import { fetchRecentCycles, fetchRecentRecovery, fetchRecentSleep, fetchRecentWorkouts, refreshAccessToken } from "./client";
 import { recordError } from "../errorLog";
+import { shouldWriteScore } from "./scoreState";
 
 const BACKFILL_DAYS = 10;
 // The first sync after a connection is created (or after this field was
@@ -84,14 +85,22 @@ async function syncUserSleep(userId: number, accessToken: string, since: Date): 
   }
 
   for (const sleep of sleeps) {
+    const stored = await prisma.whoopSleep.findUnique({ where: { whoopSleepId: sleep.whoopSleepId } });
+    const writeScore = shouldWriteScore(stored?.scoreState, sleep.scoreState);
     await prisma.whoopSleep.upsert({
       where: { whoopSleepId: sleep.whoopSleepId },
       update: {
+        // The times are always the newest truth — an edit is a correction to
+        // them. The scored figures only land if they are worth landing.
         start: sleep.start,
         end: sleep.end,
-        scoreState: sleep.scoreState,
-        performancePercent: sleep.performancePercent,
-        timeAsleepMin: sleep.timeAsleepMin,
+        ...(writeScore
+          ? {
+              scoreState: sleep.scoreState,
+              performancePercent: sleep.performancePercent,
+              timeAsleepMin: sleep.timeAsleepMin,
+            }
+          : {}),
       },
       create: {
         userId,
@@ -146,14 +155,20 @@ async function syncUserRecovery(userId: number, accessToken: string, since: Date
     const date = recoveryDate(cycle?.start ?? null, recovery.createdAt);
     if (!date) continue;
 
+    const stored = await prisma.whoopRecovery.findUnique({ where: { whoopCycleId: recovery.whoopCycleId } });
+    const writeScore = shouldWriteScore(stored?.scoreState, recovery.scoreState);
     await prisma.whoopRecovery.upsert({
       where: { whoopCycleId: recovery.whoopCycleId },
       update: {
         date,
-        scoreState: recovery.scoreState,
-        recoveryScore: recovery.recoveryScore,
-        restingHeartRate: recovery.restingHeartRate,
-        hrvMilli: recovery.hrvMilli,
+        ...(writeScore
+          ? {
+              scoreState: recovery.scoreState,
+              recoveryScore: recovery.recoveryScore,
+              restingHeartRate: recovery.restingHeartRate,
+              hrvMilli: recovery.hrvMilli,
+            }
+          : {}),
       },
       create: {
         userId,
@@ -197,9 +212,15 @@ async function syncUserUnguarded(userId: number): Promise<void> {
   const cycles = await fetchRecentCycles(accessToken, since);
 
   for (const cycle of cycles) {
+    const stored = await prisma.whoopCycle.findUnique({ where: { whoopCycleId: cycle.whoopCycleId } });
+    const writeScore = shouldWriteScore(stored?.scoreState, cycle.scoreState);
     await prisma.whoopCycle.upsert({
       where: { whoopCycleId: cycle.whoopCycleId },
-      update: { start: cycle.start, end: cycle.end, kcalBurned: cycle.kcalBurned, scoreState: cycle.scoreState },
+      update: {
+        start: cycle.start,
+        end: cycle.end,
+        ...(writeScore ? { kcalBurned: cycle.kcalBurned, scoreState: cycle.scoreState } : {}),
+      },
       create: {
         userId,
         whoopCycleId: cycle.whoopCycleId,

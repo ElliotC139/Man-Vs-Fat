@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="QuicKcals">
+  <title>QuicKcals</title>
+  <!--
+    The maskable variant. Android crops an adaptive icon to whatever shape the
+    launcher wants, so nothing may rely on the edges: the green fills the whole
+    canvas (it is the roundel now) and only the K sits inside, scaled to stay
+    within the 80% safe zone whatever shape is cut out of it.
+  -->
+  <defs>
+    <path id="qk-knife-m"
+          d="M-6.5 0 A6.5 6.5 0 0 0 6.5 0 L6.5-42 C8.6-53 8.8-72 7.4-84
+             C6-93 3.2-98 0-99 C-3.2-98 -6-93 -7.4-84
+             C-8.8-72 -8.6-53 -6.5-42 Z"/>
+    <g id="qk-fork-m">
+      <path d="M-6.5 0 A6.5 6.5 0 0 0 6.5 0 L6.5-34 L-6.5-34 Z"/>
+      <path d="M-11-34 C-11-39 -11.4-42 -11.4-44 L11.4-44 C11.4-42 11-39 11-34 Z"/>
+      <rect x="-11.4" y="-66" width="4.6" height="25" rx="2.3"/>
+      <rect x="-5.6"  y="-68" width="4.6" height="27" rx="2.3"/>
+      <rect x="1"     y="-68" width="4.6" height="27" rx="2.3"/>
+      <rect x="6.8"   y="-66" width="4.6" height="25" rx="2.3"/>
+    </g>
+    <g id="qk-spoon-m">
+      <path d="M-6.5 0 A6.5 6.5 0 0 0 6.5 0 L6.5-32 L-6.5-32 Z"/>
+      <ellipse cx="0" cy="-44" rx="12" ry="14.5"/>
+    </g>
+  </defs>
+  <rect width="200" height="200" fill="#29663A"/>
+  <g fill="#FFFFFF" transform="translate(100 100) scale(0.82) translate(-92 -94)">
+    <use href="#qk-knife-m" transform="translate(69 143)"/>
+    <use href="#qk-fork-m"  transform="translate(74 95)  rotate(38)"/>
+    <use href="#qk-spoon-m" transform="translate(74 101) rotate(142)"/>
+  </g>
+</svg>

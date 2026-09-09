@@ -1,6 +1,6 @@
-# Match Week Food Diary
+# QuicKcals
 
-A deliberately rough food log for a Man v Fat Football habit. Log a meal by
+A deliberately rough food log. Log a meal by
 text and/or photo, Claude turns it into a short label + one best-guess kcal
 number, entries are grouped into "match weeks" running from a configurable
 weekly rollover (Monday 17:00 by default) to the next, and a clean PDF report

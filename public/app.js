@@ -324,13 +324,9 @@ async function loadWeek() {
   weekNoteEl.hidden = weeksAgo === 0;
   exerciseToggle.hidden = weeksAgo !== 0;
   if (weeksAgo !== 0) { exerciseForm.hidden = true; exerciseToggle.innerHTML = `${ICONS.plus} Log exercise`; }
-  const todayJsDay = new Date().getDay();
-  logWeekRow.hidden =
-    weeksAgo !== 0
-    || todayJsDay !== (userWeekStartWeekday + 1) % 7
-    // Nothing to choose between on a whole-day week: today falls in exactly
-    // one week whatever time it is.
-    || (userWeekStartHour === 0 && userWeekStartMinute === 0);
+  // The row belongs to the Today screen's log form, so the day on screen there
+  // decides whether it shows — not which week this screen happens to be on.
+  updateLogWeekRow();
 
   if (week.pendingEstimates > 0) {
     const plural = week.pendingEstimates > 1 ? "entries" : "entry";
@@ -1310,6 +1306,28 @@ async function repeatEntry(id) {
   refreshCurrentView();
 }
 
+/**
+ * Whether what was typed reads as the name of one food rather than a
+ * description of a meal.
+ *
+ * A name is something a database can be asked for — "hobnobs", "chicken
+ * breast", "200g greek yoghurt". A description is something only the estimator
+ * can answer — "chicken stir fry with rice, small handful of crisps". The
+ * joining words are what separate them: a comma, a plus, "and", "with" all say
+ * more than one thing is being logged, and length says the same. Deliberately
+ * generous about what counts as a name, because a search that comes up empty
+ * still offers the estimate, whereas going straight to the estimator skips the
+ * databases entirely and spends an API call to be less accurate.
+ */
+const LOOKUP_MAX_WORDS = 5;
+const LOOKUP_JOINERS = /(^|\s)(and|with|plus|then|followed\sby)(\s|$)/i;
+
+function looksLikeALookup(text) {
+  if (/[,;+&]/.test(text)) return false;
+  if (LOOKUP_JOINERS.test(text)) return false;
+  return text.split(/\s+/).filter(Boolean).length <= LOOKUP_MAX_WORDS;
+}
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   formError.hidden = true;
@@ -1319,6 +1337,18 @@ form.addEventListener("submit", async (event) => {
   if (!text && !photo) {
     formError.textContent = "Add a description or a photo first.";
     formError.hidden = false;
+    return;
+  }
+
+  // Typing a food's name is a lookup, not a description to be guessed at, so
+  // it goes to the databases first — the figures there are the real ones, and
+  // an estimate costs an API call to be less accurate. A described meal still
+  // goes straight to the estimator: no database has "chicken stir fry with
+  // rice and a handful of crisps" in it, and searching for it wastes a tap.
+  // Either way the search card carries an "estimate it instead" button, so
+  // nothing is a dead end.
+  if (text && !photo && looksLikeALookup(text)) {
+    openSearchFor(text);
     return;
   }
 
@@ -5883,25 +5913,44 @@ function foodBrandRow(group) {
   return row;
 }
 
+/**
+ * Opens the search card on a query and runs it.
+ *
+ * The card is the last thing on the Today screen, so letting focus() do the
+ * scrolling threw the page to the very bottom and left the search box under
+ * the keyboard. The card is put at the top of the viewport deliberately, and
+ * the caret is taken without moving anything.
+ */
+function openSearchFor(query) {
+  foodSearchCard.hidden = false;
+  foodSearchQuery.value = query;
+  foodSearchResults.innerHTML = "";
+  foodSearchStatus.hidden = true;
+  foodSearchEstimate.hidden = true;
+  foodMenuBack.hidden = true;
+  menuBrand = null;
+  renderMenuSuggestions();
+  // The card is the last thing on the screen, so without this the page simply
+  // bottoms out and the card stays where it was — which is the "search jumps
+  // to the bottom" complaint. The class opens up enough room below it that
+  // scrolling its top to the top of the viewport is actually possible.
+  document.body.classList.add("search-open");
+  foodSearchCard.scrollIntoView({ behavior: "smooth", block: "start" });
+  foodSearchQuery.focus({ preventScroll: true });
+  if (query) runFoodSearch(query);
+}
+
+function closeFoodSearch() {
+  foodSearchCard.hidden = true;
+  document.body.classList.remove("search-open");
+}
+
 foodSearchBtn.addEventListener("click", () => {
-  const opening = foodSearchCard.hidden;
-  foodSearchCard.hidden = !opening;
-  if (opening) {
-    foodSearchQuery.value = textInput.value.trim();
-    foodSearchResults.innerHTML = "";
-    foodSearchStatus.hidden = true;
-    foodSearchEstimate.hidden = true;
-    foodMenuBack.hidden = true;
-    menuBrand = null;
-    renderMenuSuggestions();
-    foodSearchQuery.focus();
-    if (foodSearchQuery.value) runFoodSearch(foodSearchQuery.value);
-  }
+  if (foodSearchCard.hidden) openSearchFor(textInput.value.trim());
+  else closeFoodSearch();
 });
 
-foodSearchClose.addEventListener("click", () => {
-  foodSearchCard.hidden = true;
-});
+foodSearchClose.addEventListener("click", closeFoodSearch);
 
 foodSearchQuery.addEventListener("input", () => {
   clearTimeout(dbSearchTimer);
@@ -6048,7 +6097,7 @@ function foodResultRow(result) {
 
   row.appendChild(info);
   row.addEventListener("click", () => {
-    foodSearchCard.hidden = true;
+    closeFoodSearch();
     openFoodResult(result);
   });
   return row;
@@ -6129,7 +6178,7 @@ function showEstimateFallback(query) {
   foodSearchEstimate.hidden = false;
   foodSearchEstimate.textContent = `Estimate "${query}" instead`;
   foodSearchEstimate.onclick = () => {
-    foodSearchCard.hidden = true;
+    closeFoodSearch();
     textInput.value = query;
     navTo("today");
     textInput.focus();
@@ -6329,7 +6378,7 @@ function drawShareCard(ctx, data) {
 
   heading(ctx, "MATCH WEEK", 64, PAD, 128, SHARE_COLOURS.pitchLight, 0.16);
   body(ctx, data.label, 36, PAD, 186, SHARE_COLOURS.faint);
-  body(ctx, "Tracked with Match Week Food Diary", 30, PAD, SHARE_H - PAD, SHARE_COLOURS.faint);
+  body(ctx, "Tracked with QuicKcals", 30, PAD, SHARE_H - PAD, SHARE_COLOURS.faint);
 
   // Laid out as blocks with their heights known up front, so the middle of the
   // card is centred between the header and the footer whether or not there is
@@ -6724,7 +6773,7 @@ function applyLogMethods() {
   // A row with nothing in it would otherwise leave a gap above the log button.
   captureRowEl.hidden = !["scan", "search", "speak", "number"].some((m) => on.has(m));
   // Closing a panel whose button has just gone would otherwise strand it open.
-  if (!on.has("search")) foodSearchCard.hidden = true;
+  if (!on.has("search")) closeFoodSearch();
 }
 
 function renderLogMethodSettings(user) {
@@ -10587,6 +10636,31 @@ const dayNextBtn = document.getElementById("day-next");
 const dayPastNote = document.getElementById("day-past-note");
 const dayBackToTodayBtn = document.getElementById("day-back-to-today");
 
+/**
+ * Whether to offer "Count toward: this week / last week", and reset it if not.
+ *
+ * It is only a real question when logging onto today, on the one day of the
+ * week where today could belong to either side of the rollover, on a week that
+ * doesn't start at midnight. A day you are looking back at falls in exactly
+ * one week, so the choice means nothing there — but the row was only ever set
+ * by the week screen's render, so it sat there on past days showing a choice
+ * that did nothing. Leaving "last week" selected under a hidden row would be
+ * worse than showing it: the next entry would file itself into the wrong week.
+ */
+function updateLogWeekRow() {
+  const todayJsDay = new Date().getDay();
+  const hide =
+    !viewingToday
+    || todayJsDay !== (userWeekStartWeekday + 1) % 7
+    || (userWeekStartHour === 0 && userWeekStartMinute === 0);
+  logWeekRow.hidden = hide;
+  if (hide && logToLastWeek) {
+    logToLastWeek = false;
+    logWeekCurrentBtn.classList.add("log-week-btn--active");
+    logWeekLastBtn.classList.remove("log-week-btn--active");
+  }
+}
+
 function renderDayNav(data) {
   // The server decides how far forward you can go, so the day can never be
   // stepped into the future even if the device clock disagrees.
@@ -10607,6 +10681,7 @@ function renderDayNav(data) {
   // Water is still today-only: it is a running count for the current day
   // rather than a timestamped entry, so there is nothing to write it onto.
   waterCard.hidden = past;
+  updateLogWeekRow();
 }
 
 /**

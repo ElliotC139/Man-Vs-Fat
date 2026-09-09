@@ -1,8 +1,8 @@
 {
-  "name": "match-week-food-diary",
+  "name": "quickcals",
   "version": "1.0.0",
   "private": true,
-  "description": "Lightweight food diary for Man v Fat Football, grouped into Monday-to-Monday match weeks, with an auto-generated weekly PDF delivered to Google Drive.",
+  "description": "QuicKcals — a fast, honest food diary that learns what you actually burn and tells you what still fits in the day.",
   "main": "src/server.ts",
   "scripts": {
     "dev": "tsx watch src/server.ts",

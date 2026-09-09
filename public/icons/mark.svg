@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="QuicKcals">
+  <title>QuicKcals</title>
+  <!--
+    A Q whose counter is a K built from cutlery: the knife is the stem, the
+    fork the rising arm, the spoon the falling one. Each utensil is drawn once
+    upright at the origin and placed by transform — the only way the three keep
+    the same stroke weight once the arms rotate away from vertical. Two things
+    the geometry has to hold: the arms start ON the knife, or the K reads as
+    three loose objects rather than a letter; and the spoon's bowl sits clear
+    of its handle, or the whole utensil collapses into a lollipop.
+  -->
+  <defs>
+    <!-- Knife: one path, so handle and blade never show a seam. -->
+    <path id="qk-knife"
+          d="M-6.5 0 A6.5 6.5 0 0 0 6.5 0 L6.5-42 C8.6-53 8.8-72 7.4-84
+             C6-93 3.2-98 0-99 C-3.2-98 -6-93 -7.4-84
+             C-8.8-72 -8.6-53 -6.5-42 Z"/>
+    <g id="qk-fork">
+      <path d="M-6.5 0 A6.5 6.5 0 0 0 6.5 0 L6.5-34 L-6.5-34 Z"/>
+      <path d="M-11-34 C-11-39 -11.4-42 -11.4-44 L11.4-44 C11.4-42 11-39 11-34 Z"/>
+      <rect x="-11.4" y="-66" width="4.6" height="25" rx="2.3"/>
+      <rect x="-5.6"  y="-68" width="4.6" height="27" rx="2.3"/>
+      <rect x="1"     y="-68" width="4.6" height="27" rx="2.3"/>
+      <rect x="6.8"   y="-66" width="4.6" height="25" rx="2.3"/>
+    </g>
+    <g id="qk-spoon">
+      <path d="M-6.5 0 A6.5 6.5 0 0 0 6.5 0 L6.5-32 L-6.5-32 Z"/>
+      <ellipse cx="0" cy="-44" rx="12" ry="14.5"/>
+    </g>
+  </defs>
+
+  <!-- The Q: a solid disc, plus the tail that makes it a Q and not an O. -->
+  <circle cx="94" cy="90" r="78" fill="#29663A"/>
+  <path d="M124 120 L162 158" stroke="#29663A" stroke-width="26" stroke-linecap="round" fill="none"/>
+
+  <!-- The K, in pitch-marking white. -->
+  <g fill="#FFFFFF" transform="translate(96 92) scale(1.03) translate(-94 -90)">
+    <use href="#qk-knife" transform="translate(69 143)"/>
+    <use href="#qk-fork"  transform="translate(74 95)  rotate(38)"/>
+    <use href="#qk-spoon" transform="translate(74 101) rotate(142)"/>
+  </g>
+</svg>
