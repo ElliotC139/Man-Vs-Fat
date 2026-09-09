@@ -15,6 +15,11 @@
  *
  * Grounding is a bonus and never a blocker. No match, no key, no network, too
  * slow: the estimate goes ahead exactly as it did before.
+ *
+ * The same search now also answers a second question, in estimateShortcut.ts:
+ * whether the model is needed at all. Hence findGroundingResults, which hands
+ * back the products themselves, with toReferences condensing them for the
+ * prompt when the estimate does go ahead.
  */
 
 import { cacheGet, cacheSet, rankResults, type FoodSearchResult } from "./foodSearch";
@@ -110,12 +115,16 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 }
 
 /**
- * Reference figures for a typed description, or an empty list.
+ * The matching products themselves, ranked and deduped.
+ *
+ * Split out from findReferences because the same search now answers two
+ * questions: what to hand the model as reference, and — in estimateShortcut.ts
+ * — whether the model is needed at all. Both from one round trip.
  *
  * Shares the search cache with the search box, so someone who searched for a
  * product and then typed it costs one round trip rather than two.
  */
-export async function findReferences(text: string | undefined): Promise<EstimateReference[]> {
+export async function findGroundingResults(text: string | undefined): Promise<FoodSearchResult[]> {
   const query = groundingQuery(text ?? "");
   // One word is not a product name worth a round trip, and the search route
   // holds the same floor.
@@ -129,8 +138,19 @@ export async function findReferences(text: string | undefined): Promise<Estimate
   if (!cached && results.length > 0) cacheSet(cacheKey, results);
 
   return rankResults(results, query, MAX_REFERENCES)
-    // A row with neither per-100g figures nor a portion says nothing the model
-    // can compute from.
-    .filter((result) => result.per100g !== null || result.portion !== null)
-    .map(condense);
+    // A row with neither per-100g figures nor a portion says nothing that can
+    // be computed from, by the model or by anything else.
+    .filter((result) => result.per100g !== null || result.portion !== null);
+}
+
+/** Those same rows, condensed to what fits in a prompt. */
+export function toReferences(results: FoodSearchResult[]): EstimateReference[] {
+  return results.map(condense);
+}
+
+/**
+ * Reference figures for a typed description, or an empty list.
+ */
+export async function findReferences(text: string | undefined): Promise<EstimateReference[]> {
+  return toReferences(await findGroundingResults(text));
 }

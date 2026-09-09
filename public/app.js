@@ -1397,21 +1397,34 @@ form.addEventListener("submit", async (event) => {
     form.reset();
     photoStatus.textContent = "Add a photo (optional)";
 
+    // The server answers from what it already knows where it can, and only
+    // calls the model when it can't (see src/estimateShortcut.ts) — so the
+    // sheet says which of the three it was rather than always "AI estimate".
+    const from = preview.from ?? null;
+    const badge =
+      from === "library" ? "From your diary"
+      : from === "database" ? "From the packet"
+      : "AI estimate";
+    const note =
+      from === "library" ? "The last time you logged this. Change anything that's different."
+      : from === "database" ? "Published figures. Set the amount, then log it."
+      : "Change anything that's off, then log it.";
+
     // Nothing is in the diary yet — the sheet is where it gets saved, and it
     // carries the "log to last week" choice with it so the form can reset.
     openConfirmSheet({
       items: preview.items,
       imageUrl: preview.imageUrl,
       rawInput: preview.rawInput,
-      source: "ai",
+      source: preview.source ?? "ai",
       lastWeek: logToLastWeek,
       // Captured when the form was submitted, not when the sheet is saved:
       // the day on screen is what the user meant, and they could step to
       // another one while the sheet is open.
       date: loggingDate(),
       mealType: chosenMealTag(),
-      sourceLabel: "AI estimate",
-      note: "Change anything that's off, then log it.",
+      sourceLabel: badge,
+      note,
     });
 
     logToLastWeek = false;

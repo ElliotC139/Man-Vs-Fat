@@ -6,7 +6,10 @@ import { prisma } from "../db";
 import { config } from "../config";
 import { requireAuth } from "../auth";
 import { estimateMeal, type EstimateItem } from "../estimate";
-import { findReferences } from "../estimateGrounding";
+import { findGroundingResults, findReferences, toReferences } from "../estimateGrounding";
+import { libraryShortcut, productShortcut, readAmount } from "../estimateShortcut";
+import { loadLibrary } from "../foodLibrary";
+import type { FoodSearchResult } from "../foodSearch";
 import { scaleMacros } from "../macros";
 import { scaleNutrients } from "../nutrients";
 import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart, localDayKey, zonedTimeToUtc } from "../matchWeek";
@@ -27,6 +30,39 @@ const upload = multer({
   // shrinks it well below this before anything is stored or sent anywhere.
   limits: { fileSize: 25 * 1024 * 1024 },
 });
+
+/**
+ * The answer the app already has for a typed description, or null.
+ *
+ * Their own diary is asked first because it is a local query — a hit there
+ * saves the round trip to the food databases as well as the model call — and
+ * because their own portion beats a packet's stated serving.
+ *
+ * Never a blocker, the same way grounding never is: if either lookup fails,
+ * the caller carries on to the model exactly as it did before any of this
+ * existed. `products` is filled in on the way past so the model gets the
+ * references without a second search.
+ */
+async function findShortcut(
+  userId: number,
+  text: string,
+  products: FoodSearchResult[],
+): Promise<{ item: ShortcutItem; from: "library" | "database" } | null> {
+  try {
+    const amount = readAmount(text);
+    const mine = libraryShortcut(await loadLibrary(userId), amount);
+    if (mine) return { item: mine, from: "library" };
+
+    products.push(...(await findGroundingResults(text)));
+    const product = productShortcut(products, amount);
+    return product ? { item: product, from: "database" } : null;
+  } catch (error) {
+    console.error("Shortcut lookup failed, falling back to the estimate:", error);
+    return null;
+  }
+}
+
+type ShortcutItem = EstimateItem & { quantity?: number; unitLabel?: string | null };
 
 const createEntrySchema = z.object({
   text: z.string().trim().optional(),
@@ -128,16 +164,26 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
     entryTimestamp = new Date(rolloverToday.getTime() - 60_000);
   }
 
+  // The same look-before-you-guess check /preview does, so an entry replayed
+  // from the offline queue costs no more than the same words typed online.
+  // See estimateShortcut.ts for what counts as an answer the app already has.
+  const products: FoodSearchResult[] = [];
+  const found = !directKcal && text && !photo ? await findShortcut(req.userId!, text, products) : null;
+  const shortcut: ShortcutItem | null = found?.item ?? null;
+  const shortcutFrom = found?.from ?? null;
+
   // directKcal is supplied by the barcode scanner and food search when Open
   // Food Facts has nutrition data — skip AI estimation and use the known
   // value directly, and record that the figure came from a real database
-  // rather than a guess.
-  const source = directKcal ? "database" : "ai";
+  // rather than a guess. A product shortcut is the same fact by a different
+  // route; a shortcut off their own diary is a repeat of whatever that entry
+  // was, so it keeps the honest "ai" label.
+  const source = directKcal || shortcutFrom === "database" ? "database" : "ai";
 
-  // Only the estimating path is metered — a barcode scan or a typed number
-  // costs nothing, and rationing those would punish exactly the entries the
-  // app most wants people to make.
-  if (!directKcal) {
+  // Only the estimating path is metered — a barcode scan, a typed number, or
+  // an answer the app already had costs nothing, and rationing those would
+  // punish exactly the entries the app most wants people to make.
+  if (!directKcal && !shortcut) {
     const verdict = consumeAll(`ai:${req.userId!}`, [AI_BURST, AI_DAILY]);
     if (!verdict.allowed) {
       res.status(429)
@@ -163,13 +209,16 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
           unitLabel: directUnitLabel ?? null,
         },
       ]
-    : await estimateMeal({
-        text,
-        imageBase64: photo?.buffer.toString("base64"),
-        imageMediaType: photo?.mimeType,
-        references: await findReferences(text),
-        buffer: await prisma.user.findUnique({ where: { id: req.userId! } }),
-      });
+    : shortcut
+      ? [shortcut]
+      : await estimateMeal({
+          text,
+          imageBase64: photo?.buffer.toString("base64"),
+          imageMediaType: photo?.mimeType,
+          // Fetched above if the text path went looking for a shortcut.
+          references: text && !photo ? toReferences(products) : await findReferences(text),
+          buffer: await prisma.user.findUnique({ where: { id: req.userId! } }),
+        });
 
   const imageUrl = photo ? saveUploadedImage(photo.buffer) : null;
   const matchWeek = await findOrCreateMatchWeek(entryTimestamp, config.TIMEZONE, req.userId!, weekStart);
@@ -237,6 +286,29 @@ entriesRouter.post("/preview", upload.single("photo"), async (req, res) => {
     }
   }
 
+  // Before anything is guessed: is this something the app already knows the
+  // answer to? A meal they have logged before, or a product a database states
+  // figures for, is a fact rather than an estimate — and answering from one
+  // costs nothing, applies no under-reporting buffer, and doesn't spend a
+  // rate-limit token. See estimateShortcut.ts for what counts as certain.
+  //
+  // A photo always goes to the model: nothing here can read one.
+  const products: FoodSearchResult[] = [];
+  const found = text && !photo ? await findShortcut(req.userId!, text, products) : null;
+  if (found) {
+    // A shortcut off their own diary is still "ai" as far as the diary's own
+    // labelling goes: repeating a figure the model produced last week doesn't
+    // make it verified. "from" is only for what the confirm sheet says.
+    res.json({
+      items: [found.item],
+      imageUrl: null,
+      rawInput: text,
+      source: found.from === "database" ? "database" : "ai",
+      from: found.from,
+    });
+    return;
+  }
+
   // The model call is here, so this is the step that costs money and the step
   // the ceiling has to sit in front of.
   const verdict = consumeAll(`ai:${req.userId!}`, [AI_BURST, AI_DAILY]);
@@ -251,7 +323,9 @@ entriesRouter.post("/preview", upload.single("photo"), async (req, res) => {
     text,
     imageBase64: photo?.buffer.toString("base64"),
     imageMediaType: photo?.mimeType,
-    references: await findReferences(text),
+    // Already fetched above where the text path looked for a shortcut; only a
+    // photo-only entry still has to go and get them.
+    references: text && !photo ? toReferences(products) : await findReferences(text),
     buffer: await prisma.user.findUnique({ where: { id: req.userId! } }),
   });
 
@@ -260,7 +334,7 @@ entriesRouter.post("/preview", upload.single("photo"), async (req, res) => {
   // which the nightly sweep clears (see jobs/cleanupUploads.ts).
   const imageUrl = photo ? saveUploadedImage(photo.buffer) : null;
 
-  res.json({ items, imageUrl, rawInput: text ?? null });
+  res.json({ items, imageUrl, rawInput: text ?? null, source: "ai", from: null });
 });
 
 const confirmSchema = z.object({
