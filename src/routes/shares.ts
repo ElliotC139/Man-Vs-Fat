@@ -30,6 +30,7 @@ import { requireAuth } from "../auth";
 import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart } from "../matchWeek";
 import { MEAL_TYPES, inferMealType } from "../mealType";
 import { timestampOnLocalDay } from "../entryTiming";
+import { savedMealRows } from "../savedMealRows";
 
 export const sharesRouter = Router();
 
@@ -49,6 +50,14 @@ const shareItemSchema = z.object({
   proteinG: z.number().min(0).max(1000).nullable().optional(),
   carbsG: z.number().min(0).max(1000).nullable().optional(),
   fatG: z.number().min(0).max(1000).nullable().optional(),
+  // The rest of the label travels too. It is the same category of thing —
+  // figures off a food, no photo, no note, no name — and leaving it out meant
+  // a shared meal arrived with its fibre missing, which for anyone counting
+  // net carbs is the figure that matters most.
+  fibreG: z.number().min(0).max(1000).nullable().optional(),
+  sugarG: z.number().min(0).max(1000).nullable().optional(),
+  satFatG: z.number().min(0).max(1000).nullable().optional(),
+  saltG: z.number().min(0).max(100).nullable().optional(),
   quantity: z.number().min(0.01).max(5000).optional(),
   // What one of them is, so a shared "2 slices" arrives as two slices rather
   // than as a number with nothing attached.
@@ -57,50 +66,52 @@ const shareItemSchema = z.object({
 
 type ShareItem = z.infer<typeof shareItemSchema>;
 
-const createSchema = z.object({
-  title: z.string().trim().max(80).optional(),
-  entryIds: z.array(z.number().int().positive()).min(1).max(50),
-});
+/**
+ * Two ways to fill a share, and exactly one of them per request.
+ *
+ * Rows out of the diary — "here's what I had" — or a saved meal, which is the
+ * one people actually want to hand over: a template or a recipe they have
+ * already built and named, rather than yesterday's entries picked out again.
+ */
+const createSchema = z.union([
+  z.object({
+    title: z.string().trim().max(80).optional(),
+    entryIds: z.array(z.number().int().positive()).min(1).max(50),
+  }),
+  z.object({
+    title: z.string().trim().max(80).optional(),
+    mealId: z.number().int().positive(),
+    // How much of it is being shared. A recipe's portion, or several of a
+    // template — the same figure its owner would log.
+    servings: z.number().positive().max(100).default(1),
+  }),
+]);
 
-/** Builds a share out of entries the sender actually owns. */
+/** Builds a share out of entries or a saved meal the sender actually owns. */
 sharesRouter.post("/", requireAuth, async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const { title, entryIds } = parsed.data;
 
-  // Scoped to the sender: an id belonging to someone else simply isn't found,
-  // so a share can only ever contain the sender's own food.
-  const entries = await prisma.entry.findMany({
-    where: { id: { in: entryIds }, matchWeek: { userId: req.userId! } },
-    orderBy: { timestamp: "asc" },
-    select: {
-      label: true, kcal: true, proteinG: true, carbsG: true, fatG: true,
-      quantity: true, unitLabel: true,
-    },
-  });
-  if (entries.length === 0) {
-    res.status(404).json({ error: "None of those entries were found." });
+  const built = "mealId" in parsed.data
+    ? await itemsFromMeal(req.userId!, parsed.data.mealId, parsed.data.servings)
+    : await itemsFromEntries(req.userId!, parsed.data.entryIds);
+  if (!built) {
+    res.status(404).json({
+      error: "mealId" in parsed.data ? "That meal wasn't found." : "None of those entries were found.",
+    });
     return;
   }
-
-  const items: ShareItem[] = entries.map((entry) => ({
-    label: entry.label,
-    kcal: entry.kcal,
-    proteinG: entry.proteinG,
-    carbsG: entry.carbsG,
-    fatG: entry.fatG,
-    quantity: entry.quantity,
-    unitLabel: entry.unitLabel,
-  }));
+  const { items, defaultTitle } = built;
+  const title = parsed.data.title || defaultTitle;
 
   const share = await prisma.foodShare.create({
     data: {
       token: newToken(),
       userId: req.userId!,
-      title: title || null,
+      title: title ?? null,
       items: JSON.stringify(items),
       expiresAt: new Date(Date.now() + SHARE_TTL_MS),
     },
@@ -109,10 +120,83 @@ sharesRouter.post("/", requireAuth, async (req, res) => {
   res.status(201).json({
     token: share.token,
     url: `${config.APP_BASE_URL}/s/${share.token}`,
+    title: share.title,
     expiresAt: share.expiresAt,
     items,
   });
 });
+
+/** The sender's own diary rows, in the order they were eaten. */
+async function itemsFromEntries(
+  userId: number,
+  entryIds: number[],
+): Promise<{ items: ShareItem[]; defaultTitle: string | null } | null> {
+  // Scoped to the sender: an id belonging to someone else simply isn't found,
+  // so a share can only ever contain the sender's own food.
+  const entries = await prisma.entry.findMany({
+    where: { id: { in: entryIds }, matchWeek: { userId } },
+    orderBy: { timestamp: "asc" },
+    select: {
+      label: true, kcal: true, proteinG: true, carbsG: true, fatG: true,
+      fibreG: true, sugarG: true, satFatG: true, saltG: true,
+      quantity: true, unitLabel: true,
+    },
+  });
+  if (entries.length === 0) return null;
+
+  return {
+    items: entries.map((entry) => ({
+      label: entry.label,
+      kcal: entry.kcal,
+      proteinG: entry.proteinG,
+      carbsG: entry.carbsG,
+      fatG: entry.fatG,
+      fibreG: entry.fibreG,
+      sugarG: entry.sugarG,
+      satFatG: entry.satFatG,
+      saltG: entry.saltG,
+      quantity: entry.quantity,
+      unitLabel: entry.unitLabel,
+    })),
+    defaultTitle: null,
+  };
+}
+
+/**
+ * A saved meal, as the rows logging it would produce.
+ *
+ * Through savedMealRows rather than off the item list directly, so a shared
+ * recipe arrives the way its owner eats it — "chilli (1 portion)", not the
+ * whole ingredient list at batch quantities, which is a different meal.
+ */
+async function itemsFromMeal(
+  userId: number,
+  mealId: number,
+  servings: number,
+): Promise<{ items: ShareItem[]; defaultTitle: string | null } | null> {
+  const meal = await prisma.savedMeal.findFirst({
+    where: { id: mealId, userId },
+    include: { items: true },
+  });
+  if (!meal) return null;
+
+  return {
+    items: savedMealRows(meal, servings).map((row) => ({
+      label: row.label,
+      kcal: row.kcal,
+      proteinG: row.proteinG,
+      carbsG: row.carbsG,
+      fatG: row.fatG,
+      fibreG: row.fibreG,
+      sugarG: row.sugarG,
+      satFatG: row.satFatG,
+      saltG: row.saltG,
+    })),
+    // The name is the whole reason someone shares a saved meal rather than the
+    // rows it came from, so it travels unless the sender says otherwise.
+    defaultTitle: meal.name,
+  };
+}
 
 /**
  * Reads the items behind a token, or the fact that there aren't any.
@@ -188,6 +272,10 @@ sharesRouter.post("/:token/accept", requireAuth, async (req, res) => {
           proteinG: item.proteinG ?? null,
           carbsG: item.carbsG ?? null,
           fatG: item.fatG ?? null,
+          fibreG: item.fibreG ?? null,
+          sugarG: item.sugarG ?? null,
+          satFatG: item.satFatG ?? null,
+          saltG: item.saltG ?? null,
           imageUrl: null,
           mealType,
           mealTypeSet: chosenMeal !== undefined,

@@ -5509,12 +5509,25 @@ function renderMealRow(meal) {
   editBtn.type = "button";
   editBtn.textContent = "Edit";
   editBtn.addEventListener("click", () => openMealEditor(meal));
+  const shareBtn = document.createElement("button");
+  shareBtn.type = "button";
+  shareBtn.textContent = "Share";
+  shareBtn.addEventListener("click", async () => {
+    shareBtn.disabled = true;
+    try {
+      await shareSavedMeal(meal);
+    } catch {
+      showToast("Couldn't make that link — please try again.");
+    } finally {
+      shareBtn.disabled = false;
+    }
+  });
   const delBtn = document.createElement("button");
   delBtn.type = "button";
   delBtn.innerHTML = ICONS.x;
   delBtn.setAttribute("aria-label", `Delete ${meal.name}`);
   delBtn.addEventListener("click", () => deleteMeal(meal));
-  actions.append(logBtn, editBtn, delBtn);
+  actions.append(logBtn, editBtn, shareBtn, delBtn);
 
   row.append(info, actions);
   return row;
@@ -9506,33 +9519,47 @@ saveMealConfirm.addEventListener("click", async () => {
 // Only labels and figures cross — no photos, no notes, no times, no username.
 const selectShareBtn = document.getElementById("select-share");
 
+/**
+ * Makes a link and hands it to the OS share sheet.
+ *
+ * One function for both ways in — a handful of diary rows, or a saved meal —
+ * because everything after "what goes in it" is the same: make the share, try
+ * the sheet, fall back to the clipboard. `body` is whichever shape the shares
+ * endpoint wants; see src/routes/shares.ts.
+ */
+async function shareFood(body, { subject, message }) {
+  const res = await fetch("/api/shares", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error();
+  const share = await res.json();
+
+  const text = `${message} ${share.url}`;
+  // The OS share sheet is the whole point on a phone: it puts WhatsApp,
+  // Messages and the rest one tap away. Copying is the fallback for a
+  // desktop browser, or for someone who dismisses the sheet.
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: subject, text });
+      return;
+    } catch {
+      // Dismissing the OS sheet is a normal thing to do, not a failure — the
+      // link exists either way, so it goes to the clipboard instead.
+    }
+  }
+  await copyShareLink(share.url);
+}
+
 selectShareBtn.addEventListener("click", async () => {
   if (selectedEntryIds.size === 0) return;
   selectShareBtn.disabled = true;
   try {
-    const res = await fetch("/api/shares", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ entryIds: [...selectedEntryIds].sort((a, b) => a - b) }),
-    });
-    if (!res.ok) throw new Error();
-    const share = await res.json();
-
-    const text = `Here's what I had — tap to add it to your day: ${share.url}`;
-    // The OS share sheet is the whole point on a phone: it puts WhatsApp,
-    // Messages and the rest one tap away. Copying is the fallback for a
-    // desktop browser, or for someone who dismisses the sheet.
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: "Food from my diary", text });
-      } catch {
-        // Dismissing the OS sheet is a normal thing to do, not a failure —
-        // the link exists either way, so it goes to the clipboard instead.
-        await copyShareLink(share.url);
-      }
-    } else {
-      await copyShareLink(share.url);
-    }
+    await shareFood(
+      { entryIds: [...selectedEntryIds].sort((a, b) => a - b) },
+      { subject: "Food from my diary", message: "Here's what I had — tap to add it to your day:" },
+    );
     setSelectMode(false);
   } catch {
     showToast("Couldn't make that link — please try again.");
@@ -9540,6 +9567,24 @@ selectShareBtn.addEventListener("click", async () => {
     selectShareBtn.disabled = false;
   }
 });
+
+/**
+ * Sends a saved meal, as its owner would log it.
+ *
+ * A recipe crosses as one portion rather than as the batch: "here's my chilli"
+ * means the plate, and handing over an ingredient list at batch quantities
+ * would be a different meal. The server decides that from the meal's own kind
+ * (see src/savedMealRows.ts), so nothing about it is worked out twice.
+ */
+async function shareSavedMeal(meal) {
+  await shareFood(
+    { mealId: meal.id, servings: 1 },
+    {
+      subject: meal.name,
+      message: `Here's my "${meal.name}" — tap to add it to your day:`,
+    },
+  );
+}
 
 async function copyShareLink(url) {
   try {

@@ -2231,6 +2231,22 @@ tr.has-tooltip:active {
   gap: 5px;
   flex-shrink: 0;
 }
+/* Four actions beside the name squeezed the meal's own figures into a column
+   two words wide on a small phone — "435 kcal per portion" over four lines,
+   with the ingredients truncated to nothing. Below the width where they both
+   fit, the buttons take a line of their own underneath. */
+@media (max-width: 460px) {
+  .meal-row {
+    flex-wrap: wrap;
+  }
+  .meal-info {
+    flex: 1 0 100%;
+  }
+  .meal-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
 .meal-actions button {
   width: auto;
   min-height: 32px;
