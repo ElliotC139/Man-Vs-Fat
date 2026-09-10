@@ -31,6 +31,7 @@ vi.mock("../src/config", () => ({
     STRIPE_SECRET_KEY: "sk_test_x",
     STRIPE_WEBHOOK_SECRET: "whsec_x",
     STRIPE_PRICE_PLUS_MONTHLY: "price_plus_m",
+    STRIPE_PRICE_PLUS_YEARLY: "price_plus_y",
     STRIPE_PRICE_PRO_MONTHLY: "price_pro_m",
   },
   stripeConfigured: true,
@@ -170,6 +171,29 @@ describe("VAT on the checkout session", () => {
     expect(session.client_reference_id).toBe("1");
     expect(session.subscription_data.metadata.userId).toBe("1");
     expect(session.line_items).toEqual([{ price: "price_pro_m", quantity: 1 }]);
+  });
+});
+
+describe("monthly or yearly", () => {
+  it("buys the yearly price when that is what was asked for", async () => {
+    const cookie = await signUp("alice");
+    await checkout(cookie, { plan: "plus", interval: "yearly" });
+    expect(state.sessions.at(-1).line_items).toEqual([{ price: "price_plus_y", quantity: 1 }]);
+  });
+
+  it("defaults to monthly when no interval is named", async () => {
+    const cookie = await signUp("alice");
+    await checkout(cookie, { plan: "plus" });
+    expect(state.sessions.at(-1).line_items).toEqual([{ price: "price_plus_m", quantity: 1 }]);
+  });
+
+  it("refuses an interval this deployment has no price for", async () => {
+    // Pro has no yearly price here. Better a plain refusal than a checkout
+    // that opens onto nothing — see priceIdFor for why the gap is normal.
+    const cookie = await signUp("alice");
+    const res = await checkout(cookie, { plan: "pro", interval: "yearly" });
+    expect(res.status).toBe(400);
+    expect(state.sessions).toHaveLength(0);
   });
 });
 

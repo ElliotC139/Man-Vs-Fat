@@ -1350,8 +1350,40 @@ const ALLOWANCE_WARN_AT = 3;
 
 let currentPlan = null;
 
+/**
+ * Which way the plan picker is currently quoting.
+ *
+ * Kept out of localStorage on purpose: it isn't a preference, it's a question
+ * being asked once at the moment of deciding, and remembering last month's
+ * answer would quietly decide it again.
+ */
+let planInterval = "monthly";
+
 function priceText(pence) {
   return pence === 0 ? "Free" : `£${(pence / 100).toFixed(2)}/mo`;
+}
+
+/**
+ * The price of a plan at the interval on show.
+ *
+ * A year is quoted as the year, not as a per-month figure — the year is what
+ * gets charged, and a "/mo" on a bill that arrives once is the small print
+ * everybody resents afterwards.
+ */
+function planPriceAt(plan, interval) {
+  if (plan.pricePence === 0) return "Free";
+  if (interval === "yearly" && plan.yearlyPence !== null) {
+    return `£${(plan.yearlyPence / 100).toFixed(2)}/yr`;
+  }
+  return priceText(plan.pricePence);
+}
+
+/** What a year saves, said as months rather than as a percentage. */
+function yearlySaving(plan) {
+  if (plan.pricePence === 0 || plan.yearlyPence === null) return null;
+  const months = Math.round((plan.pricePence * 12 - plan.yearlyPence) / plan.pricePence);
+  if (months < 1) return null;
+  return months === 1 ? "1 month free" : `${months} months free`;
 }
 
 async function loadPlan() {
@@ -1375,6 +1407,9 @@ function renderPlan() {
 
   planCardEl.hidden = false;
   planNameEl.textContent = plan.name;
+  // The monthly price for now; renderPlanOptions corrects it to the yearly
+  // one once it has read which way this account is actually billed. Set here
+  // as well so the card is never briefly blank on a slow connection.
   planPriceEl.textContent = priceText(plan.pricePence);
   planUsageEl.textContent = monthlyCapReached
     ? "This month's AI estimates are used up. Search, barcodes and your saved meals still work."
@@ -1395,6 +1430,37 @@ function renderPlan() {
   }
 }
 
+/**
+ * The monthly/yearly switch.
+ *
+ * A radio group rather than two buttons, because that is what it is: one
+ * choice with two answers, and a screen reader should hear it that way.
+ */
+function buildIntervalToggle(currentId) {
+  const wrap = document.createElement("div");
+  wrap.className = "plan-interval";
+  wrap.setAttribute("role", "radiogroup");
+  wrap.setAttribute("aria-label", "Billing period");
+
+  for (const [interval, label] of [["monthly", "Monthly"], ["yearly", "Yearly"]]) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "plan-interval-option";
+    button.setAttribute("role", "radio");
+    button.setAttribute("aria-checked", String(planInterval === interval));
+    button.textContent = label;
+    button.addEventListener("click", () => {
+      if (planInterval === interval) return;
+      planInterval = interval;
+      // Re-rendering the whole block rather than patching each price keeps
+      // one code path deciding what is shown, buttons and notes included.
+      renderPlanOptions(currentId);
+    });
+    wrap.appendChild(button);
+  }
+  return wrap;
+}
+
 /** The plans above this one, as what they add rather than as a price list. */
 async function renderPlanOptions(currentId) {
   planOptionsEl.innerHTML = "";
@@ -1405,8 +1471,18 @@ async function renderPlanOptions(currentId) {
     ]);
     if (!catalogueRes.ok) return;
     const { plans } = await catalogueRes.json();
-    const billing = billingRes.ok ? await billingRes.json() : { purchasable: [], canManage: false };
+    const billing = billingRes.ok ? await billingRes.json() : { purchasable: {}, canManage: false };
     const index = plans.findIndex((p) => p.id === currentId);
+    const upgrades = plans.slice(index + 1);
+
+    // Quote what this account actually pays. A yearly subscriber shown
+    // "£9.99/mo" is being told the wrong number and the wrong frequency.
+    const own = plans[index];
+    if (own && billing.interval) planPriceEl.textContent = planPriceAt(own, billing.interval);
+
+    /** The intervals this deployment has a Stripe price for, for one plan. */
+    const intervalsFor = (id) => billing.purchasable?.[id] ?? [];
+    const anyPlanOffers = (interval) => upgrades.some((p) => intervalsFor(p.id).includes(interval));
 
     // Somewhere to cancel, change card or see invoices. Stripe's own portal
     // does all of that properly, and a half-built copy of it here would be a
@@ -1420,7 +1496,19 @@ async function renderPlanOptions(currentId) {
       planOptionsEl.appendChild(manage);
     }
 
-    for (const plan of plans.slice(index + 1)) {
+    // Monthly or yearly, offered only where both are actually sellable.
+    // Half a toggle is worse than none: a switch that reveals a plan you
+    // can't buy is a dead end dressed up as a choice.
+    if (anyPlanOffers("monthly") && anyPlanOffers("yearly")) {
+      planOptionsEl.appendChild(buildIntervalToggle(currentId));
+    } else if (!anyPlanOffers(planInterval)) {
+      // Nothing sells at the remembered interval — quote the one that does,
+      // rather than pricing everything in a currency of no button.
+      planInterval = anyPlanOffers("yearly") ? "yearly" : "monthly";
+    }
+
+    for (const plan of upgrades) {
+      const intervals = intervalsFor(plan.id);
       const row = document.createElement("div");
       row.className = "plan-option";
 
@@ -1431,7 +1519,7 @@ async function renderPlanOptions(currentId) {
       name.textContent = plan.name;
       const price = document.createElement("span");
       price.className = "plan-option-price";
-      price.textContent = priceText(plan.pricePence);
+      price.textContent = planPriceAt(plan, planInterval);
       head.append(name, price);
 
       const tagline = document.createElement("p");
@@ -1448,17 +1536,35 @@ async function renderPlanOptions(currentId) {
 
       row.append(head, tagline, list);
 
+      // What a year saves, on the year's own terms. Said as free months
+      // because that is a number somebody can hold in their head; "17% off"
+      // is the same saving and lands as nothing.
+      const saving = planInterval === "yearly" ? yearlySaving(plan) : null;
+      if (saving && intervals.includes("yearly")) {
+        const badge = document.createElement("span");
+        badge.className = "plan-option-saving";
+        badge.textContent = saving;
+        row.appendChild(badge);
+      }
+
       // After the list, not before it: the button is what you press once the
       // plan has made its case. Only offered where this deployment actually
       // has a Stripe price for it — a button that leads to "that plan isn't
       // available" is worse than no button.
-      if (billing.purchasable?.includes(plan.id)) {
+      if (intervals.includes(planInterval)) {
         const buy = document.createElement("button");
         buy.type = "button";
         buy.className = "plan-buy";
         buy.textContent = `Get ${plan.name}`;
-        buy.addEventListener("click", () => startCheckout(plan.id, buy));
+        buy.addEventListener("click", () => startCheckout(plan.id, planInterval, buy));
         row.appendChild(buy);
+      } else if (intervals.length > 0) {
+        // Sellable, just not this way round. Says which rather than leaving
+        // a plan sitting there with no way to buy it and no reason given.
+        const only = document.createElement("p");
+        only.className = "plan-option-only";
+        only.textContent = intervals.includes("monthly") ? "Monthly only." : "Yearly only.";
+        row.appendChild(only);
       }
 
       planOptionsEl.appendChild(row);
@@ -2045,7 +2151,7 @@ adRemoveBtn.addEventListener("click", () => {
 });
 
 /** Sends someone to Stripe's hosted checkout. */
-async function startCheckout(planId, button) {
+async function startCheckout(planId, interval, button) {
   button.disabled = true;
   const previous = button.textContent;
   button.textContent = "Opening…";
@@ -2053,7 +2159,7 @@ async function startCheckout(planId, button) {
     const res = await fetch("/api/billing/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan: planId, interval: "monthly" }),
+      body: JSON.stringify({ plan: planId, interval }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok || !body.url) throw new Error(body.error || "Couldn't start checkout.");

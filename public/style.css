@@ -2263,6 +2263,49 @@ tr.has-tooltip:active {
   align-self: flex-start;
   margin-bottom: 4px;
 }
+/* Monthly / yearly. A segmented control rather than two loose buttons: the
+   two options are one choice, and a shared track says so at a glance. */
+.plan-interval {
+  display: flex;
+  gap: 2px;
+  align-self: flex-start;
+  padding: 2px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--hairline) 40%, transparent);
+}
+.plan-interval-option {
+  width: auto;
+  min-height: 30px;
+  padding: 5px 14px;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 3px);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.plan-interval-option[aria-checked="true"] {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
+.plan-option-saving {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pitch) 12%, transparent);
+  color: var(--pitch);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.plan-option-only {
+  margin: 4px 0 0;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
 
 /* ── Invites ──────────────────────────────────────────────────────────────
    The one card in Settings with a colour behind it, because it is the only

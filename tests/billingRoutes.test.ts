@@ -37,6 +37,7 @@ vi.mock("../src/config", () => ({
     STRIPE_SECRET_KEY: "sk_test_x",
     STRIPE_WEBHOOK_SECRET: "whsec_x",
     STRIPE_PRICE_PLUS_MONTHLY: "price_plus_m",
+    STRIPE_PRICE_PLUS_YEARLY: "price_plus_y",
     STRIPE_PRICE_PRO_MONTHLY: "price_pro_m",
   },
   stripeConfigured: true,
@@ -184,6 +185,31 @@ describe("POST /api/billing/webhook", () => {
       subscriptionStatus: "active",
     });
     expect(state.users[0].subscriptionEndsAt).toEqual(new Date(1_800_000_000 * 1000));
+  });
+
+  it("records which way they are billed, so the card can quote it", async () => {
+    // Not an entitlement — the plan is the same either way. It decides what
+    // price the settings card shows, and "£4.99/mo" to a yearly subscriber
+    // is the wrong number said at the wrong frequency.
+    state.users.push({ id: 1, plan: "free", stripeCustomerId: "cus_1" });
+    const event = subscriptionEvent({
+      items: { data: [{ price: { id: "price_plus_y" }, current_period_end: 1_800_000_000 }] },
+    });
+    state.constructEvent = () => event;
+
+    await post(event);
+    expect(state.users[0]).toMatchObject({ plan: "plus", subscriptionInterval: "yearly" });
+  });
+
+  it("leaves the interval unknown for a price it doesn't recognise", async () => {
+    state.users.push({ id: 1, plan: "plus", stripeCustomerId: "cus_1" });
+    const event = subscriptionEvent({
+      items: { data: [{ price: { id: "price_from_somewhere_else" }, current_period_end: 1_800_000_000 }] },
+    });
+    state.constructEvent = () => event;
+
+    await post(event);
+    expect(state.users[0].subscriptionInterval).toBeNull();
   });
 
   it("refuses an unsigned request", async () => {

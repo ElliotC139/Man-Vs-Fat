@@ -53,12 +53,27 @@ export function priceIdFor(plan: PlanId, interval: BillingInterval): string | nu
   return ids[`${plan}:${interval}`] ?? null;
 }
 
-/** Which plans this deployment can actually sell right now. */
-export function purchasablePlans(): PlanId[] {
-  if (!stripeConfigured) return [];
-  return (["plus", "pro"] as const).filter(
-    (id) => priceIdFor(id, "monthly") !== null || priceIdFor(id, "yearly") !== null,
-  );
+/**
+ * What this deployment can actually sell right now, plan by plan.
+ *
+ * A plan with no intervals is left out entirely rather than listed as empty,
+ * so the caller's question — "can I offer this?" — is answered by the key
+ * being there. Which intervals is the answer to the follow-up, and the two
+ * are one field because they are one fact: a price either exists or it
+ * doesn't, and the interval is which price.
+ *
+ * Every combination is independent on purpose. Selling Plus both ways and Pro
+ * monthly only is a state the settings screen has to render honestly, because
+ * it is exactly what a half-finished Stripe dashboard looks like.
+ */
+export function purchasableIntervals(): Partial<Record<PlanId, BillingInterval[]>> {
+  if (!stripeConfigured) return {};
+  const out: Partial<Record<PlanId, BillingInterval[]>> = {};
+  for (const id of ["plus", "pro"] as const) {
+    const intervals = (["monthly", "yearly"] as const).filter((i) => priceIdFor(id, i) !== null);
+    if (intervals.length > 0) out[id] = [...intervals];
+  }
+  return out;
 }
 
 /**
@@ -74,6 +89,24 @@ export function planForPriceId(priceId: string | null | undefined): PlanId | nul
   for (const id of ["plus", "pro"] as const) {
     for (const interval of ["monthly", "yearly"] as const) {
       if (priceIdFor(id, interval) === priceId) return id;
+    }
+  }
+  return null;
+}
+
+/**
+ * Which way a price bills, or null if it isn't one of ours.
+ *
+ * Recorded on the account so the settings card can quote what someone
+ * actually pays. Unlike the plan, nothing is entitled on the strength of it —
+ * an unrecognised price leaves the interval unknown rather than guessing
+ * monthly, because a wrong guess here is a wrong price on a screen.
+ */
+export function intervalForPriceId(priceId: string | null | undefined): BillingInterval | null {
+  if (!priceId) return null;
+  for (const id of ["plus", "pro"] as const) {
+    for (const interval of ["monthly", "yearly"] as const) {
+      if (priceIdFor(id, interval) === priceId) return interval;
     }
   }
   return null;
