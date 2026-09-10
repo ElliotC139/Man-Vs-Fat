@@ -18,7 +18,7 @@
  */
 
 // Bumped on every deploy that changes a shell file, so old caches are dropped.
-const VERSION = "v43";
+const VERSION = "v44";
 const SHELL_CACHE = `shell-${VERSION}`;
 const API_CACHE = `api-${VERSION}`;
 
@@ -63,6 +63,12 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
+
+  // The recovery page is never cached and never served from a cache. It
+  // exists to undo a poisoned cache, so a copy of it held inside one is worse
+  // than useless — it would be the stale thing trying to clear itself.
+  if (url.pathname === "/reset.html" || url.pathname === "/reset") return;
+
   // Only this origin: Open Food Facts and the fonts CDN are none of the
   // worker's business, and caching a failed cross-origin response would be
   // worse than letting it fail.
