@@ -2894,7 +2894,7 @@ function showAuthScreen() {
   for (const screenFor of Object.values(TAB_SCREENS)) screenFor().hidden = true;
   onboardingScreen.hidden = true;
   reviewScreen.hidden = true;
-  tabBar.hidden = true;
+  showTabBar(false);
 
   // Anything still open over the top of a screen goes with it: a sheet left
   // hanging over the sign-in form belongs to a session that has ended.
@@ -6107,6 +6107,20 @@ statsBack.addEventListener("click", () => navTo("today"));
 // open/close pair deciding independently. With five destinations that's the
 // difference between "hide the other four" written once and written five
 // times — and it's what stopped the screens ever being visible at once.
+/**
+ * Show or hide the main navigation, and tell the page which it is.
+ *
+ * Above 1024px the nav is a fixed rail down the left, so the body carries
+ * left padding to sit beside it. That padding must not exist when the nav
+ * doesn't — the sign-in card would be shoved off-centre by a rail that isn't
+ * there. Setting both from one place is what stops the two drifting apart the
+ * next time a screen decides to hide the nav.
+ */
+function showTabBar(visible) {
+  tabBar.hidden = !visible;
+  document.body.classList.toggle("has-rail", visible);
+}
+
 const TAB_SCREENS = {
   today: () => todayScreen,
   week: () => appShell,
@@ -6139,7 +6153,7 @@ function navTo(target) {
 
   const previous = currentTab;
   currentTab = target;
-  tabBar.hidden = false;
+  showTabBar(true);
 
   // Now that this screen is actually visible, its ad unit can be measured.
   // Nothing happens on a paid account, or on a tab already filled, or on
@@ -8724,7 +8738,7 @@ function showOnboardingStep(step) {
 }
 
 function openOnboarding() {
-  tabBar.hidden = true;
+  showTabBar(false);
   authScreen.hidden = true;
   appShell.hidden = true;
   onboardingScreen.hidden = false;
