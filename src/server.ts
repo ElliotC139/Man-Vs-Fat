@@ -97,7 +97,35 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use("/uploads", express.static(UPLOADS_DIR));
-app.use(express.static(path.join(process.cwd(), "public")));
+/**
+ * Static files, with the two that must never be served stale marked as such.
+ *
+ * express.static defaults to "public, max-age=0", which is cacheable-but-
+ * immediately-stale. In practice browsers usually revalidate it, but it is
+ * permission rather than instruction, and a typed navigation is exactly where
+ * that liberty gets taken: entering the bare domain can be answered from the
+ * disk cache while arriving from another page revalidates and gets the
+ * current file. Same URL, two different builds, depending on how you got
+ * there.
+ *
+ * sw.js is the serious one. A service worker is only replaced when the
+ * browser fetches its script and sees different bytes, so a cached sw.js
+ * means the old worker keeps control indefinitely — and the old worker serves
+ * the old shell out of its own cache. That is how a device ends up pinned to
+ * a build it can never update itself out of.
+ *
+ * no-cache does not mean "don't store", it means "revalidate before use", so
+ * this still costs one conditional request answered with a 304. Nothing here
+ * is content-hashed, so there is no version in a filename to make a longer
+ * lifetime safe.
+ */
+app.use(express.static(path.join(process.cwd(), "public"), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith("sw.js") || filePath.endsWith(".html")) {
+      res.setHeader("Cache-Control", "no-cache");
+    }
+  },
+}));
 
 app.use("/api/auth", authRouter);
 app.use("/api/body", bodyRouter);
