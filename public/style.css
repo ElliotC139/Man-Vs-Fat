@@ -2243,6 +2243,12 @@ tr.has-tooltip:active {
 .plan-option-list li {
   margin-bottom: 2px;
 }
+.plan-tax-note {
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--muted);
+  text-align: center;
+}
 
 .plan-buy {
   width: auto;

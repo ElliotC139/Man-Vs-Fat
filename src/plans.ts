@@ -28,6 +28,26 @@
  * the ceiling is checked against measured spend, so if these figures are
  * wrong the ceiling still holds.
  *
+ * ── What actually arrives, after VAT and Stripe ───────────────────────────
+ *
+ * The prices below are **VAT-inclusive**: £4.99 is what a customer pays, and
+ * the VAT is carved out of it rather than added on top. That is the right way
+ * round for a consumer app — the price on the page is the price — but it means
+ * a sixth of the headline is never ours. Add Stripe's 1.5% + 20p on a domestic
+ * card and what's left is:
+ *
+ *                    price    VAT     fee    kept
+ *   Plus monthly     £4.99   £0.83   £0.27   £3.89
+ *   Pro monthly      £9.99   £1.66   £0.35   £7.98
+ *   Plus yearly     £44.91   £7.48   £0.87  £36.56
+ *   Pro yearly      £89.91  £14.98   £1.55  £73.38
+ *
+ * Every margin figure below is against the *kept* column, not the headline.
+ *
+ * There is no VAT registration yet, so today Stripe computes zero and the
+ * whole £4.99 arrives. The ceilings are set as though there were one, because
+ * crossing the threshold shouldn't require re-pricing the product.
+ *
  * ── Why the free tier can exist at all ────────────────────────────────────
  *
  * Because the app now answers from its own databases before it calls the
@@ -40,7 +60,7 @@
  *
  * Because a photo costs 1.7x a typed estimate, not ten times it. At Plus's
  * ten a day, an account that photographed every single meal would cost about
- * £1.92 a month against £3.73 net — comfortably profitable, and the ceiling
+ * £1.88 a month against £3.89 kept — comfortably profitable, and the ceiling
  * catches it even if that arithmetic is wrong. There is no cost argument for
  * holding it back.
  *
@@ -115,8 +135,8 @@ const POUND = 1_000_000;
  * in their head — unlike "17% off", which is the same number and says nothing.
  *
  * Safe on the arithmetic above because the ceilings are monthly: twelve months
- * of Plus can cost at most £24 to serve against £44.91 taken, and twelve of
- * Pro at most £54 against £89.91.
+ * of Plus can cost at most £24 to serve against £36.56 kept, and twelve of Pro
+ * at most £42 against £73.38.
  */
 const MONTHS_PAID_ON_A_YEAR = 9;
 
@@ -162,11 +182,17 @@ const FREE: Plan = {
 /**
  * Plus — the ordinary paid plan.
  *
- * £4.99 less Stripe's 1.5% + 20p is about £4.72 net. Ten estimates a day on
- * the full model is at most 31 × 10 × 0.62p ≈ £1.92, and the ceiling is £2.00.
- * Worst case margin is therefore about £2.72 a month, and the realistic margin
- * is far better than that, because most days are nowhere near ten and most
- * entries never reach the model at all.
+ * £4.99 less VAT and Stripe's fee keeps £3.89. Ten photo estimates a day on
+ * the full model is at most 31 × 10 × 0.608p ≈ £1.88, and the ceiling is
+ * £2.00. Worst case margin is therefore about £1.89 a month, and the realistic
+ * margin is far better than that, because most days are nowhere near ten and
+ * most entries never reach the model at all.
+ *
+ * The ceiling is a slightly larger share of Plus's revenue than of Pro's, and
+ * deliberately so: at ten a day the *allowance* already costs £1.88, so a
+ * tighter ceiling would start cutting people off inside what they were sold.
+ * A ceiling that bites before the allowance does isn't a safety net, it's a
+ * smaller plan sold as a bigger one.
  *
  * Undercuts MyFitnessPal Premium (about £15.99 a month) by a wide margin,
  * which is the point: the diary is the product, not the subscription.
@@ -195,16 +221,19 @@ const PLUS: Plan = {
 /**
  * Pro — for someone logging everything, every day.
  *
- * £9.99 less Stripe's fee is about £9.64 net. Forty photo estimates a day for
- * a long month comes to roughly £7.50-£7.75, so even the allowance's own worst
- * case now clears — but the ceiling still does the real work, because that
- * figure moves with the exchange rate and the ceiling doesn't.
+ * £9.99 less VAT and Stripe's fee keeps £7.98. Forty photo estimates a day for
+ * a long month comes to about £7.54 — nearly all of it — so here the allowance
+ * genuinely doesn't clear on its own, and the ceiling is doing the real work.
  *
- * At £4.50 it keeps about £5.14 whatever anyone does.
+ * At £3.50 it keeps at least £4.48 whatever anyone does: comfortably more than
+ * half, which is the line the tests hold it to.
  *
- * The allowance is deliberately generous relative to it: forty a day is
- * "effectively unlimited" for a real person, and the ceiling only bites for
- * someone using the app in a way no diary-keeper does.
+ * That ceiling used to be £4.50, which was fine when the whole £9.99 arrived.
+ * VAT takes a sixth of it, so the ceiling comes down with the revenue rather
+ * than the margin quietly halving. Nothing a real person does changes: £3.50
+ * is about 575 photo estimates in a month, roughly eighteen a day, and a diary
+ * doesn't have eighteen meals in it. The allowance stays at forty because
+ * "effectively unlimited" is what the plan is for.
  */
 const PRO: Plan = {
   id: "pro",
@@ -212,7 +241,7 @@ const PRO: Plan = {
   pricePence: 999,
   yearlyPence: yearlyFor(999),
   dailyEstimates: 40,
-  monthlyCostCapMicros: 4.5 * POUND,
+  monthlyCostCapMicros: 3.5 * POUND,
   model: config.ANTHROPIC_MODEL,
   ads: false,
   photo: true,

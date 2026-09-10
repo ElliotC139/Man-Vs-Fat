@@ -22,9 +22,19 @@ import { costMicros } from "../src/modelPricing";
  * nobody notices until the API bill arrives.
  */
 
-/** Stripe UK: 1.5% + 20p on a domestic card. */
+/**
+ * What actually arrives from a headline price.
+ *
+ * The prices are VAT-inclusive, so a sixth of £4.99 was never ours — it is
+ * carved out, not added on. Then Stripe takes 1.5% + 20p on a domestic card.
+ * Every margin assertion below is against this, not the headline, because the
+ * headline is the number that flatters and this is the number that pays the
+ * API bill.
+ */
 function netPence(pricePence: number): number {
-  return pricePence === 0 ? 0 : pricePence - Math.round(pricePence * 0.015) - 20;
+  if (pricePence === 0) return 0;
+  const exVat = Math.round(pricePence / 1.2);
+  return exVat - Math.round(pricePence * 0.015) - 20;
 }
 
 /** The dearest single estimate a plan can produce: a photo, on its model. */

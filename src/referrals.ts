@@ -18,7 +18,7 @@
  * someone genuinely deciding whether to pay.
  *
  * The exposure is one month of that plan's AI ceiling — at most £2 on Plus,
- * £4.50 on Pro — and it is bounded by the same meter every account runs
+ * £3.50 on Pro — and it is bounded by the same meter every account runs
  * against (src/entitlements.ts). There is no separate, un-ceilinged path.
  *
  * **The person who invited them** gets a month of their own plan's price back,
@@ -46,13 +46,29 @@
  *   Day 30  Bob's first real invoice, £4.99, is paid. Alice is credited
  *           £4.99, which sits on her customer until she subscribes.
  *
- * At that moment: £4.99 has arrived. Against it, Bob's free month cost at
- * most his plan's £2 ceiling, and Alice's free month will cost at most £2 of
- * hers. Worst case the pair clears about £1 in the first month — and from the
- * second month on, two accounts are paying £4.99 each where before there was
- * one free account earning pennies in ads. The acquisition cost is real,
- * bounded by ceilings the meter enforces, and paid for out of the payment
- * that triggered it.
+ * At that moment £4.99 has arrived, of which £3.89 is kept once VAT and
+ * Stripe's fee come out (see src/plans.ts for that table). Alice is on the
+ * free tier, so her ceiling is 20p, and Bob's free month cost at most his
+ * plan's £2. The pair clears about £1.69 even in the worst case, and from the
+ * second month on two accounts are paying £4.99 where before there was one
+ * free account earning pennies in ads.
+ *
+ * ── The one case that doesn't clear on paper ──────────────────────────────
+ *
+ * Change the trace so Alice is *already* on Plus. Her £4.99 credit now wipes
+ * her own next invoice instead of waiting, so that month takes £4.99 in total
+ * (£3.89 kept) against two £2 ceilings — about 11p short.
+ *
+ * Reaching it takes both accounts making roughly 330 photo estimates each in
+ * the same month: ten a day, every day, twice over. A diary has three or four
+ * meals in it. So this is the arithmetic being honest about its own edge
+ * rather than a case anyone will produce, and the month either side of it is
+ * two full subscriptions where there was one.
+ *
+ * What is guaranteed, unconditionally, is the cash half: the reward is capped
+ * at what the invoice actually paid (rewardPence below), so the scheme can
+ * never pay out more than it took in. The only variable is AI spend, and that
+ * is ceilinged per account by the same meter as everything else.
  *
  * The self-referral is the same arithmetic and lands in the same place:
  * inviting yourself means funding a second real subscription out of your own
