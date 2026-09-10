@@ -65,7 +65,19 @@ planRouter.get("/", requireAuth, async (req, res) => {
     // loaded for them rather than being loaded and hidden — which is the
     // difference between "no ads" meaning something and it being decoration.
     ads: plan.ads && adsConfigured
-      ? { client: config.ADSENSE_CLIENT_ID, slots: { today: config.ADSENSE_SLOT_TODAY } }
+      ? {
+          client: config.ADSENSE_CLIENT_ID,
+          // Each tab that carries an ad, falling back to the Today unit where
+          // no separate one is configured — see src/config.ts for why that is
+          // the default rather than requiring four. Settings is absent by
+          // design, not by omission.
+          slots: {
+            today: config.ADSENSE_SLOT_TODAY,
+            week: config.ADSENSE_SLOT_WEEK ?? config.ADSENSE_SLOT_TODAY,
+            food: config.ADSENSE_SLOT_FOOD ?? config.ADSENSE_SLOT_TODAY,
+            stats: config.ADSENSE_SLOT_STATS ?? config.ADSENSE_SLOT_TODAY,
+          },
+        }
       : null,
   });
 });
