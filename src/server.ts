@@ -125,6 +125,18 @@ app.use("/api/shares", sharesRouter);
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
 
 // A shared link is short and pasteable, and serves the ordinary app shell —
+/**
+ * The recovery page, at a URL short enough to type onto a phone.
+ *
+ * Served with no-store so it can never itself be the stale copy: the one page
+ * whose whole job is clearing a bad cache must not be answerable from one.
+ * public/sw.js also refuses to intercept it, for the same reason.
+ */
+app.get("/reset", (_req, res) => {
+  res.set("Cache-Control", "no-store, max-age=0");
+  res.sendFile(path.join(process.cwd(), "public", "reset.html"));
+});
+
 // the page reads the token out of its own URL and asks the API for the items.
 // Static files are matched above, so this can't shadow one.
 app.get("/s/:token", (_req, res) => {
