@@ -85,6 +85,28 @@
         say("Could not delete caches: " + error.message);
       }
 
+      // Caches and workers are only two of the three layers. The browser's
+      // own HTTP cache is the third, and nothing above touches it — so an
+      // index.html stored there before the no-cache headers shipped can still
+      // be served, pairing old markup with a freshly revalidated app.js. That
+      // mismatch is a white screen: the script reaches for an element the
+      // markup hasn't got and throws before rendering anything.
+      //
+      // fetch(..., { cache: "reload" }) is the programmatic equivalent of a
+      // hard refresh: it bypasses the HTTP cache AND writes the fresh
+      // response back into it, so the next ordinary navigation gets the new
+      // file too. Doing it here is what makes this page a complete fix rather
+      // than one that clears two layers out of three.
+      const shell = ["/", "/index.html", "/app.js", "/style.css", "/sw.js", "/manifest.webmanifest"];
+      let refreshed = 0;
+      await Promise.all(shell.map(async (url) => {
+        try {
+          const res = await fetch(url + "?cb=" + Date.now(), { cache: "reload" });
+          if (res.ok) refreshed += 1;
+        } catch { /* one asset failing must not stop the rest */ }
+      }));
+      say(`Files re-fetched from the server: ${refreshed}/${shell.length}`);
+
       // Deliberately NOT clearing localStorage: it holds the theme, the
       // onboarding flag and an unsent offline queue. None of that is what
       // goes stale, and throwing away a queued entry to fix a cache would be
