@@ -142,7 +142,28 @@ const TIMEZONE = "Europe/London";
 let server: http.Server;
 let baseUrl: string;
 
+/**
+ * Pin the clock to local midday for every test in this file.
+ *
+ * Fixtures here are built from Date.now() — "three hours ago", "yesterday" —
+ * which quietly carries the time of day the suite happens to run at. Near a
+ * local midnight that stops meaning what the test says: "three hours ago" is
+ * yesterday, so an entry meant to be today isn't, and the assertion fails on
+ * a clock rather than on the code.
+ *
+ * Only Date is faked, so timers, servers and network calls behave normally —
+ * and it is midday *of the real current day*, so everything stays relative
+ * and nothing here depends on a hardcoded date that would rot.
+ */
+function pinToLocalMidday(): void {
+  const now = new Date();
+  const midday = new Date(now);
+  midday.setHours(12, 0, 0, 0);
+  vi.useFakeTimers({ toFake: ["Date"], now: midday });
+}
+
 beforeEach(async () => {
+  pinToLocalMidday();
   state.users.length = 0;
   state.entries.length = 0;
   state.weighIns.length = 0;
@@ -167,6 +188,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   await new Promise((resolve) => server.close(resolve));
 });
 
