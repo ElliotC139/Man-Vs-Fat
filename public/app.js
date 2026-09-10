@@ -2088,17 +2088,41 @@ function renderSuggestions(suggestions) {
 //     hidden. That is the difference between "no ads" meaning something and
 //     it being decoration — nothing is fetched, nothing is measured, nothing
 //     of theirs goes anywhere.
-//   - One slot, at the bottom of Today, below everything they came for. An ad
+//   - One slot per tab, at the bottom, below everything they came for. An ad
 //     between someone and their own diary is the kind that makes people leave.
+//     Settings is the exception and stays clean: it is where you go to fix a
+//     problem or to pay to be rid of the ads, and an advert beside the button
+//     that removes adverts reads as contempt.
 //   - It says it is an ad, and it says how to be rid of it.
+//
+// The one thing that makes this harder than four copies of one slot: this is
+// a single page. All five screens live in one document, and four of them are
+// hidden at any moment. AdSense will not fill a unit inside a hidden element
+// — it measures zero width, gives up, and marks that unit done, so the ad
+// never appears even after you navigate to it. So a unit is pushed the first
+// time its screen is actually on screen, not when the page loads.
 
-const adTodayEl = document.getElementById("ad-today");
-const adTodayUnitEl = document.getElementById("ad-today-unit");
-const adRemoveBtn = document.getElementById("ad-remove");
+/**
+ * The tabs that carry an ad, keyed by the name navTo() uses.
+ *
+ * Settings is deliberately absent. Adding it is a one-line change and should
+ * not be made — see the note above.
+ */
+const AD_SLOTS = {
+  today: "today",
+  week: "week",
+  "food-library": "food",
+  stats: "stats",
+};
 
 /** Loaded once per page, and only if there is an ad to show. */
 let adScriptLoaded = false;
-let adRendered = false;
+
+/** The payload from /api/plan: null for a paying account, or no ads set up. */
+let adConfig = null;
+
+/** Tabs whose unit has been pushed. Pushing the same one twice is an error. */
+const adFilled = new Set();
 
 function loadAdScript(client) {
   if (adScriptLoaded) return;
@@ -2112,43 +2136,70 @@ function loadAdScript(client) {
 
 function renderAds(ads) {
   // No ads configured, or this account pays: nothing to show and nothing to
-  // fetch. The element stays empty rather than being filled and hidden.
-  if (!ads?.client || !ads.slots?.today) {
-    adTodayEl.hidden = true;
-    return;
+  // fetch. Every slot stays hidden and empty rather than filled and hidden.
+  adConfig = ads?.client && ads.slots ? ads : null;
+
+  for (const key of Object.values(AD_SLOTS)) {
+    const section = document.getElementById(`ad-${key}`);
+    if (section) section.hidden = !(adConfig && adConfig.slots[key]);
   }
 
-  adTodayEl.hidden = false;
-  loadAdScript(ads.client);
+  if (!adConfig) return;
+  loadAdScript(adConfig.client);
+  // Whichever tab is open right now. On first load that is Today; on a plan
+  // change it is wherever they happen to be standing.
+  fillAdFor(currentTab);
+}
 
-  // Rendered once. Asking adsbygoogle to fill the same slot twice is how you
-  // get its "already have ads in it" error, and re-rendering on every refresh
-  // of the Today screen would do exactly that.
-  if (adRendered) return;
-  adRendered = true;
+/**
+ * Puts the ad unit into one tab's slot, the first time that tab is shown.
+ *
+ * Everything here is a guard against one of two failure modes: pushing into
+ * an element AdSense can't measure, and pushing the same element twice — the
+ * second of which throws "All ins elements ... already have ads in them" and
+ * takes out every later push with it.
+ */
+function fillAdFor(tab) {
+  const key = AD_SLOTS[tab];
+  if (!key || !adConfig || adFilled.has(key)) return;
+
+  const slot = adConfig.slots[key];
+  const section = document.getElementById(`ad-${key}`);
+  const container = document.getElementById(`ad-${key}-unit`);
+  if (!slot || !section || !container) return;
+
+  // offsetParent is null for anything inside a hidden ancestor, which is the
+  // exact condition AdSense can't fill. Better to wait for the next visit
+  // than to spend the one push this unit gets on a screen nobody is looking
+  // at.
+  if (section.offsetParent === null) return;
+
+  adFilled.add(key);
 
   const unit = document.createElement("ins");
   unit.className = "adsbygoogle";
   unit.style.display = "block";
-  unit.dataset.adClient = ads.client;
-  unit.dataset.adSlot = ads.slots.today;
+  unit.dataset.adClient = adConfig.client;
+  unit.dataset.adSlot = slot;
   unit.dataset.adFormat = "auto";
   unit.dataset.fullWidthResponsive = "true";
-  adTodayUnitEl.appendChild(unit);
+  container.appendChild(unit);
 
   try {
     (window.adsbygoogle = window.adsbygoogle || []).push({});
   } catch {
     // Blocked, offline, or refused: leave the space empty rather than showing
     // a broken frame. Nobody needs to be told their ad blocker worked.
-    adTodayEl.hidden = true;
+    section.hidden = true;
   }
 }
 
-adRemoveBtn.addEventListener("click", () => {
-  navTo("settings");
-  planCardEl.scrollIntoView({ behavior: "smooth", block: "center" });
-});
+for (const button of document.querySelectorAll(".ad-remove")) {
+  button.addEventListener("click", () => {
+    navTo("settings");
+    planCardEl.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+}
 
 /** Sends someone to Stripe's hosted checkout. */
 async function startCheckout(planId, interval, button) {
@@ -6082,6 +6133,11 @@ function navTo(target) {
   const previous = currentTab;
   currentTab = target;
   tabBar.hidden = false;
+
+  // Now that this screen is actually visible, its ad unit can be measured.
+  // Nothing happens on a paid account, or on a tab already filled, or on
+  // Settings — see fillAdFor.
+  fillAdFor(target);
 
   // Each tab refreshes as you arrive. Cheap at this size, and it means food
   // logged on Today shows in the week the moment you switch rather than

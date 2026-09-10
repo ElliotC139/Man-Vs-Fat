@@ -41,7 +41,19 @@ const envSchema = z.object({
   // named rather than numbered so adding a second placement is a config key
   // rather than an index nobody can read.
   ADSENSE_CLIENT_ID: z.string().optional(),
+  // One per tab that carries an ad. Only TODAY has to be set: a screen with
+  // no slot of its own falls back to it, so a single ad unit puts an ad on
+  // every one of them, and creating four distinct units later is an upgrade
+  // for the reporting rather than a prerequisite for anything working.
+  //
+  // Settings has no slot and never will. It is where somebody goes to fix a
+  // problem or to pay to remove the ads, and an advert alongside the button
+  // that removes adverts is the kind of thing that makes people distrust an
+  // app rather than upgrade.
   ADSENSE_SLOT_TODAY: z.string().optional(),
+  ADSENSE_SLOT_WEEK: z.string().optional(),
+  ADSENSE_SLOT_FOOD: z.string().optional(),
+  ADSENSE_SLOT_STATS: z.string().optional(),
   // Who gets the admin screen, as a comma-separated list of usernames.
   //
   // Set, it is the whole answer: those accounts have admin on every sign-in
