@@ -18,7 +18,7 @@
  */
 
 // Bumped on every deploy that changes a shell file, so old caches are dropped.
-const VERSION = "v51";
+const VERSION = "v52";
 const SHELL_CACHE = `shell-${VERSION}`;
 const API_CACHE = `api-${VERSION}`;
 

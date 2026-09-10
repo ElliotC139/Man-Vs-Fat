@@ -75,3 +75,81 @@ function pluralize(unit: string): string {
   }
   return `${unit}s`;
 }
+
+/**
+ * Units that make sense for a particular food.
+ *
+ * The picker on the edit form has to offer something, and a fixed list is the
+ * wrong something: nobody measures pizza in millilitres or milk in slices. So
+ * the food's own name picks the list. "Two slices of pizza" and "200 ml of
+ * milk" are both one tap, and neither screen offers the other's units first.
+ *
+ * Keyword matching rather than a model call, deliberately. This runs on every
+ * keystroke in an offline-capable app, the estimator is metered by a spend
+ * ceiling, and a wrong guess here costs one scroll — the free-text option is
+ * always there. A list that is instant, free and offline beats one that is
+ * cleverer and sometimes absent.
+ */
+
+/** Offered for everything, because they apply to everything. */
+const UNIVERSAL_UNITS = ["g", "ml", "serving", "portion"];
+
+/**
+ * Words in a food's name and what people actually measure that food in.
+ *
+ * Ordered: the first pattern that matches leads the list, so "pizza" offers
+ * slices before grams. Word-boundary matched so "grape" doesn't match
+ * "grapefruit juice" and pull in the drinks units.
+ */
+const UNIT_HINTS: { pattern: RegExp; units: string[] }[] = [
+  { pattern: /\b(pizza|garlic bread)\b/, units: ["slice", "piece"] },
+  {
+    pattern: /\b(bread|toast|loaf|sourdough|baguette|bap|bagel|cake|pie|flan|quiche|lasagne|melon|pineapple)\b/,
+    units: ["slice", "piece"],
+  },
+  {
+    pattern: /\b(milk|juice|squash|smoothie|shake|coffee|tea|water|cola|lemonade|beer|lager|cider|wine|soup|broth|stock)\b/,
+    units: ["ml", "glass", "mug", "can", "bottle", "pint"],
+  },
+  { pattern: /\b(biscuit|cookie|cracker|oatcake|digestive)\b/, units: ["biscuit", "pack"] },
+  { pattern: /\b(chocolate|choc)\b/, units: ["square", "bar", "piece"] },
+  { pattern: /\b(crisps|chips|nuts|popcorn|raisins|seeds|granola|cereal|oats|porridge|rice|pasta|couscous|quinoa|flour|sugar)\b/, units: ["g", "handful", "bowl", "pack"] },
+  { pattern: /\b(banana|apple|orange|pear|peach|plum|kiwi|egg|sausage|burger|patty|fillet|steak|chop|wing|drumstick|scallop|prawn|meatball|samosa|spring roll|nugget)\b/, units: ["piece"] },
+  { pattern: /\b(oil|butter|ghee|mayo|mayonnaise|ketchup|sauce|dressing|syrup|honey|jam|peanut butter|hummus|cream|yoghurt|yogurt)\b/, units: ["tbsp", "tsp", "g"] },
+  { pattern: /\b(salad|veg|vegetables|greens|broccoli|spinach|beans|peas|lentils|chickpeas)\b/, units: ["g", "handful", "bowl", "portion"] },
+  { pattern: /\b(sandwich|wrap|roll|burrito|taco|pasty|pastie|croissant|muffin|scone|doughnut|donut|bar|pot|tub|packet|bag)\b/, units: ["piece", "pack"] },
+  { pattern: /\b(curry|stew|chilli|casserole|risotto|stir fry|stirfry)\b/, units: ["portion", "bowl", "g"] },
+];
+
+/** Nothing sensible can be derived from a blank or one-letter name. */
+const MIN_LABEL_LENGTH = 2;
+
+/**
+ * The unit list to offer for a food, best guesses first, de-duplicated.
+ *
+ * `current` is whatever the entry already carries; it always leads, because a
+ * picker that doesn't offer the value it is currently showing is a picker that
+ * silently changes it.
+ */
+export function suggestUnits(label: string | null | undefined, current?: string | null): string[] {
+  const out: string[] = [];
+  const push = (unit: string) => {
+    const clean = unit.trim().toLowerCase();
+    if (clean && !out.includes(clean)) out.push(clean);
+  };
+
+  // normalizeUnit drops "serving" (a bare multiplier says the same thing), so
+  // it can't be used to clean the current value here — the picker does have a
+  // "serving" row and has to be able to show it as selected.
+  if (typeof current === "string" && current.trim()) push(current);
+
+  const text = typeof label === "string" ? label.trim().toLowerCase() : "";
+  if (text.length >= MIN_LABEL_LENGTH) {
+    for (const hint of UNIT_HINTS) {
+      if (hint.pattern.test(text)) for (const unit of hint.units) push(unit);
+    }
+  }
+
+  for (const unit of UNIVERSAL_UNITS) push(unit);
+  return out;
+}

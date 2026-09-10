@@ -881,6 +881,35 @@ h2 {
   margin-bottom: 0;
 }
 
+/* ── The amount: a number and what one of them is ──────────────────────────
+   Two halves of one answer — "220" means nothing without "g" — so they read
+   as one control rather than two that happen to be adjacent. The number takes
+   the space it needs for three digits and the unit takes the rest, because a
+   unit name ("biscuit", "portion") is the longer of the two and the one that
+   gets truncated if it loses. */
+.amount-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) minmax(0, 1.1fr);
+  gap: 6px;
+  align-items: stretch;
+}
+.amount-row input,
+.amount-row select {
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 0;
+}
+/* Said only while the box is stating an amount rather than scaling one — see
+   `restating` in app.js. It is the visible half of that mode: without it the
+   quantity box silently behaves differently for one edit, which is a trap. */
+.amount-hint {
+  display: block;
+  margin: 5px 0 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--pitch-dark);
+}
+
 .entry-edit-actions {
   display: flex;
   justify-content: flex-end;
@@ -4978,6 +5007,20 @@ tr.has-tooltip:active {
 .confirm-serving input {
   flex: 0 0 96px;
   font-variant-numeric: tabular-nums;
+}
+/* The amount field is a grid of its own inside this flex row, so it needs a
+   basis to share the line with the caption, and the hint under it needs the
+   whole width rather than a third seat on the same line. */
+.confirm-serving {
+  flex-wrap: wrap;
+}
+.confirm-serving .amount-row {
+  flex: 1 1 190px;
+  min-width: 0;
+}
+.confirm-serving .amount-hint {
+  flex: 1 0 100%;
+  margin-top: 0;
 }
 .confirm-macros {
   display: grid;

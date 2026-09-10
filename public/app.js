@@ -1072,14 +1072,15 @@ function enterEditMode(row, entry) {
   kcalInput.min = "0";
   kcalInput.value = entry.kcal ?? "";
 
-  // Grams step by one and run into the hundreds; a count of slices steps by a
-  // quarter and rarely passes ten. Same box, different sensible increments.
-  const entryUnit = typeof entry.unitLabel === "string" ? entry.unitLabel.trim().toLowerCase() : "";
-  const byMass = MASS_UNITS.has(entryUnit);
+  // The unit is now editable, so it is state rather than a constant read once.
+  // Empty string means a bare multiplier, which is what unitLabel: null means
+  // on the server.
+  let currentUnit = typeof entry.unitLabel === "string" ? entry.unitLabel.trim().toLowerCase() : "";
   const qtyInput = document.createElement("input");
   qtyInput.type = "number";
-  qtyInput.min = byMass ? "1" : "0.25";
-  qtyInput.step = byMass ? "1" : "0.25";
+  // Grams step by one and run into the hundreds; a count of slices steps by a
+  // quarter and rarely passes ten. Same box, different sensible increments.
+  Object.assign(qtyInput, unitStep(currentUnit));
   qtyInput.value = entry.quantity ?? 1;
 
   /**
@@ -1124,8 +1125,43 @@ function enterEditMode(row, entry) {
     return Number.isFinite(value) && value > 0 ? value : 1;
   }
 
+  /**
+   * Changing the unit does not change any figure — it renames the number.
+   *
+   * That leaves one problem, and this flag is the answer to it. An entry
+   * logged as "1 sandwich, 466 kcal" that you now want to record as "220 g"
+   * is the same food described a second way: the calories must not move. But
+   * the quantity box scales, so typing 220 into it would ask for 220 sandwiches
+   * and bill you 102,520 kcal.
+   *
+   * So a unit change puts the box into stating-the-amount mode until you leave
+   * it: every keystroke redefines what one unit costs and the totals sit
+   * still. There is a caption under the field saying exactly that while it is
+   * happening, because a mode you cannot see is a trap.
+   */
+  let restating = false;
+
+  function figuresInBoxes() {
+    const kcal = kcalInput.value === "" ? null : Number(kcalInput.value);
+    const out = { kcal: Number.isFinite(kcal) ? kcal : null };
+    for (const key of ["protein", "carbs", "fat"]) {
+      const input = macroInputs[key];
+      const typed = !input || input.value === "" ? null : Number(input.value);
+      out[key] = typed !== null && Number.isFinite(typed) ? typed : null;
+    }
+    return out;
+  }
+
   qtyInput.addEventListener("input", () => {
     const qty = currentQty();
+    if (restating) {
+      // The totals stay exactly as typed; only the per-unit rate moves.
+      const totals = figuresInBoxes();
+      for (const key of ["kcal", "protein", "carbs", "fat"]) {
+        perUnit[key] = totals[key] === null ? null : totals[key] / qty;
+      }
+      return;
+    }
     if (perUnit.kcal !== null) kcalInput.value = Math.round(perUnit.kcal * qty);
     for (const key of ["protein", "carbs", "fat"]) {
       const input = macroInputs[key];
@@ -1200,6 +1236,9 @@ function enterEditMode(row, entry) {
       label: labelInput.value.trim(),
       kcal: kcalInput.value === "" ? null : Number(kcalInput.value),
       quantity: currentQty(),
+      // Null, not omitted: choosing "just a number" is a decision to clear the
+      // unit, and an omitted field would leave the old one in place.
+      unitLabel: currentUnit || null,
       date: dateInput.value,
     };
     for (const key of ["protein", "carbs", "fat"]) {
@@ -1235,12 +1274,48 @@ function enterEditMode(row, entry) {
   // alongside it — as siblings of a flex parent they were being laid out
   // beside the other fields instead of under them, which is what made the
   // form look like two unrelated halves.
+  // The amount: a number and the unit it is counted in, as one field. They are
+  // two halves of one answer — "220" means nothing without "g" — so they sit
+  // in one box rather than as two controls that happen to be adjacent.
+  const amountRow = document.createElement("div");
+  amountRow.className = "amount-row";
+  const unitSelect = buildUnitSelect(
+    // Read live rather than captured: renaming "sandwich" to "pizza" and then
+    // opening the picker should offer slices.
+    () => labelInput.value,
+    currentUnit,
+    (unit) => {
+      currentUnit = unit ?? "";
+      Object.assign(qtyInput, unitStep(currentUnit));
+      amountField.querySelector(".entry-edit-caption").textContent = amountCaption(currentUnit);
+      // Every figure stays exactly where it is; what moves is what the number
+      // beside them means. See the comment on `restating` above.
+      restating = true;
+      restateHint.hidden = false;
+      qtyInput.focus();
+      qtyInput.select();
+    },
+  );
+  amountRow.append(qtyInput, unitSelect);
+
+  const restateHint = document.createElement("p");
+  restateHint.className = "amount-hint";
+  restateHint.textContent = "Set how much this was — the calories stay as they are.";
+  restateHint.hidden = true;
+  // Leaving the box ends the restatement: from here a quantity change means
+  // "more of the same" again, and scales.
+  qtyInput.addEventListener("blur", () => {
+    restating = false;
+    restateHint.hidden = true;
+  });
+
+  const amountField = editField(amountCaption(currentUnit), amountRow);
+  amountField.appendChild(restateHint);
+
   editRow.append(
     editField("Item", labelInput, "full"),
     editField("Calories", kcalInput),
-    // "How many" is the wrong caption for grams, and the whole point of this
-    // column is that the person editing can tell what the number means.
-    editField(entryUnit ? `How much (${entryUnit})` : "How many", qtyInput),
+    amountField,
   );
   for (const key of ["protein", "carbs", "fat"]) {
     if (macroInputs[key]) editRow.appendChild(editField(`${MACRO_LABELS[key]} (g)`, macroInputs[key], "third"));
@@ -4150,22 +4225,70 @@ function renderConfirmItems() {
       const qtyRow = document.createElement("label");
       qtyRow.className = "confirm-serving";
       const qtyCaption = document.createElement("span");
-      qtyCaption.textContent = item.unitLabel ? `How many (${item.unitLabel})` : "How many";
+      let rowUnit = typeof item.unitLabel === "string" ? item.unitLabel.trim().toLowerCase() : "";
+      qtyCaption.textContent = amountCaption(rowUnit);
       const qtyInput = document.createElement("input");
       qtyInput.type = "number";
-      qtyInput.min = "0.25";
-      qtyInput.step = "0.25";
+      Object.assign(qtyInput, unitStep(rowUnit));
       qtyInput.value = item.quantity ?? 1;
+
+      // Re-logging the same food in a different unit is the whole reason the
+      // picker is here: 40g of oats one morning and 60g the next is one entry
+      // at two amounts. Same rule as the edit form — changing the unit holds
+      // every figure still and the next keystroke says what the amount was.
+      let restating = false;
+
       // Writes into the sibling fields rather than re-rendering, for the same
       // reason the grams box does: rebuilding replaces the input being typed
       // into, and iOS shuts the keyboard every time it happens.
       qtyInput.addEventListener("input", () => {
         const value = Number(qtyInput.value);
         item.quantity = Number.isFinite(value) && value > 0 ? value : 1;
-        applyConfirmQuantity(item);
+        if (restating) {
+          // Re-derive what one of them costs from the totals as they stand,
+          // rather than multiplying those totals by the new number.
+          if (item.base) {
+            for (const key of CONFIRM_FIGURES) {
+              item.base[key] = item[key] === null || item[key] === undefined
+                ? null
+                : item[key] / item.quantity;
+            }
+          }
+        } else {
+          applyConfirmQuantity(item);
+        }
         syncDerivedFields();
       });
-      qtyRow.append(qtyCaption, qtyInput);
+      qtyInput.addEventListener("blur", () => {
+        restating = false;
+        qtyHint.hidden = true;
+      });
+
+      const unitSelect = buildUnitSelect(
+        () => item.label,
+        rowUnit,
+        (unit) => {
+          rowUnit = unit ?? "";
+          item.unitLabel = unit;
+          Object.assign(qtyInput, unitStep(rowUnit));
+          qtyCaption.textContent = amountCaption(rowUnit);
+          restating = true;
+          qtyHint.hidden = false;
+          qtyInput.focus();
+          qtyInput.select();
+        },
+      );
+
+      const amountRow = document.createElement("div");
+      amountRow.className = "amount-row";
+      amountRow.append(qtyInput, unitSelect);
+
+      const qtyHint = document.createElement("span");
+      qtyHint.className = "amount-hint";
+      qtyHint.textContent = "Set how much this was — the calories stay as they are.";
+      qtyHint.hidden = true;
+
+      qtyRow.append(qtyCaption, amountRow, qtyHint);
       row.appendChild(qtyRow);
     }
 
@@ -9681,6 +9804,142 @@ function describeAmount(quantity, unitLabel) {
   const amount = formatQuantity(quantity);
   if (MASS_UNITS.has(unit)) return `${amount}${unit === "fl oz" ? " " : ""}${unit}`;
   return `${amount} ${quantity === 1 ? unit : pluralizeUnit(unit)}`;
+}
+
+// ── Which units to offer ───────────────────────────────────────────────────
+//
+// Mirrors suggestUnits in src/servingUnit.ts, which carries the reasoning and
+// is covered by tests/servingUnit.test.ts. Kept in step by hand, as the two
+// halves of describeAmount above already are: there is no bundler here, and a
+// build step to share nine lines would cost more than it saves.
+//
+// The short version: a fixed list is the wrong list, because nobody measures
+// pizza in millilitres. The food's own name picks the units, so slices lead
+// for pizza and millilitres for milk. Keyword matching rather than a model
+// call — this has to be instant, free, and work with no signal.
+
+const UNIVERSAL_UNITS = ["g", "ml", "serving", "portion"];
+
+const UNIT_HINTS = [
+  { pattern: /\b(pizza|garlic bread)\b/, units: ["slice", "piece"] },
+  {
+    pattern: /\b(bread|toast|loaf|sourdough|baguette|bap|bagel|cake|pie|flan|quiche|lasagne|melon|pineapple)\b/,
+    units: ["slice", "piece"],
+  },
+  {
+    pattern: /\b(milk|juice|squash|smoothie|shake|coffee|tea|water|cola|lemonade|beer|lager|cider|wine|soup|broth|stock)\b/,
+    units: ["ml", "glass", "mug", "can", "bottle", "pint"],
+  },
+  { pattern: /\b(biscuit|cookie|cracker|oatcake|digestive)\b/, units: ["biscuit", "pack"] },
+  { pattern: /\b(chocolate|choc)\b/, units: ["square", "bar", "piece"] },
+  { pattern: /\b(crisps|chips|nuts|popcorn|raisins|seeds|granola|cereal|oats|porridge|rice|pasta|couscous|quinoa|flour|sugar)\b/, units: ["g", "handful", "bowl", "pack"] },
+  { pattern: /\b(banana|apple|orange|pear|peach|plum|kiwi|egg|sausage|burger|patty|fillet|steak|chop|wing|drumstick|scallop|prawn|meatball|samosa|spring roll|nugget)\b/, units: ["piece"] },
+  { pattern: /\b(oil|butter|ghee|mayo|mayonnaise|ketchup|sauce|dressing|syrup|honey|jam|peanut butter|hummus|cream|yoghurt|yogurt)\b/, units: ["tbsp", "tsp", "g"] },
+  { pattern: /\b(salad|veg|vegetables|greens|broccoli|spinach|beans|peas|lentils|chickpeas)\b/, units: ["g", "handful", "bowl", "portion"] },
+  { pattern: /\b(sandwich|wrap|roll|burrito|taco|pasty|pastie|croissant|muffin|scone|doughnut|donut|bar|pot|tub|packet|bag)\b/, units: ["piece", "pack"] },
+  { pattern: /\b(curry|stew|chilli|casserole|risotto|stir fry|stirfry)\b/, units: ["portion", "bowl", "g"] },
+];
+
+function suggestUnits(label, current) {
+  const out = [];
+  const push = (unit) => {
+    const clean = String(unit ?? "").trim().toLowerCase();
+    if (clean && !out.includes(clean)) out.push(clean);
+  };
+  // Whatever the entry already carries leads the list. A picker with no option
+  // matching its own value silently changes that value the moment it renders.
+  if (typeof current === "string" && current.trim()) push(current);
+  const text = typeof label === "string" ? label.trim().toLowerCase() : "";
+  if (text.length >= 2) {
+    for (const hint of UNIT_HINTS) {
+      if (hint.pattern.test(text)) for (const unit of hint.units) push(unit);
+    }
+  }
+  for (const unit of UNIVERSAL_UNITS) push(unit);
+  return out;
+}
+
+/** How the quantity box should behave for a given unit. */
+function unitStep(unit) {
+  // Grams run into the hundreds and step by one; a count of slices rarely
+  // passes ten and wants quarters.
+  return MASS_UNITS.has(unit) ? { min: "1", step: "1" } : { min: "0.25", step: "0.25" };
+}
+
+/** The caption above the quantity box, which has to say what the number means. */
+function amountCaption(unit) {
+  if (!unit) return "How many";
+  return MASS_UNITS.has(unit) ? `How much (${unit})` : `How many (${unit})`;
+}
+
+/**
+ * The unit picker: a select of plausible units for this food, plus a way to
+ * type one that isn't there.
+ *
+ * Free text is not a fallback here, it is the point. The units this app reads
+ * out of food databases are written in their own words — Open Food Facts says
+ * "2 biscuits (30 g)", Nutritionix says "1 medium" — and Entry.unitLabel is a
+ * free label precisely so none of that has to be forced into an enum. A picker
+ * that could only ever set one of eleven words would be the enum arriving by
+ * the back door.
+ *
+ * `onChange` receives the new unit, or null for a bare multiplier.
+ */
+const CUSTOM_UNIT_VALUE = "__custom__";
+
+function buildUnitSelect(label, current, onChange) {
+  const select = document.createElement("select");
+  select.className = "unit-select";
+  select.setAttribute("aria-label", "Unit");
+
+  let custom = null;
+
+  function render(selected) {
+    select.innerHTML = "";
+    const none = document.createElement("option");
+    none.value = "";
+    // "×" is what an entry with no unit already reads as on its row, so the
+    // option that produces that reads the same.
+    none.textContent = "×  (just a number)";
+    select.appendChild(none);
+
+    for (const unit of suggestUnits(label(), selected ?? custom)) {
+      const opt = document.createElement("option");
+      opt.value = unit;
+      opt.textContent = unit;
+      select.appendChild(opt);
+    }
+
+    const other = document.createElement("option");
+    other.value = CUSTOM_UNIT_VALUE;
+    other.textContent = "Something else…";
+    select.appendChild(other);
+
+    select.value = selected ?? "";
+  }
+
+  render(typeof current === "string" && current.trim() ? current.trim().toLowerCase() : null);
+
+  select.addEventListener("change", () => {
+    if (select.value === CUSTOM_UNIT_VALUE) {
+      const typed = window.prompt("What is one of these? (e.g. wedge, scoop, jar)", custom ?? "");
+      const clean = typeof typed === "string" ? typed.trim().toLowerCase().slice(0, 20) : "";
+      // Cancelled or blank leaves the unit exactly as it was, rather than
+      // quietly clearing it because a dialog was dismissed.
+      if (!clean) {
+        render(custom);
+        return;
+      }
+      custom = clean;
+      render(clean);
+      onChange(clean);
+      return;
+    }
+    custom = select.value || null;
+    onChange(select.value || null);
+  });
+
+  return select;
 }
 
 

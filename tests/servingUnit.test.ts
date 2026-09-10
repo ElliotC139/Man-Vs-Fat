@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeAmount, formatQuantity, normalizeUnit } from "../src/servingUnit";
+import { describeAmount, formatQuantity, normalizeUnit, suggestUnits } from "../src/servingUnit";
 
 describe("cleaning a unit off a food database", () => {
   it("lowercases and trims what the source said", () => {
@@ -75,5 +75,61 @@ describe("formatting the number itself", () => {
     expect(formatQuantity(2)).toBe("2");
     expect(formatQuantity(1.5)).toBe("1.5");
     expect(formatQuantity(1.5000001)).toBe("1.5");
+  });
+});
+
+describe("which units to offer for a food", () => {
+  it("leads with the units that food is actually measured in", () => {
+    expect(suggestUnits("Pepperoni pizza")[0]).toBe("slice");
+    expect(suggestUnits("Semi-skimmed milk")[0]).toBe("ml");
+    expect(suggestUnits("Chocolate digestive")[0]).toBe("biscuit");
+    expect(suggestUnits("Olive oil")[0]).toBe("tbsp");
+  });
+
+  it("always offers the universal units, whatever the food", () => {
+    for (const label of ["Pepperoni pizza", "Something nobody has a word for", ""]) {
+      for (const universal of ["g", "ml", "serving", "portion"]) {
+        expect(suggestUnits(label)).toContain(universal);
+      }
+    }
+  });
+
+  it("puts the unit the entry already has first, so the picker can show it", () => {
+    // Without this the select has no option matching its own value, and
+    // silently moves the entry to a different unit the moment it renders.
+    expect(suggestUnits("Pepperoni pizza", "wedge")[0]).toBe("wedge");
+    expect(suggestUnits("Pepperoni pizza", "wedge")).toContain("slice");
+  });
+
+  it("never repeats a unit, however many ways it was reached", () => {
+    // "g" is both a hint for oats and a universal.
+    const units = suggestUnits("Porridge oats", "g");
+    expect(units.filter((unit) => unit === "g")).toHaveLength(1);
+    expect(new Set(units).size).toBe(units.length);
+  });
+
+  it("offers a serving even though normalizeUnit discards one", () => {
+    // The two disagree on purpose. normalizeUnit is about how a saved row
+    // reads, and "1 serving" says nothing "x1" didn't. The picker still has to
+    // list it, because choosing it is how you go back to a bare multiplier.
+    expect(suggestUnits("Beef stew")).toContain("serving");
+    expect(normalizeUnit("serving")).toBeNull();
+  });
+
+  it("matches whole words, so one food doesn't borrow another's units", () => {
+    // "bap" inside "baps" is a bap; "bap" inside "kebab" is not.
+    expect(suggestUnits("Doner kebab")).not.toContain("slice");
+    expect(suggestUnits("Bacon bap")).toContain("slice");
+  });
+
+  it("ignores case and surrounding space, in the food and in the unit", () => {
+    expect(suggestUnits("  PEPPERONI PIZZA  ")[0]).toBe("slice");
+    expect(suggestUnits("Pizza", " SLICE ")[0]).toBe("slice");
+  });
+
+  it("still offers something usable when the label says nothing", () => {
+    for (const label of [null, undefined, "", " ", "x"]) {
+      expect(suggestUnits(label)).toEqual(["g", "ml", "serving", "portion"]);
+    }
   });
 });
