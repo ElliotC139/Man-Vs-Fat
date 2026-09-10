@@ -2621,9 +2621,184 @@ async function handleGoogleCredential(response) {
 }
 
 function loadSettingsScreen() {
+  buildSettingsNav();
   refreshPushUi();
   loadRecoveryOptions();
   loadDiagnostics();
+}
+
+/* ── Settings navigation ────────────────────────────────────────────────────
+ *
+ * Settings was one column of thirteen identical collapsed rows. Every item
+ * looked the same weight, so "units" and "delete my account" had equal
+ * prominence and finding anything meant reading all of it. Widening the
+ * column on a desktop made that worse, not better: the same list, further
+ * apart.
+ *
+ * So it becomes panes. One group at a time, chosen from a list — the shape
+ * every settings screen worth using has, on both a phone and a laptop.
+ *
+ * Built by reading the markup rather than rewriting it. The groups are
+ * already there as <h2 class="settings-group"> markers with their sections
+ * following; this walks that structure and wraps each run in a pane. Nothing
+ * is re-parented out of the form, no ids move, and every input stays in the
+ * document — hidden panes are display:none, which still submits and still
+ * answers getElementById, so saving and every existing handler are untouched.
+ *
+ * Adding a settings section later needs no change here: put it after the
+ * heading it belongs under and it joins that pane.
+ */
+const SETTINGS_FIRST_GROUP = "Your plan";
+
+/**
+ * A shape per section, keyed by the heading already in the markup.
+ *
+ * Matched on the group's own name rather than an index, so reordering the
+ * sections in index.html reorders the list here without breaking the pairing.
+ * A group with no entry gets the fallback, which is a legible outcome rather
+ * than a missing box.
+ */
+const SETTINGS_ICONS = {
+  "Your plan":
+    '<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/>',
+  "Your week":
+    '<rect x="3" y="4.5" width="18" height="17" rx="2.5"/><path d="M16 2.5v4M8 2.5v4M3 10h18"/>',
+  "You and your targets":
+    '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
+  "The app":
+    '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/>',
+  "Your data":
+    '<ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6"/><path d="M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3"/>',
+  Account:
+    '<circle cx="12" cy="8" r="3.8"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>',
+};
+
+const SETTINGS_ICON_FALLBACK = '<circle cx="12" cy="12" r="8.5"/>';
+
+function buildSettingsNav() {
+  const card = document.getElementById("settings-card");
+  if (!card || card.dataset.paned === "1") return;
+
+  // The always-on tail: saving, signing out and the privacy link belong to
+  // Settings as a whole rather than to any one group, so they stay put below
+  // whichever pane is open.
+  const tailIds = new Set(["settings-save", "settings-error", "logout-btn"]);
+  const isTail = (el) => tailIds.has(el.id) || el.classList.contains("settings-legal");
+
+  const children = [...card.children];
+  const groups = [];
+  let current = { name: SETTINGS_FIRST_GROUP, items: [] };
+  const tail = [];
+
+  for (const el of children) {
+    if (isTail(el)) {
+      tail.push(el);
+      continue;
+    }
+    if (el.tagName === "H2" && el.classList.contains("settings-group")) {
+      if (current.items.length > 0) groups.push(current);
+      current = { name: el.textContent.trim(), items: [] };
+      // The heading becomes the pane's name and the nav's label, so the
+      // original has to go — left in place it stacks up as a list of orphan
+      // labels above the navigation that replaced it.
+      el.remove();
+      continue;
+    }
+    current.items.push(el);
+  }
+  if (current.items.length > 0) groups.push(current);
+  if (groups.length < 2) return; // nothing to navigate
+
+  const wrap = document.createElement("div");
+  wrap.className = "settings-panes";
+
+  const nav = document.createElement("nav");
+  nav.className = "settings-nav";
+  nav.setAttribute("aria-label", "Settings sections");
+
+  const paneHost = document.createElement("div");
+  paneHost.className = "settings-pane-host";
+
+  for (const [index, group] of groups.entries()) {
+    const pane = document.createElement("section");
+    pane.className = "settings-pane";
+    pane.dataset.pane = String(index);
+    pane.setAttribute("aria-label", group.name);
+
+    // A heading inside the pane as well as in the nav: on a phone the nav is
+    // not on screen once a pane is open, and a pane with no title is a screen
+    // you have arrived at without being told where you are.
+    const head = document.createElement("div");
+    head.className = "settings-pane-head";
+    const back = document.createElement("button");
+    back.type = "button";
+    back.className = "settings-pane-back";
+    back.setAttribute("aria-label", "Back to all settings");
+    back.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
+    back.addEventListener("click", () => selectSettingsPane(null));
+    const title = document.createElement("h2");
+    title.className = "settings-pane-title";
+    title.textContent = group.name;
+    head.append(back, title);
+    pane.appendChild(head);
+
+    for (const el of group.items) pane.appendChild(el);
+    paneHost.appendChild(pane);
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "settings-nav-item";
+    button.dataset.pane = String(index);
+    button.insertAdjacentHTML(
+      "afterbegin",
+      '<span class="settings-nav-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'
+        + (SETTINGS_ICONS[group.name] ?? SETTINGS_ICON_FALLBACK)
+        + "</svg></span>",
+    );
+    const label = document.createElement("span");
+    label.textContent = group.name;
+    button.append(label);
+    button.insertAdjacentHTML(
+      "beforeend",
+      '<svg class="icon settings-nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>',
+    );
+    button.setAttribute("aria-label", group.name);
+    button.addEventListener("click", () => selectSettingsPane(index));
+    nav.appendChild(button);
+  }
+
+  // Saving, signing out and the privacy link go inside the grid rather than
+  // under it, so they line up with the pane instead of running the full width
+  // of the screen beneath a 244px list.
+  const tailBox = document.createElement("div");
+  tailBox.className = "settings-tail";
+  for (const el of tail) tailBox.appendChild(el);
+
+  wrap.append(nav, paneHost, tailBox);
+  card.appendChild(wrap);
+  card.dataset.paned = "1";
+
+  // Desktop opens on the first group, because both columns are visible and an
+  // empty right-hand side is just a hole. A phone opens on the list, because
+  // the list is the thing you came to choose from.
+  selectSettingsPane(window.matchMedia("(min-width: 1024px)").matches ? 0 : null);
+}
+
+/** Show one settings group, or null for the list of them. */
+function selectSettingsPane(index) {
+  const card = document.getElementById("settings-card");
+  if (!card) return;
+  const wrap = card.querySelector(".settings-panes");
+  if (!wrap) return;
+
+  wrap.dataset.open = index === null ? "" : String(index);
+  for (const pane of wrap.querySelectorAll(".settings-pane")) {
+    pane.hidden = pane.dataset.pane !== String(index);
+  }
+  for (const item of wrap.querySelectorAll(".settings-nav-item")) {
+    item.classList.toggle("settings-nav-item--active", item.dataset.pane === String(index));
+    item.setAttribute("aria-current", item.dataset.pane === String(index) ? "true" : "false");
+  }
 }
 
 
