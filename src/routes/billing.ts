@@ -13,6 +13,7 @@ import type Stripe from "stripe";
 import { prisma } from "../db";
 import { config, stripeConfigured } from "../config";
 import { requireAuth } from "../auth";
+import { canSendMail, sendMail } from "../mailer";
 import { recordError } from "../errorLog";
 import { planFor } from "../plans";
 import { REFERRAL_REWARD_CAP, REFERRAL_TRIAL_DAYS, rewardPence } from "../referrals";
@@ -38,6 +39,15 @@ export const billingRouter = Router();
  * cookie parser with it. See src/server.ts.
  */
 export const billingWebhookRouter = Router();
+
+/**
+ * The one currency referral rewards are denominated in.
+ *
+ * src/plans.ts states every price in pence, and the reward is capped against
+ * the payment that funds it, so both sides of that comparison have to be the
+ * same money. See applyReferralReward.
+ */
+const REWARD_CURRENCY = "gbp";
 
 /** What the settings screen needs to know before it offers anything. */
 billingRouter.get("/status", requireAuth, async (req, res) => {
@@ -236,12 +246,84 @@ async function applyEvent(event: Stripe.Event): Promise<void> {
     case "invoice.payment_succeeded":
       await applyReferralReward(event.data.object as Stripe.Invoice);
       return;
+    case "invoice.payment_failed":
+      await warnAboutFailedPayment(event.data.object as Stripe.Invoice);
+      return;
     default:
       return;
   }
 }
 
-async function applySubscription(subscription: Stripe.Subscription): Promise<void> {
+/**
+ * The subscription as Stripe holds it *now*, not as this event describes it.
+ *
+ * Webhook delivery is not ordered. A `subscription.updated` that was delayed
+ * in the network can arrive after the `subscription.deleted` that followed
+ * it, and acting on each payload in the order they turn up would then
+ * resurrect a cancelled plan — the app would hand back access to somebody who
+ * had cancelled, and nothing would ever correct it because no further event
+ * is coming.
+ *
+ * Re-reading makes the handler idempotent and order-independent: whichever
+ * event arrives, and however late, the answer written is the current truth.
+ * The event becomes a nudge to go and look rather than the thing believed.
+ *
+ * A failed read throws, which answers the webhook with a 500 and brings
+ * Stripe back — better than applying a payload that may be stale.
+ */
+async function currentSubscription(subscription: Stripe.Subscription): Promise<Stripe.Subscription> {
+  const client = stripe();
+  if (!client) return subscription;
+  return client.subscriptions.retrieve(subscription.id);
+}
+
+/**
+ * Tells someone their payment didn't go through, once.
+ *
+ * Without this a dead card is discovered only when Stripe finally gives up
+ * days later and the plan lapses — by which point the app has silently
+ * downgraded somebody who would have fixed it in thirty seconds had anyone
+ * mentioned it.
+ *
+ * Only on the first attempt. Stripe retries a failed invoice several times
+ * over about two weeks and every retry fires this event; mailing on each one
+ * turns a helpful nudge into a fortnight of nagging about the same card.
+ *
+ * Never throws. A subscription's billing state must not depend on whether an
+ * email could be sent, and this is the courtesy rather than the mechanism —
+ * Stripe's own dunning still runs either way.
+ */
+async function warnAboutFailedPayment(invoice: Stripe.Invoice): Promise<void> {
+  try {
+    if ((invoice.attempt_count ?? 1) > 1) return;
+    if (!canSendMail()) return;
+
+    const customerId = typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id;
+    if (!customerId) return;
+
+    const user = await prisma.user.findFirst({
+      where: { stripeCustomerId: customerId },
+      select: { username: true, email: true },
+    });
+    // No address on file is normal: an account can be created with a username
+    // and password alone.
+    if (!user?.email) return;
+
+    await sendMail({
+      to: user.email,
+      subject: "Your QuicKcals payment didn't go through",
+      text: `Hello ${user.username},\n\nThe card on your QuicKcals subscription was declined, so this month's payment hasn't gone through.\n\nNothing has changed yet — your plan keeps working while your bank and Stripe retry over the next few days. If it keeps failing the plan will drop back to Free, and your diary stays exactly as it is either way.\n\nTo update your card, open QuicKcals, go to Settings, and choose "Manage subscription".\n\n${config.APP_BASE_URL}\n`,
+    });
+  } catch (error) {
+    void recordError("billing:payment-failed-notice", error);
+  }
+}
+
+async function applySubscription(event: Stripe.Subscription): Promise<void> {
+  // Read it back from Stripe rather than trusting the payload — see
+  // currentSubscription for why the order events arrive in cannot be relied on.
+  const subscription = await currentSubscription(event);
+
   const customerId = typeof subscription.customer === "string"
     ? subscription.customer
     : subscription.customer?.id;
@@ -307,6 +389,24 @@ async function applyReferralReward(invoice: Stripe.Invoice): Promise<void> {
   const paid = invoice.amount_paid ?? 0;
   if (paid <= 0) return;
 
+  // amount_paid is in the invoice's own currency and smallest unit, and it is
+  // compared below against plan prices in GBP pence. That comparison is what
+  // caps the reward at the payment funding it, so a currency mismatch would
+  // not merely mis-state a figure — it would break the guarantee the whole
+  // scheme rests on. 5,000 JPY against a 499p cap reads as "plenty", and the
+  // credit would be issued in a currency the customer's balance is not in.
+  //
+  // Every price this deployment sells is in GBP, so this refuses something
+  // that cannot currently happen. It is here so that adding a second currency
+  // is a decision somebody makes on purpose rather than a silent change to
+  // what a referral pays.
+  if (invoice.currency && invoice.currency.toLowerCase() !== REWARD_CURRENCY) {
+    console.warn(
+      `Referral reward skipped: invoice ${invoice.id} is in ${invoice.currency}, not ${REWARD_CURRENCY}.`,
+    );
+    return;
+  }
+
   const customerId = typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id;
   if (!customerId) return;
 
@@ -344,7 +444,7 @@ async function applyReferralReward(invoice: Stripe.Invoice): Promise<void> {
   if (claimed.count !== 1) return;
 
   try {
-    await creditReferrer(referrer, pence, invoice.currency ?? "gbp");
+    await creditReferrer(referrer, pence, REWARD_CURRENCY);
   } catch (error) {
     // Hand the claim back so the retry can try again, then let the caller
     // answer 500 so there is a retry to hand it to.
