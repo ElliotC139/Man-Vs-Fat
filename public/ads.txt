@@ -1,0 +1,17 @@
+# Authorised digital sellers for quickcals.com.
+#
+# The IAB standard that says which ad networks are allowed to sell inventory
+# on this domain. Anything not listed here is, by definition, someone selling
+# ad space they don't have. AdSense also reads it to confirm the site belongs
+# to this publisher account, which is why it is the verification method used
+# here rather than the JavaScript snippet: an ads.txt file loads no third-party
+# script for anybody, while the snippet would put Google's ad JS on every page
+# — including the ones seen by people who have paid not to have ads.
+#
+# The id below is the publisher id without its "ca-" prefix, which is how this
+# file wants it. The trailing value is Google's own certification authority id
+# and is the same for every AdSense publisher.
+#
+# See src/plans.ts for why the free tier is funded this way at all.
+
+google.com, pub-4777766850308562, DIRECT, f08c47fec0942fa0
