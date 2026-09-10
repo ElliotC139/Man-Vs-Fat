@@ -27,6 +27,10 @@
   --floodlight: #ffc53d;
   --gold: var(--amber);
 
+  /* The desktop navigation rail. A token because body padding, the nav's
+     own width and any future overlay all have to agree on it. */
+  --rail: 232px;
+
   --radius-sm: 10px;
   --radius-md: 14px;
   --radius-lg: 22px;
@@ -1895,12 +1899,47 @@ tr.has-tooltip:active {
   }
   #settings-card > .muted,
   #settings-card > .settings-group,
+  /* The plan card is a three-way comparison and the invite card is a single
+     offer with a link to copy. Both were being squeezed into half the width
+     while the column beside them held one collapsed row and a lot of nothing
+     — which is what "squashed" looked like on this screen. */
+  #settings-card > #plan-card,
+  #settings-card > #referral-card,
   #settings-card > #settings-save,
   #settings-card > #settings-error,
   #settings-card > #logout-btn,
   #settings-card > .settings-section--danger,
   #settings-card > .settings-legal {
     grid-column: 1 / -1;
+  }
+
+  /* Three plans across, rather than a stack of full-width rows with the
+     price marooned a thousand pixels from the name it belongs to. Side by
+     side is also the only arrangement in which "what does the next one up
+     actually give me" is answerable at a glance, which is the entire job of
+     this card. */
+  #plan-card .plan-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 12px;
+    align-items: stretch;
+  }
+  #plan-card .plan-options > .plan-manage,
+  #plan-card .plan-options > .plan-interval,
+  #plan-card .plan-options > .plan-tax-note {
+    grid-column: 1 / -1;
+  }
+  #plan-card .plan-option {
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    gap: 6px;
+  }
+  /* Pushed to the bottom of its column so the three buttons line up even
+     when one plan lists two more features than another. */
+  #plan-card .plan-option .plan-buy {
+    margin-top: auto;
+    width: 100%;
   }
 
   /* Food library and food diary: same trick — the row/group containers
@@ -4099,6 +4138,8 @@ tr.has-tooltip:active {
   outline-offset: -2px;
 }
 
+
+
 /* Every screen has to clear the bar. Applied to the scrolling containers
    rather than to body, so a header still sits flush at the top. */
 #today-screen main,
@@ -4129,6 +4170,178 @@ tr.has-tooltip:active {
     right: auto;
     transform: translateX(-50%);
     width: min(560px, calc(100% - 32px));
+  }
+}
+
+/* ── The desktop shell ──────────────────────────────────────────────────
+   Above 1024px the app stops being a phone screen shown on a monitor.
+   The change that does most of that work is the navigation: a bar pinned
+   to the bottom of a 27-inch display is the single clearest tell that
+   something was designed for a thumb and then widened.
+
+   It is the same <nav> and the same five buttons, restyled — no second
+   markup, no JavaScript, and nothing at all changes below this width. One
+   navigation to keep working, not two.
+
+   Everything here is scoped to .tab-bar and to body/main, so a screen added
+   later inherits the shell without knowing about it. */
+@media (min-width: 1024px) {
+  /* Only while the rail is actually on screen — app.js sets this class from
+     the same place it shows the nav. Without the guard the sign-in card sits
+     off-centre behind a gutter left by a rail that isn't there. */
+  body.has-rail {
+    padding-left: var(--rail);
+  }
+
+  .tab-bar {
+    /* Undone one by one, because the 720px rule above centres this into a
+       floating pill and every property it sets has to be put back by name.
+       Relying on order alone is what put the rail in the middle of the
+       screen the first time. */
+    top: 0;
+    left: 0;
+    right: auto;
+    bottom: 0;
+    transform: none;
+    border-radius: 0;
+    width: var(--rail);
+    grid-template-columns: 1fr;
+    grid-auto-rows: max-content;
+    align-content: start;
+    gap: 4px;
+    /* Room at the top for the mark and wordmark drawn in by ::before. */
+    padding: 92px 12px 16px;
+    box-shadow: 4px 0 20px rgba(11, 58, 34, 0.14);
+  }
+
+  /* The brand, without adding an element for it. The nav is the only thing
+     on screen that is always present, so it is the honest place for it. */
+  .tab-bar::before {
+    content: "QuicKcals";
+    position: absolute;
+    top: 22px;
+    left: 20px;
+    right: 12px;
+    padding-left: 44px;
+    line-height: 34px;
+    font-family: var(--font-brand);
+    font-weight: 800;
+    font-size: 1.15rem;
+    letter-spacing: -0.02em;
+    color: #fff;
+    background: url("/icons/icon-192.png") left center / 34px 34px no-repeat;
+  }
+
+  /* Rows, not tiles: icon then label, reading left to right like every
+     other list on a desktop. */
+  .tab-bar .tab-btn {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 11px 14px;
+    border-radius: var(--radius-md);
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+  .tab-bar .tab-btn span {
+    font-size: 0.95rem;
+  }
+  .tab-bar .tab-btn .icon {
+    width: 20px;
+    height: 20px;
+  }
+  .tab-bar .tab-btn:hover {
+    background: rgba(255, 255, 255, 0.09);
+    color: #fff;
+  }
+  .tab-bar .tab-btn--active {
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  /* The selection bar is centred on the window at 720px. With a rail taking
+     the left 232px, "centred" has to mean centred on what is left of it. */
+  .select-bar {
+    left: calc(50% + var(--rail) / 2);
+  }
+
+  /* Every screen carries bottom padding to clear a bar that is no longer
+     down there. */
+  #today-screen main,
+  #app-shell main,
+  #stats-screen main,
+  #settings-screen main,
+  #food-library-screen main,
+  #review-screen main {
+    padding-bottom: 40px;
+  }
+
+  /* The brand is on the rail now. Repeating the mark in the header of every
+     screen is the app telling you its own name twice on one view. */
+  .banner h1 .brand-mark {
+    display: none;
+  }
+  /* Today's header is the wordmark rather than a page title, which beside a
+     rail that already says QuicKcals leaves the date as the only thing worth
+     reading up there — so let it be. */
+  #today-screen .banner h1 {
+    display: none;
+  }
+
+  /* ── Two columns on Today ────────────────────────────────────────────
+     A single stack of full-width cards at 1180px is the "phone stretched
+     wide" look in its purest form: a text box a thousand pixels across for
+     six words of dinner.
+
+     The two cards you came to use — the day's totals and the thing you type
+     into — stay full width because they are the point of the screen. The
+     rest is reference material and reads better two-up than as a column you
+     have to scroll past. Cards place themselves; nothing here needs to know
+     what order they are in. */
+  #today-screen main {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+  #today-screen main > * {
+    margin-bottom: 0;
+    min-width: 0;
+  }
+  #today-offline-banner,
+  #macro-today,
+  #entry-form,
+  #food-search-card,
+  #today-entries-section,
+  #ad-today {
+    grid-column: 1 / -1;
+  }
+
+  /* The bottom bar used to sit over the last card, so every screen carried
+     padding to clear it. With the nav at the side there is nothing down
+     there to clear. */
+  main {
+    max-width: 1180px;
+    padding: 20px 32px 40px;
+  }
+
+  /* The banner was sized to be a phone's whole header. Beside a rail it is
+     a page title, so it stops shouting. */
+  .banner {
+    padding: 14px 32px;
+  }
+  .banner h1,
+  #app-shell .banner h1 {
+    font-size: 1.5rem;
+  }
+}
+
+/* Wide enough that 1180px of content would leave the rail looking marooned
+   on one side of an otherwise empty screen. */
+@media (min-width: 1500px) {
+  main {
+    max-width: 1320px;
   }
 }
 
