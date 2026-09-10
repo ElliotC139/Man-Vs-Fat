@@ -20,8 +20,9 @@ vi.mock("../src/config", () => ({
 import {
   planForPriceId,
   planFromSubscription,
+  intervalForPriceId,
   priceIdFor,
-  purchasablePlans,
+  purchasableIntervals,
   readPlanId,
   statusEntitles,
 } from "../src/billing";
@@ -41,9 +42,23 @@ describe("prices and plans", () => {
 
   it("offers a plan at whichever intervals it has prices for", () => {
     // Pro has no yearly price configured here, which is a normal state — it
-    // is simply not offered yearly rather than offered and broken.
+    // is simply not offered yearly rather than offered and broken. The
+    // settings screen renders exactly this shape, so a half-filled Stripe
+    // dashboard has to come back as a partial answer rather than a whole one.
     expect(priceIdFor("pro", "yearly")).toBeNull();
-    expect(purchasablePlans()).toEqual(["plus", "pro"]);
+    expect(purchasableIntervals()).toEqual({
+      plus: ["monthly", "yearly"],
+      pro: ["monthly"],
+    });
+  });
+
+  it("says which way a price bills, and admits when it doesn't know", () => {
+    // Nothing is entitled on the strength of this — it decides what price a
+    // screen quotes — so an unknown price is unknown rather than monthly.
+    expect(intervalForPriceId("price_plus_m")).toBe("monthly");
+    expect(intervalForPriceId("price_plus_y")).toBe("yearly");
+    expect(intervalForPriceId("price_from_somewhere_else")).toBeNull();
+    expect(intervalForPriceId(null)).toBeNull();
   });
 
   it("refuses to recognise a price it doesn't know", () => {

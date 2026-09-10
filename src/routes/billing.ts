@@ -19,10 +19,11 @@ import { planFor } from "../plans";
 import { REFERRAL_REWARD_CAP, REFERRAL_TRIAL_DAYS, rewardPence } from "../referrals";
 import {
   endsAtOfSubscription,
+  intervalForPriceId,
   planFromSubscription,
   priceIdFor,
   priceIdOfSubscription,
-  purchasablePlans,
+  purchasableIntervals,
   readPlanId,
   stripe,
 } from "../billing";
@@ -53,15 +54,25 @@ const REWARD_CURRENCY = "gbp";
 billingRouter.get("/status", requireAuth, async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.userId! },
-    select: { plan: true, subscriptionStatus: true, subscriptionEndsAt: true, stripeCustomerId: true },
+    select: {
+      plan: true,
+      subscriptionStatus: true,
+      subscriptionEndsAt: true,
+      subscriptionInterval: true,
+      stripeCustomerId: true,
+    },
   });
 
   res.json({
     configured: stripeConfigured,
-    purchasable: purchasablePlans(),
+    purchasable: purchasableIntervals(),
     plan: user?.plan ?? "free",
     status: user?.subscriptionStatus ?? null,
     endsAt: user?.subscriptionEndsAt ?? null,
+    // Null for a free account, and for anyone who subscribed before this was
+    // recorded. The card falls back to the plan's monthly price rather than
+    // inventing one.
+    interval: user?.subscriptionInterval ?? null,
     // Whether there is anything for the portal to manage. A customer who has
     // never checked out has no billing to look at, and a button that opens an
     // empty portal is worse than no button.
@@ -358,11 +369,8 @@ async function applySubscription(event: Stripe.Subscription): Promise<void> {
   }
 
   const endsAt = endsAtOfSubscription(subscription);
-  const plan = planFromSubscription({
-    status: subscription.status,
-    priceId: priceIdOfSubscription(subscription),
-    endsAt,
-  });
+  const priceId = priceIdOfSubscription(subscription);
+  const plan = planFromSubscription({ status: subscription.status, priceId, endsAt });
 
   await prisma.user.update({
     where: { id: user.id },
@@ -372,6 +380,7 @@ async function applySubscription(event: Stripe.Subscription): Promise<void> {
       stripeSubscriptionId: subscription.id,
       subscriptionStatus: subscription.status,
       subscriptionEndsAt: endsAt,
+      subscriptionInterval: intervalForPriceId(priceId),
       // Their invited free month has started, so it is spent. Recorded here
       // rather than at checkout because a checkout somebody abandoned should
       // not cost them the offer.
