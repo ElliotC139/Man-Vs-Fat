@@ -56,14 +56,19 @@ function drawHeader(doc: PDFKit.PDFDocument, week: MatchWeek, timeZone: string) 
     // Header without a mark. Still a report.
   }
 
-  // "QuicKcals" with the K picked out, the same way the app draws its
-  // wordmark. Three runs on one line: PDFKit continues where the last text
-  // ended when `continued` is set, so the spacing is the font's own.
+  // "QuicKcals" the same way the app draws its wordmark: "Quic" carries the
+  // weight, and the K and "cals" step back out of it — bolding the whole
+  // word makes the join the loudest thing in the name. The K keeps the
+  // colour, because it is still the K the app's mark is built from.
+  //
+  // Three runs on one line: PDFKit continues where the last text ended when
+  // `continued` is set, so the spacing is the font's own.
   doc
     .font("Helvetica-Bold")
     .fontSize(23)
     .fillColor("#ffffff")
     .text("Quic", textX, 28, { continued: true })
+    .font("Helvetica")
     .fillColor(PITCH)
     .text("K", { continued: true })
     .fillColor("#ffffff")

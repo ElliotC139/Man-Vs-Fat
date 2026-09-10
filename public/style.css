@@ -29,7 +29,7 @@
 
   /* The desktop navigation rail. A token because body padding, the nav's
      own width and any future overlay all have to agree on it. */
-  --rail: 232px;
+  --rail: 204px;
 
   --radius-sm: 10px;
   --radius-md: 14px;
@@ -343,6 +343,11 @@ body {
   font-weight: 500;
 }
 
+/* Hidden until the nav becomes a rail; see the ≥1024px block. */
+.rail-brand {
+  display: none;
+}
+
 .week-nav {
   display: flex;
   align-items: center;
@@ -351,18 +356,39 @@ body {
   margin-top: 0;
 }
 
-/* The fixture. This is now the biggest thing in the header. */
-.week-nav #week-range {
-  min-width: 176px;
+/* The fixture, and on Today the date. These are the headline of their
+   screens, so they are set in the brand face rather than the condensed
+   scoreboard one — uppercase tracked-out Barlow made a date read as a
+   stadium announcement, and a date is something you glance at. */
+.week-nav #week-range,
+.today-date {
+  min-width: 0;
   margin: 0;
-  font-family: var(--font-heading);
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  font-family: var(--font-brand);
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  text-transform: none;
   color: #fff;
   font-variant-numeric: tabular-nums;
-  line-height: 1.05;
+  line-height: 1.15;
+}
+.week-nav #week-range {
+  min-width: 176px;
+}
+/* Today's date is two parts — the weekday, and the date itself. The weekday
+   is what you actually navigate by, so it leads; the rest steps back. */
+.today-date .today-date-day {
+  font-weight: 700;
+}
+.today-date .today-date-rest {
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.72);
+}
+/* "Today" and "Yesterday" earn the accent — they are the two days you are
+   most often looking at, and the only ones worth naming rather than dating. */
+.today-date--today .today-date-day {
+  color: var(--pitch-light);
 }
 
 .week-nav button {
@@ -1031,25 +1057,43 @@ h2 {
 .balance-grid--single {
   grid-template-columns: 1fr;
 }
+/* Three figures in a two-column grid leaves a hole where the fourth would
+   be — the "missing a gap" look. Anything that comes in threes (macros, the
+   eating window) gets its own row of three instead. */
+.balance-grid--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+/* Where the tile count isn't fixed — the weigh-in summary shows between two
+   and five, depending on what you've told it — the odd one out takes the
+   whole last row rather than sitting beside an empty half. Applied by
+   balanceGrids() in app.js, which is the only thing that can know how many
+   are actually on screen. */
+.balance-cell--wide {
+  grid-column: 1 / -1;
+}
 .balance-cell {
   text-align: center;
   background: var(--bg);
   border-radius: var(--radius-sm);
-  padding: 16px 8px;
+  /* Was 16px 8px around a 1.55rem figure. Four of these stacked two-up made
+     a card taller than the chart underneath it, for numbers nobody reads one
+     at a time — they are scanned as a set. Smaller tile, same set. */
+  padding: 12px 8px;
   transition: transform 0.22s var(--spring);
 }
 .balance-number {
   display: block;
-  font-size: 1.55rem;
+  font-size: 1.25rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+  line-height: 1.15;
 }
 .balance-caption {
   display: block;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   color: var(--muted);
-  margin-top: 3px;
+  margin-top: 2px;
   font-weight: 500;
 }
 .balance-cell--loss {
@@ -1627,7 +1671,7 @@ tr.has-tooltip:active {
   display: block;
   font-family: var(--font-heading);
   font-weight: 800;
-  font-size: clamp(2.2rem, 9vw, 3rem);
+  font-size: clamp(1.85rem, 6.5vw, 2.4rem);
   letter-spacing: -0.02em;
   line-height: 1.05;
   font-variant-numeric: tabular-nums;
@@ -1952,19 +1996,29 @@ tr.has-tooltip:active {
   #food-all-list .food-row {
     margin-bottom: 0;
   }
+  /* The food diary, two-up. Columns rather than a grid, because the days
+     aren't the same height: a Monday with one entry beside a Tuesday with
+     five left a column-deep hole under Monday, since grid rows are as tall
+     as their tallest cell. Multi-column fills to an even height instead and
+     the hole goes. A day is kept whole with break-inside, so a Tuesday never
+     starts in one column and finishes in the other. */
   #entry-list {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0 24px;
-    align-items: start;
+    columns: 2;
+    column-gap: 24px;
+  }
+  #entry-list > .day-group {
+    break-inside: avoid;
   }
 
-  /* Stats: summary tiles + trend chart sit side by side. */
+  /* Stats: summary tiles + trend chart sit side by side, and match each
+     other's height rather than each stopping at its own content — the chart
+     is shorter than the tile block beside it, and left to itself it hung a
+     card-shaped hole under the trend. */
   .stats-top-row {
     display: grid;
     grid-template-columns: 1fr 1.3fr;
     gap: 16px;
-    align-items: start;
+    align-items: stretch;
   }
   .stats-top-row .card {
     margin-bottom: 0;
@@ -3501,7 +3555,13 @@ tr.has-tooltip:active {
   /* Column count is set in JS from the day count — a match week touches 8
      calendar days, opening and closing part-way through a Monday. */
   grid-template-columns: repeat(8, 1fr);
-  gap: 5px;
+  gap: 6px;
+  /* Eight squares that divide up whatever width the card happens to have is
+     fine on a phone and absurd on a monitor: at 1180px each "day" became a
+     128px tile, which is a button, not a form guide. Capping the strip keeps
+     the squares the size they were designed at and lets the card grow around
+     them. */
+  max-width: 400px;
 }
 .form-day {
   aspect-ratio: 1;
@@ -3567,7 +3627,7 @@ tr.has-tooltip:active {
 .streak-number {
   display: block;
   font-family: var(--font-heading);
-  font-size: 2.3rem;
+  font-size: 1.9rem;
   font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -3910,6 +3970,20 @@ tr.has-tooltip:active {
   margin-top: 16px;
   text-align: center;
   font-size: 0.82rem;
+}
+/* Left to itself this was a browser-default blue underline sitting under a
+   green button — the one piece of unstyled chrome on the screen. */
+.settings-legal a,
+.auth-legal a {
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 1px solid var(--hairline);
+  padding-bottom: 1px;
+}
+.settings-legal a:hover,
+.auth-legal a:hover {
+  color: var(--pitch-dark);
+  border-bottom-color: var(--pitch);
 }
 
 /* The day's total stays hard right whatever sits between it and the label. */
@@ -4261,6 +4335,37 @@ tr.has-tooltip:active {
   color: #fff;
 }
 
+/* ── Type on the settings screen ────────────────────────────────────────
+   Everywhere else in this app the display face is Barlow Condensed, and
+   everywhere else it earns its keep: it is a scoreboard face, and it is
+   sitting over scores. Settings has no scores. It is a form — labels,
+   switches, fields — and a narrow condensed face over a form reads as a
+   timetable rather than as a modern app.
+
+   So this one screen sets its headings in the body face at a heavier weight
+   and tighter tracking. Same family as the labels underneath them, which is
+   what makes a settings screen feel like one document instead of a stack of
+   headed sections. Scoped to the screen so nothing else moves. */
+#settings-screen h2,
+#settings-screen h3,
+#settings-screen .settings-pane-title,
+#settings-screen .settings-section-head,
+#settings-screen .settings-nav-item {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  letter-spacing: -0.015em;
+  text-transform: none;
+}
+#settings-screen h2,
+#settings-screen .settings-pane-title {
+  font-weight: 700;
+}
+/* Barlow Condensed is short as well as narrow, so the sizes above it were
+   set larger to compensate. In Inter the same numbers are a shout. */
+#settings-screen .settings-pane-title {
+  font-size: 1.2rem;
+}
+
 .settings-pane {
   display: flex;
   flex-direction: column;
@@ -4388,31 +4493,48 @@ tr.has-tooltip:active {
     transform: none;
     border-radius: 0;
     width: var(--rail);
-    grid-template-columns: 1fr;
-    grid-auto-rows: max-content;
-    align-content: start;
-    gap: 4px;
-    /* Room at the top for the mark and wordmark drawn in by ::before. */
-    padding: 92px 12px 16px;
+    /* A column, not a grid, so the last item can be pushed to the floor with
+       margin-top:auto. Five rows and a brand block in a full-height grid left
+       most of the rail as one long empty green band — the nav looked
+       unfinished rather than spacious. */
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 18px 10px 16px;
     box-shadow: 4px 0 20px rgba(11, 58, 34, 0.14);
   }
 
-  /* The brand, without adding an element for it. The nav is the only thing
-     on screen that is always present, so it is the honest place for it. */
-  .tab-bar::before {
-    content: "QuicKcals";
-    position: absolute;
-    top: 22px;
-    left: 20px;
-    right: 12px;
-    padding-left: 44px;
-    line-height: 34px;
-    font-family: var(--font-brand);
-    font-weight: 800;
-    font-size: 1.15rem;
-    letter-spacing: -0.02em;
+  /* The brand. The inverse mark — the same knockout the banners use, so the
+     rail's green shows through the K — beside the wordmark set the way it is
+     set everywhere else: "Quic" carries the weight, the K and "cals" don't. */
+  .rail-brand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 6px 10px 20px;
     color: #fff;
-    background: url("/icons/icon-192.png") left center / 34px 34px no-repeat;
+  }
+  .rail-brand-mark {
+    width: 30px;
+    height: 30px;
+    flex: none;
+    display: block;
+  }
+  .rail-brand .brand-word {
+    font-size: 1.18rem;
+    line-height: 1;
+  }
+
+  /* Settings is the one destination you go to occasionally rather than
+     constantly, so it sits at the foot of the rail with the four you live in
+     grouped at the top — which is also what takes the empty band out of the
+     middle. */
+  .tab-bar .tab-btn[data-nav="settings"] {
+    margin-top: auto;
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 0;
+    padding-top: 16px;
+    margin-bottom: 2px;
   }
 
   /* Rows, not tiles: icon then label, reading left to right like every
@@ -4420,8 +4542,8 @@ tr.has-tooltip:active {
   .tab-bar .tab-btn {
     flex-direction: row;
     justify-content: flex-start;
-    gap: 12px;
-    padding: 11px 14px;
+    gap: 11px;
+    padding: 10px 12px;
     border-radius: var(--radius-md);
     text-transform: none;
     letter-spacing: 0;
@@ -4465,11 +4587,30 @@ tr.has-tooltip:active {
   .banner h1 .brand-mark {
     display: none;
   }
-  /* Today's header is the wordmark rather than a page title, which beside a
-     rail that already says QuicKcals leaves the date as the only thing worth
-     reading up there — so let it be. */
-  #today-screen .banner h1 {
+  /* Both of these headers are the wordmark rather than a page title. Beside
+     a rail that already says QuicKcals that is the app announcing its own
+     name twice on one view, and on both screens there is something better
+     underneath it anyway — the date on Today, the week on the diary. So the
+     wordmark goes and the fixture becomes the header. */
+  #today-screen .banner h1,
+  #app-shell .banner h1 {
     display: none;
+  }
+  /* With the eyebrow gone the nav is the whole header, so it stops sitting
+     centred in a band sized for a title above it. */
+  #today-screen .banner .week-nav,
+  #app-shell .banner .week-nav {
+    justify-content: flex-start;
+  }
+  #today-screen .banner--fixture h1,
+  #app-shell .banner--fixture h1 {
+    margin-bottom: 0;
+  }
+  /* The date and the week are now the page title, so they are sized like
+     one. */
+  .week-nav #week-range,
+  .today-date {
+    font-size: 1.5rem;
   }
 
   /* Room. Phone padding on a laptop is what makes a widened layout look
@@ -4528,6 +4669,15 @@ tr.has-tooltip:active {
   #today-screen main > .card:not(.today-hero) {
     align-self: stretch;
   }
+  /* Which of the half-width cards are on screen depends on the day and on
+     what's switched on — fasting, keto, a WHOOP connection, a note. When an
+     odd number of them are showing the last one used to sit in the left
+     column with a card-shaped hole beside it. balanceTodayGrid() in app.js
+     hands that card this class, because nothing in CSS can count the
+     children that aren't hidden. */
+  #today-screen main > .card--wide {
+    grid-column: 1 / -1;
+  }
 
   /* The bottom bar used to sit over the last card, so every screen carried
      padding to clear it. With the nav at the side there is nothing down
@@ -4562,15 +4712,11 @@ tr.has-tooltip:active {
 .day-nav {
   margin-top: 4px;
 }
+/* Type lives with the week range up top, since the two are the same thing
+   one width apart. All this needs is enough room that stepping between a
+   short day and a long one doesn't shuffle the arrows either side of it. */
 .today-date {
-  margin: 0;
   min-width: 210px;
-  font-family: var(--font-heading);
-  font-size: 1.05rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.82);
 }
 
 .today-hero-row {
@@ -5501,21 +5647,35 @@ body.modal-open {
    the label is what opens the OS date picker on a phone, and every attempt to
    drive one from a button ends up fighting a different browser's idea of
    showPicker(). The icon is what you see; the input is what you press. */
+/* The jump-to-a-date control. It sits between two arrows that both wear a
+   translucent chip, and wearing nothing itself is what made it read as a
+   stray icon dropped on the header rather than part of the same control
+   group. Same chip, same size, one rounder corner radius so it still reads
+   as the odd one out in kind — it opens a picker, the arrows step. */
 .date-jump {
   position: relative;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   margin: 0;
-  border-radius: 999px;
-  color: inherit;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.9);
   cursor: pointer;
+  transition: background 0.15s var(--ease), transform 0.22s var(--spring);
+}
+.date-jump:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+.date-jump:active {
+  transform: scale(0.92);
 }
 .date-jump .icon {
-  width: 19px;
-  height: 19px;
+  width: 17px;
+  height: 17px;
   pointer-events: none;
 }
 .date-jump input {
