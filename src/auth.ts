@@ -117,6 +117,23 @@ export function clearSessionCookie(res: Response): void {
   res.clearCookie(SESSION_COOKIE_NAME);
 }
 
+/**
+ * Who this request is, or null — without refusing it.
+ *
+ * requireAuth's question is "may this proceed"; this one's is "is anybody
+ * there". The root route needs the second: a signed-out visitor gets the
+ * landing page and a signed-in one gets the app, and neither is an error.
+ * Never throws — an unreadable cookie is simply nobody.
+ */
+export async function sessionUserId(req: Request): Promise<number | null> {
+  try {
+    const token = req.cookies?.[SESSION_COOKIE_NAME];
+    return typeof token === "string" ? await verifySessionToken(token) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   const token = req.cookies?.[SESSION_COOKIE_NAME];
   const userId = typeof token === "string" ? await verifySessionToken(token) : null;

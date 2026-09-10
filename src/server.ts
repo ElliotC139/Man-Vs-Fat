@@ -4,7 +4,7 @@ import cookieParser from "cookie-parser";
 import multer from "multer";
 import { config } from "./config";
 import { ensureUploadsDir, UPLOADS_DIR } from "./lib/storage";
-import { ensureSessionSecret } from "./auth";
+import { ensureSessionSecret, sessionUserId } from "./auth";
 import { ensureVapidKeys } from "./push";
 import { recordError } from "./errorLog";
 import { authRouter } from "./routes/auth";
@@ -119,6 +119,35 @@ app.use("/uploads", express.static(UPLOADS_DIR));
  * is content-hashed, so there is no version in a filename to make a longer
  * lifetime safe.
  */
+/**
+ * The front door.
+ *
+ * A signed-out visitor gets the landing page; a signed-in one gets the app.
+ * Registered before express.static because that middleware resolves "/" to
+ * public/index.html on its own, before any route would run.
+ *
+ * "?app=1" is the landing page's own way in — it forces the app even with no
+ * session, which is how somebody reaches the sign-in form from a marketing
+ * page. Without it there would be no route to log in on.
+ *
+ * no-store rather than no-cache: this URL's response depends on who is asking,
+ * and a shared cache holding one answer for both is the bug that would follow.
+ * public/sw.js also stops caching navigations for the same reason.
+ */
+app.get("/", async (req, res, next) => {
+  if (req.query.app !== undefined) {
+    next();
+    return;
+  }
+  const userId = await sessionUserId(req);
+  if (userId !== null) {
+    next();
+    return;
+  }
+  res.set("Cache-Control", "no-store");
+  res.sendFile(path.join(process.cwd(), "public", "landing.html"));
+});
+
 app.use(express.static(path.join(process.cwd(), "public"), {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith("sw.js") || filePath.endsWith(".html")) {

@@ -8,7 +8,7 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍽️</text></svg>" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=Montserrat:wght@500;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/style.css" />
     <style>
       /* Page-specific layout only — colors, type and the .card look all come
@@ -30,6 +30,13 @@
         letter-spacing: -0.01em;
         margin: 0 0 4px;
       }
+      .privacy-nav {
+        max-width: 640px;
+        margin: 0 auto 16px;
+        display: flex;
+        gap: 14px;
+        font-size: 0.85rem;
+      }
       .privacy-card h2 {
         font-family: var(--font-heading);
         font-size: 1.05rem;
@@ -42,13 +49,19 @@
     </style>
   </head>
   <body>
+    <nav class="privacy-nav">
+      <a href="/">← QuicKcals</a>
+      <a href="/terms.html">Terms</a>
+    </nav>
+
     <div class="card privacy-card">
       <h1>Privacy Policy</h1>
       <p class="muted">QuicKcals — last updated 2026-08-15</p>
 
       <p>
-        QuicKcals is a private, personal-use application. It is not distributed
-        publicly and is used only by its own account holders.
+        QuicKcals is a food diary at quickcals.com, open to anyone who signs
+        up. It is run as a small UK business by one person. This policy says
+        what is held about you, where it goes, and what you can do about it.
       </p>
 
       <h2>What data is collected</h2>
@@ -110,10 +123,25 @@
         the first payment is made. That record is not used for anything else.
       </p>
 
+      <h2>Your rights over this data</h2>
+      <p>
+        You can ask for a copy of everything held about you — Settings → Export
+        produces it directly, as a file, without asking anybody. You can ask for
+        it to be corrected, or erased. Deleting your account from Settings
+        erases the diary with it.
+      </p>
+
       <h2>Data deletion</h2>
       <p>
         Account holders can delete individual entries at any time within the app. For full
-        account or data deletion requests, contact the app owner directly.
+        account or data deletion requests, email
+        <a href="mailto:support@quickcals.com">support@quickcals.com</a>.
+      </p>
+
+      <p class="muted" style="margin-top: 2em">
+        See also the <a href="/terms.html">terms of service</a>, which covers
+        what you are buying, how to cancel, and what the app does and does not
+        promise.
       </p>
     </div>
   </body>

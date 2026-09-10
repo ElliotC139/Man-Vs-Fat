@@ -18,12 +18,17 @@
  */
 
 // Bumped on every deploy that changes a shell file, so old caches are dropped.
-const VERSION = "v46";
+const VERSION = "v47";
 const SHELL_CACHE = `shell-${VERSION}`;
 const API_CACHE = `api-${VERSION}`;
 
 const SHELL_ASSETS = [
-  "/",
+  // "/" is deliberately absent. It serves the landing page to a signed-out
+  // visitor and the app to a signed-in one, so a copy stored under that key
+  // is a coin toss over which one a later visit gets — the same class of bug
+  // as the stale shell, with a worse failure: signing in and still being
+  // shown the marketing page. Navigations go to the network instead; see the
+  // fetch handler.
   "/index.html",
   "/app.js",
   "/style.css",
@@ -79,10 +84,40 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Page loads always ask the network, and their responses are never stored.
+  // Which HTML "/" returns depends on whether there is a session, and that is
+  // not something a URL-keyed cache can represent. The cost is one small
+  // conditional request per navigation — index.html is already served
+  // no-cache, so it was being revalidated anyway — and everything heavy
+  // (app.js, style.css, icons) stays cache-first and instant.
+  if (request.mode === "navigate") {
+    event.respondWith(navigation(request));
+    return;
+  }
+
   // An uploaded photo never changes once written, so it's cached with the
   // shell rather than revalidated.
   event.respondWith(cacheFirst(request));
 });
+
+/**
+ * A page load: network, or the app shell if there is no network.
+ *
+ * The offline fallback is the app rather than the landing page on purpose.
+ * Somebody offline on this origin has the app installed; showing them
+ * marketing they have already read, instead of the diary they came for,
+ * would be the wrong half of the product.
+ */
+async function navigation(request) {
+  try {
+    return await fetch(request);
+  } catch {
+    const cache = await caches.open(SHELL_CACHE);
+    const shell = await cache.match("/index.html");
+    if (shell) return shell;
+    throw new Error("Offline and no shell cached");
+  }
+}
 
 async function networkFirst(request) {
   const cache = await caches.open(API_CACHE);

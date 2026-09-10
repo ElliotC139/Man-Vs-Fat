@@ -1,0 +1,938 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>QuicKcals — the calorie diary that stops being work</title>
+    <meta name="description" content="Photograph a plate, scan a barcode, or just say what you ate. QuicKcals estimates the calories and macros, learns what you actually burn, and shows you the trend. Free to use, £4.99 a month for the rest." />
+    <link rel="canonical" href="https://quickcals.com/" />
+    <meta property="og:title" content="QuicKcals — the calorie diary that stops being work" />
+    <meta property="og:description" content="Photograph a plate and it works out the calories. Free to use; £4.99 a month for photo logging and no ads." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://quickcals.com/" />
+    <meta property="og:image" content="https://quickcals.com/icons/icon-512.png" />
+    <link rel="icon" href="/icons/icon-192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=Montserrat:wght@500;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/style.css" />
+    <style>
+      /* Marketing-page layout. Every colour and face comes from the app's own
+         stylesheet, so the page a stranger meets and the app they sign into
+         are visibly the same product rather than two designs that share a
+         name. Only structure lives here. */
+
+      body {
+        background: var(--bg);
+        color: var(--ink);
+      }
+      /* The app's stylesheet pins main to a 480px column, which is right for a
+         diary on a phone and wrong for a page whose job is to fill a laptop.
+         Undone here rather than there, so the app keeps its own layout. */
+      main {
+        max-width: none;
+        margin: 0;
+        padding: 0;
+      }
+      .lp-wrap {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 0 20px;
+      }
+
+      /* ── Header ─────────────────────────────────────────────────────── */
+      .lp-header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: color-mix(in srgb, var(--bg) 88%, transparent);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--hairline);
+      }
+      .lp-header-inner {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        min-height: 62px;
+      }
+      .lp-brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-family: var(--font-brand);
+        font-weight: 800;
+        font-size: 1.15rem;
+        color: var(--pitch-dark);
+        text-decoration: none;
+        letter-spacing: -0.02em;
+      }
+      .lp-brand img { width: 30px; height: 30px; }
+      .lp-nav {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 20px;
+      }
+      .lp-nav a {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--muted);
+        text-decoration: none;
+      }
+      .lp-nav a:hover { color: var(--ink); }
+      .lp-nav .lp-cta { color: var(--brand-ink); }
+      /* Hidden on phones: the two content links would push the button off the
+         edge, and the button is the only one that matters at that width. */
+      @media (max-width: 620px) { .lp-nav .lp-nav-link { display: none; } }
+
+      .lp-cta {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 20px;
+        border-radius: 999px;
+        background: var(--brand);
+        color: var(--brand-ink);
+        font-weight: 700;
+        font-size: 0.92rem;
+        text-decoration: none;
+        box-shadow: var(--shadow-sm);
+        transition: transform 0.15s var(--ease), background 0.15s var(--ease);
+      }
+      .lp-cta:hover { background: var(--pitch-dark); transform: translateY(-1px); }
+      .lp-cta--ghost {
+        background: transparent;
+        color: var(--pitch-dark);
+        border: 1.5px solid var(--hairline);
+        box-shadow: none;
+      }
+      .lp-cta--ghost:hover { background: var(--card); border-color: var(--pitch); }
+      .lp-cta--lg { padding: 14px 28px; font-size: 1rem; }
+
+      /* ── Hero ───────────────────────────────────────────────────────── */
+      .lp-hero { padding: 64px 0 56px; }
+      .lp-hero-inner { display: grid; gap: 40px; align-items: center; }
+      @media (min-width: 900px) {
+        .lp-hero { padding: 80px 0 72px; }
+        .lp-hero-inner { grid-template-columns: 1.05fr 0.95fr; gap: 56px; }
+      }
+
+      /* ── The hero's right-hand side ─────────────────────────────────────
+         A drawn approximation of the Today screen rather than a screenshot:
+         it stays sharp at any density, it costs no image bytes, and it can't
+         go stale the next time the app is restyled. Built from the same
+         tokens the real screen uses, so it is a likeness rather than a
+         lookalike. */
+      .lp-mock {
+        justify-self: center;
+        width: 100%;
+        max-width: 320px;
+        border-radius: 30px;
+        background: var(--card);
+        border: 1px solid var(--hairline);
+        box-shadow: var(--shadow-lg);
+        overflow: hidden;
+      }
+      .lp-mock-bar {
+        background: var(--brand);
+        color: var(--brand-ink);
+        padding: 14px 18px 16px;
+        font-family: var(--font-brand);
+        font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+      .lp-mock-bar small {
+        display: block;
+        font-family: Inter, sans-serif;
+        font-weight: 500;
+        font-size: 0.72rem;
+        letter-spacing: 0;
+        opacity: 0.75;
+        margin-top: 2px;
+      }
+      .lp-mock-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+      .lp-mock-card {
+        border: 1px solid var(--hairline);
+        border-radius: var(--radius-md);
+        padding: 14px;
+      }
+      .lp-mock-kcal {
+        font-family: var(--font-heading);
+        font-size: 2.5rem;
+        font-weight: 700;
+        line-height: 1;
+        color: var(--pitch-dark);
+        font-variant-numeric: tabular-nums;
+      }
+      .lp-mock-kcal span { font-size: 0.9rem; color: var(--muted); font-family: Inter, sans-serif; font-weight: 500; }
+      .lp-mock-meter {
+        height: 7px;
+        border-radius: 999px;
+        background: var(--hairline);
+        margin: 10px 0 12px;
+        overflow: hidden;
+      }
+      .lp-mock-meter i { display: block; height: 100%; width: 72%; border-radius: 999px; background: var(--pitch); }
+      .lp-mock-macros { display: flex; gap: 14px; font-size: 0.72rem; color: var(--muted); }
+      .lp-mock-macros b {
+        display: block;
+        font-family: var(--font-heading);
+        font-size: 1.05rem;
+        color: var(--ink);
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .lp-mock-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 0.85rem;
+      }
+      .lp-mock-row + .lp-mock-row { border-top: 1px solid var(--hairline); padding-top: 10px; }
+      .lp-mock-row em {
+        font-style: normal;
+        font-size: 0.68rem;
+        color: var(--pitch-dark);
+        background: color-mix(in srgb, var(--pitch) 12%, transparent);
+        border-radius: 999px;
+        padding: 2px 7px;
+      }
+      .lp-mock-row b {
+        margin-left: auto;
+        font-family: var(--font-heading);
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        color: var(--ink);
+      }
+      .lp-hero h1 {
+        font-family: var(--font-heading);
+        font-weight: 700;
+        font-size: clamp(2.5rem, 7vw, 4.2rem);
+        line-height: 1.02;
+        letter-spacing: -0.015em;
+        color: var(--pitch-dark);
+        margin: 0 0 18px;
+        max-width: 15ch;
+        text-wrap: balance;
+      }
+      .lp-hero h1 em {
+        font-style: normal;
+        color: var(--pitch);
+      }
+      .lp-lede {
+        font-size: clamp(1.02rem, 2.2vw, 1.2rem);
+        line-height: 1.55;
+        color: var(--muted);
+        max-width: 52ch;
+        margin: 0 0 28px;
+      }
+      .lp-hero-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+      .lp-hero-note { font-size: 0.85rem; color: var(--muted); margin: 16px 0 0; }
+
+      /* ── The three-step band ────────────────────────────────────────── */
+      .lp-band {
+        background: var(--brand);
+        color: var(--brand-ink);
+        padding: 56px 0;
+      }
+      .lp-steps {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 32px;
+      }
+      /* Numbered because these genuinely are a sequence — you photograph, then
+         it estimates, then it lands in the diary. Numbering a set of unordered
+         features would be decoration; here the order is the information. */
+      .lp-step-n {
+        font-family: var(--font-heading);
+        font-size: 0.85rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--floodlight);
+        display: block;
+        margin-bottom: 8px;
+      }
+      .lp-step h3 {
+        font-family: var(--font-heading);
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin: 0 0 6px;
+        letter-spacing: -0.01em;
+      }
+      .lp-step p { margin: 0; line-height: 1.55; color: color-mix(in srgb, var(--brand-ink) 82%, transparent); }
+
+      /* ── Sections ───────────────────────────────────────────────────── */
+      .lp-section { padding: 64px 0; }
+      /* The app sets h2 uppercase, which suits a compact card header and not a
+         marketing headline — "LINE BY LINE" shouts where it should state. And
+         the header is sticky, so an anchor jump has to clear it or the
+         heading lands underneath. */
+      .lp-section[id] { scroll-margin-top: 78px; }
+      .lp-section-head { max-width: 60ch; margin-bottom: 36px; }
+      .lp-section h2 {
+        font-family: var(--font-heading);
+        text-transform: none;
+        font-weight: 700;
+        font-size: clamp(1.8rem, 4vw, 2.6rem);
+        line-height: 1.1;
+        letter-spacing: -0.01em;
+        color: var(--pitch-dark);
+        margin: 0 0 10px;
+        text-wrap: balance;
+      }
+      .lp-section-head p { margin: 0; color: var(--muted); font-size: 1.02rem; line-height: 1.6; }
+
+      .lp-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 18px;
+      }
+      .lp-feature {
+        background: var(--card);
+        border: 1px solid var(--hairline);
+        border-radius: var(--radius-md);
+        padding: 22px;
+        box-shadow: var(--shadow-sm);
+      }
+      .lp-feature h3 {
+        font-family: var(--font-heading);
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin: 0 0 6px;
+        color: var(--ink);
+        letter-spacing: -0.005em;
+      }
+      .lp-feature p { margin: 0; color: var(--muted); line-height: 1.55; font-size: 0.95rem; }
+      .lp-feature-tag {
+        display: inline-block;
+        margin-top: 12px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        background: color-mix(in srgb, var(--pitch) 12%, transparent);
+        color: var(--pitch-dark);
+      }
+      .lp-feature-tag--free { background: color-mix(in srgb, var(--muted) 14%, transparent); color: var(--muted); }
+      .lp-feature-tag--pro { background: color-mix(in srgb, var(--floodlight) 30%, transparent); color: var(--amber); }
+
+      /* ── Pricing ────────────────────────────────────────────────────── */
+      .lp-plans {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+        gap: 18px;
+        align-items: start;
+      }
+      .lp-plan {
+        background: var(--card);
+        border: 1px solid var(--hairline);
+        border-radius: var(--radius-lg);
+        padding: 26px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        box-shadow: var(--shadow-sm);
+      }
+      /* One plan carries the emphasis, and it is the middle one on purpose:
+         it is the plan most people should buy, and a pricing table that
+         emphasises the dearest option is a pricing table nobody trusts. */
+      .lp-plan--feature {
+        border-color: var(--pitch);
+        border-width: 2px;
+        box-shadow: var(--shadow-md);
+      }
+      .lp-plan-name {
+        font-family: var(--font-heading);
+        font-size: 1.45rem;
+        font-weight: 700;
+        color: var(--pitch-dark);
+        letter-spacing: -0.01em;
+      }
+      .lp-plan-badge {
+        float: right;
+        padding: 3px 10px;
+        border-radius: 999px;
+        background: var(--pitch);
+        color: #fff;
+        font-family: var(--font-body, inherit);
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .lp-price {
+        font-family: var(--font-heading);
+        font-size: 2.6rem;
+        font-weight: 700;
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+        letter-spacing: -0.02em;
+      }
+      .lp-price span { font-size: 0.95rem; font-weight: 500; color: var(--muted); font-family: Inter, sans-serif; }
+      .lp-plan-line { margin: 0; color: var(--muted); font-size: 0.9rem; line-height: 1.5; }
+      .lp-plan ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+      .lp-plan li {
+        display: flex;
+        gap: 9px;
+        align-items: flex-start;
+        font-size: 0.93rem;
+        line-height: 1.45;
+      }
+      .lp-tick { flex: none; width: 17px; height: 17px; margin-top: 2px; color: var(--pitch); }
+      .lp-plan .lp-cta { width: 100%; margin-top: auto; }
+
+      /* ── Comparison table ───────────────────────────────────────────── */
+      .lp-table-scroll { overflow-x: auto; }
+      .lp-table {
+        width: 100%;
+        min-width: 520px;
+        border-collapse: collapse;
+        font-size: 0.93rem;
+      }
+      .lp-table th, .lp-table td {
+        padding: 11px 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--hairline);
+      }
+      .lp-table thead th {
+        font-family: var(--font-heading);
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: var(--pitch-dark);
+        border-bottom-width: 2px;
+      }
+      .lp-table td:not(:first-child), .lp-table thead th:not(:first-child) { text-align: center; width: 16%; }
+      .lp-table tbody th {
+        font-weight: 500;
+        color: var(--ink);
+      }
+      .lp-row-group th {
+        font-family: var(--font-heading);
+        font-size: 0.8rem;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+        padding-top: 22px;
+      }
+      .lp-yes { color: var(--pitch); font-weight: 700; }
+      .lp-no { color: color-mix(in srgb, var(--muted) 55%, transparent); }
+      .lp-val { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+      /* ── FAQ ────────────────────────────────────────────────────────── */
+      .lp-faq { display: flex; flex-direction: column; gap: 2px; max-width: 74ch; }
+      .lp-faq details {
+        border-bottom: 1px solid var(--hairline);
+        padding: 4px 0;
+      }
+      .lp-faq summary {
+        cursor: pointer;
+        padding: 14px 0;
+        font-weight: 600;
+        font-size: 1rem;
+        list-style: none;
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+      }
+      .lp-faq summary::-webkit-details-marker { display: none; }
+      .lp-faq summary::after {
+        content: "+";
+        font-family: var(--font-heading);
+        font-size: 1.4rem;
+        color: var(--pitch);
+        line-height: 1;
+        flex: none;
+      }
+      .lp-faq details[open] summary::after { content: "\2212"; }
+      .lp-faq p { margin: 0 0 16px; color: var(--muted); line-height: 1.6; max-width: 68ch; }
+
+      /* ── Closing + footer ───────────────────────────────────────────── */
+      .lp-close {
+        background: var(--brand);
+        color: var(--brand-ink);
+        padding: 64px 0;
+        text-align: center;
+      }
+      .lp-close h2 {
+        font-family: var(--font-heading);
+        text-transform: none;
+        font-size: clamp(1.9rem, 5vw, 3rem);
+        font-weight: 700;
+        margin: 0 0 12px;
+        letter-spacing: -0.01em;
+        text-wrap: balance;
+      }
+      .lp-close p { margin: 0 auto 26px; max-width: 46ch; color: color-mix(in srgb, var(--brand-ink) 82%, transparent); line-height: 1.55; }
+      .lp-close .lp-cta { background: var(--floodlight); color: #221a00; }
+      .lp-close .lp-cta:hover { background: #ffd76a; }
+
+      .lp-footer { padding: 32px 0 48px; font-size: 0.85rem; color: var(--muted); }
+      .lp-footer-inner { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; }
+      .lp-footer a { color: var(--muted); }
+      .lp-footer a:hover { color: var(--ink); }
+      .lp-footer-legal { margin-left: auto; display: flex; gap: 18px; }
+
+      @media (max-width: 560px) {
+        .lp-hero { padding: 44px 0 40px; }
+        .lp-section { padding: 48px 0; }
+        .lp-footer-legal { margin-left: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="lp-header">
+      <div class="lp-wrap lp-header-inner">
+        <a class="lp-brand" href="/">
+          <img src="/icons/icon-192.png" alt="" width="30" height="30" />
+          QuicKcals
+        </a>
+        <nav class="lp-nav">
+          <a class="lp-nav-link" href="#features">Features</a>
+          <a class="lp-nav-link" href="#pricing">Pricing</a>
+          <a class="lp-cta" id="lp-header-cta" href="/?app=1">Sign in</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="lp-hero">
+        <div class="lp-wrap lp-hero-inner">
+          <div>
+          <h1>The calorie diary that <em>stops being work</em>.</h1>
+          <p class="lp-lede">
+            Photograph the plate. QuicKcals works out what's on it, logs the
+            calories and the macros, and gets on with learning what you
+            actually burn — not what a formula guessed on day one.
+          </p>
+          <div class="lp-hero-actions">
+            <a class="lp-cta lp-cta--lg" href="/?app=1&amp;signup=1">Start free</a>
+            <a class="lp-cta lp-cta--ghost lp-cta--lg" href="#pricing">See what's included</a>
+          </div>
+          <p class="lp-hero-note">
+            No card needed. Barcode scanning, food search and your whole
+            history are free forever.
+          </p>
+          </div>
+
+          <div class="lp-mock" aria-hidden="true">
+            <div class="lp-mock-bar">
+              QuicKcals
+              <small>Tuesday 10 September</small>
+            </div>
+            <div class="lp-mock-body">
+              <div class="lp-mock-card">
+                <div class="lp-mock-kcal">1,512 <span>/ 2,100 kcal</span></div>
+                <div class="lp-mock-meter"><i></i></div>
+                <div class="lp-mock-macros">
+                  <div><b>112g</b> protein</div>
+                  <div><b>148g</b> carbs</div>
+                  <div><b>54g</b> fat</div>
+                </div>
+              </div>
+              <div class="lp-mock-card">
+                <div class="lp-mock-row">Porridge, banana, honey <em>saved</em> <b>410</b></div>
+                <div class="lp-mock-row">Chicken salad <em>photo</em> <b>486</b></div>
+                <div class="lp-mock-row">Greek yoghurt <em>barcode</em> <b>132</b></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="lp-band">
+        <div class="lp-wrap lp-steps">
+          <div class="lp-step">
+            <span class="lp-step-n">Step one</span>
+            <h3>Point the camera</h3>
+            <p>
+              Or scan a barcode. Or type "two poached eggs on sourdough". Or
+              say it out loud. Whichever is fastest at the time — they all end
+              up in the same place.
+            </p>
+          </div>
+          <div class="lp-step">
+            <span class="lp-step-n">Step two</span>
+            <h3>It does the arithmetic</h3>
+            <p>
+              Calories and macros, broken down per item, with the portion it
+              assumed shown so you can correct it in a tap when it's wrong.
+            </p>
+          </div>
+          <div class="lp-step">
+            <span class="lp-step-n">Step three</span>
+            <h3>Watch the trend, not the day</h3>
+            <p>
+              One heavy Saturday means nothing. QuicKcals shows the line
+              through the noise, and adjusts your target as it learns what
+              your body actually does.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="lp-section" id="features">
+        <div class="lp-wrap">
+          <div class="lp-section-head">
+            <h2>Everything a food diary should have done years ago</h2>
+            <p>
+              Most of this is free. The things that cost money to run are the
+              things you pay for — and we say which is which rather than
+              hiding it behind a trial.
+            </p>
+          </div>
+
+          <div class="lp-grid">
+            <article class="lp-feature">
+              <h3>Log by photo</h3>
+              <p>
+                A plate of food is faster to photograph than to describe. The
+                estimate comes back itemised, so you can fix the one thing it
+                got wrong instead of redoing all of it.
+              </p>
+              <span class="lp-feature-tag">Plus and Pro</span>
+            </article>
+
+            <article class="lp-feature">
+              <h3>Barcodes and real food databases</h3>
+              <p>
+                Millions of packaged products, looked up rather than guessed.
+                When a figure comes off a label it's marked as verified, and
+                when it's an estimate it says so.
+              </p>
+              <span class="lp-feature-tag lp-feature-tag--free">Free, unlimited</span>
+            </article>
+
+            <article class="lp-feature">
+              <h3>Adaptive targets</h3>
+              <p>
+                Standard calculators guess your maintenance calories from your
+                height and weight and never revisit it. QuicKcals watches what
+                you eat against what you actually weigh and corrects itself.
+              </p>
+              <span class="lp-feature-tag lp-feature-tag--free">Free</span>
+            </article>
+
+            <article class="lp-feature">
+              <h3>Trend weight, not scale weight</h3>
+              <p>
+                Daily weight is mostly water. The trend line is the thing that
+                tells you whether the last fortnight worked, with a projection
+                to your goal based on your real rate.
+              </p>
+              <span class="lp-feature-tag lp-feature-tag--free">Free</span>
+            </article>
+
+            <article class="lp-feature">
+              <h3>WHOOP and Apple Health</h3>
+              <p>
+                Turn "burned" from a formula's guess into a measurement. Your
+                daily burn, recovery and sleep, sitting next to what you ate,
+                so you can see which foods actually cost you a night.
+              </p>
+              <span class="lp-feature-tag lp-feature-tag--pro">Pro</span>
+            </article>
+
+            <article class="lp-feature">
+              <h3>Scan a recipe or a label</h3>
+              <p>
+                Photograph a recipe card or the back of a packet and get the
+                whole ingredient list broken down, saved, and portionable.
+              </p>
+              <span class="lp-feature-tag lp-feature-tag--pro">Pro</span>
+            </article>
+
+            <article class="lp-feature">
+              <h3>Saved meals and recipes</h3>
+              <p>
+                Your porridge is your porridge. Log it once, re-log it in a
+                tap forever. Build recipes with portions and add a slice
+                without doing sums.
+              </p>
+              <span class="lp-feature-tag lp-feature-tag--free">Free, unlimited</span>
+            </article>
+
+            <article class="lp-feature">
+              <h3>Works with no signal</h3>
+              <p>
+                A proper offline app, not a website that breaks in a lift.
+                Log on the tube, and it syncs when you surface. Install it to
+                your home screen and it behaves like an app because it is one.
+              </p>
+              <span class="lp-feature-tag lp-feature-tag--free">Free</span>
+            </article>
+
+            <article class="lp-feature">
+              <h3>Macros, keto and fasting</h3>
+              <p>
+                Protein, carbs and fat tracked against your own split. A keto
+                mode that counts net carbs, and a fasting timer that knows
+                when you last ate because it's the same diary.
+              </p>
+              <span class="lp-feature-tag lp-feature-tag--free">Free</span>
+            </article>
+
+            <article class="lp-feature">
+              <h3>The weekly report</h3>
+              <p>
+                A PDF that lands every week — what you ate, what moved, what
+                didn't — filed straight to your Google Drive if you want it
+                there.
+              </p>
+              <span class="lp-feature-tag lp-feature-tag--pro">Pro</span>
+            </article>
+
+            <article class="lp-feature">
+              <h3>Your data is yours</h3>
+              <p>
+                Export the lot, any time, as a file you keep. Delete the
+                account and the diary goes with it. Nothing you log is ever
+                sold or used to target an advert.
+              </p>
+              <span class="lp-feature-tag lp-feature-tag--free">Free</span>
+            </article>
+
+            <article class="lp-feature">
+              <h3>Invite a friend, both gain</h3>
+              <p>
+                They get their first month free. You get a month of your own
+                plan back, the moment their first real payment lands.
+              </p>
+              <span class="lp-feature-tag lp-feature-tag--free">Any plan</span>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="lp-section" id="pricing" style="padding-top: 8px">
+        <div class="lp-wrap">
+          <div class="lp-section-head">
+            <h2>Honest pricing</h2>
+            <p>
+              Every price includes VAT — the number here is the number charged.
+              Cancel in two taps, from inside the app. Ask within 14 days and
+              you get every penny back.
+            </p>
+          </div>
+
+          <div class="lp-plans" id="lp-plans">
+            <div class="lp-plan">
+              <div><span class="lp-plan-name">Free</span></div>
+              <div class="lp-price">£0<span> forever</span></div>
+              <p class="lp-plan-line">The whole diary, with the AI rationed.</p>
+              <ul>
+                <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>Unlimited barcode scans and food search</li>
+                <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>Unlimited saved meals, recipes and re-logs</li>
+                <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>Charts, trends, adaptive targets</li>
+                <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>3 AI estimates a day</li>
+              </ul>
+              <a class="lp-cta lp-cta--ghost" href="/?app=1&amp;signup=1">Start free</a>
+            </div>
+
+            <div class="lp-plan lp-plan--feature">
+              <div><span class="lp-plan-name">Plus</span><span class="lp-plan-badge">Most people</span></div>
+              <div class="lp-price">£4.99<span> /month</span></div>
+              <p class="lp-plan-line">No ads, log by photo, ten estimates a day.</p>
+              <ul>
+                <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>Everything in Free, with no ads</li>
+                <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>Log by photo</li>
+                <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>10 AI estimates a day</li>
+                <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>£44.91 a year — three months free</li>
+              </ul>
+              <a class="lp-cta" href="/?app=1&amp;signup=1">Get Plus</a>
+            </div>
+
+            <div class="lp-plan">
+              <div><span class="lp-plan-name">Pro</span></div>
+              <div class="lp-price">£9.99<span> /month</span></div>
+              <p class="lp-plan-line">Everything the app can do, connected to what you wear.</p>
+              <ul>
+                <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>Everything in Plus</li>
+                <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>40 AI estimates a day</li>
+                <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>Recipe and label scanning</li>
+                <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>WHOOP and Apple Health</li>
+                <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>The weekly report, filed to Drive</li>
+              </ul>
+              <a class="lp-cta lp-cta--ghost" href="/?app=1&amp;signup=1">Get Pro</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="lp-section" style="padding-top: 8px">
+        <div class="lp-wrap">
+          <div class="lp-section-head">
+            <h2>Line by line</h2>
+            <p>Every feature, and exactly which plan it's on.</p>
+          </div>
+
+          <div class="lp-table-scroll">
+            <table class="lp-table" id="lp-compare">
+              <thead>
+                <tr><th scope="col">Feature</th><th scope="col">Free</th><th scope="col">Plus</th><th scope="col">Pro</th></tr>
+              </thead>
+              <tbody>
+                <tr class="lp-row-group"><th colspan="4" scope="colgroup">Logging</th></tr>
+                <tr><th scope="row">Barcode scanning</th><td class="lp-yes">✓</td><td class="lp-yes">✓</td><td class="lp-yes">✓</td></tr>
+                <tr><th scope="row">Food database search</th><td class="lp-yes">✓</td><td class="lp-yes">✓</td><td class="lp-yes">✓</td></tr>
+                <tr><th scope="row">Saved meals and recipes</th><td class="lp-yes">✓</td><td class="lp-yes">✓</td><td class="lp-yes">✓</td></tr>
+                <tr><th scope="row">Voice and share-to-log</th><td class="lp-yes">✓</td><td class="lp-yes">✓</td><td class="lp-yes">✓</td></tr>
+                <tr><th scope="row">AI estimates per day</th><td class="lp-val">3</td><td class="lp-val">10</td><td class="lp-val">40</td></tr>
+                <tr><th scope="row">Log by photo</th><td class="lp-no">—</td><td class="lp-yes">✓</td><td class="lp-yes">✓</td></tr>
+                <tr><th scope="row">Recipe and label scanning</th><td class="lp-no">—</td><td class="lp-no">—</td><td class="lp-yes">✓</td></tr>
+
+                <tr class="lp-row-group"><th colspan="4" scope="colgroup">Understanding it</th></tr>
+                <tr><th scope="row">Calories and macros</th><td class="lp-yes">✓</td><td class="lp-yes">✓</td><td class="lp-yes">✓</td></tr>
+                <tr><th scope="row">Charts and history</th><td class="lp-yes">✓</td><td class="lp-yes">✓</td><td class="lp-yes">✓</td></tr>
+                <tr><th scope="row">Trend weight and projection</th><td class="lp-yes">✓</td><td class="lp-yes">✓</td><td class="lp-yes">✓</td></tr>
+                <tr><th scope="row">Adaptive calorie target</th><td class="lp-yes">✓</td><td class="lp-yes">✓</td><td class="lp-yes">✓</td></tr>
+                <tr><th scope="row">Keto mode and fasting timer</th><td class="lp-yes">✓</td><td class="lp-yes">✓</td><td class="lp-yes">✓</td></tr>
+                <tr><th scope="row">Weekly review in the app</th><td class="lp-yes">✓</td><td class="lp-yes">✓</td><td class="lp-yes">✓</td></tr>
+                <tr><th scope="row">WHOOP and Apple Health</th><td class="lp-no">—</td><td class="lp-no">—</td><td class="lp-yes">✓</td></tr>
+                <tr><th scope="row">Weekly PDF report to Drive</th><td class="lp-no">—</td><td class="lp-no">—</td><td class="lp-yes">✓</td></tr>
+
+                <tr class="lp-row-group"><th colspan="4" scope="colgroup">The rest</th></tr>
+                <tr><th scope="row">Works offline</th><td class="lp-yes">✓</td><td class="lp-yes">✓</td><td class="lp-yes">✓</td></tr>
+                <tr><th scope="row">Export your data</th><td class="lp-yes">✓</td><td class="lp-yes">✓</td><td class="lp-yes">✓</td></tr>
+                <tr><th scope="row">Dark mode</th><td class="lp-yes">✓</td><td class="lp-yes">✓</td><td class="lp-yes">✓</td></tr>
+                <tr><th scope="row">Invite rewards</th><td class="lp-yes">✓</td><td class="lp-yes">✓</td><td class="lp-yes">✓</td></tr>
+                <tr><th scope="row">Ads</th><td>Shown</td><td class="lp-no">None</td><td class="lp-no">None</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="lp-section" style="padding-top: 8px">
+        <div class="lp-wrap">
+          <div class="lp-section-head"><h2>Questions people actually ask</h2></div>
+          <div class="lp-faq">
+            <details>
+              <summary>Is the free plan a trial?</summary>
+              <p>
+                No. It doesn't expire and it doesn't ask for a card. Barcode
+                scanning, food search, saved meals, your charts and your whole
+                history stay free permanently. What's rationed is the AI — three
+                estimates a day — because that's the part that costs real money
+                to run. It's funded by ads, which is why paid plans don't have
+                them.
+              </p>
+            </details>
+            <details>
+              <summary>How accurate are the photo estimates?</summary>
+              <p>
+                Good enough to be useful, not good enough to be gospel — and the
+                app says which is which. Anything looked up from a barcode or a
+                food database is marked verified. Anything the AI estimated is
+                marked as an estimate, itemised, with the portion it assumed
+                shown so you can correct it in a tap. Over a week, consistent
+                slightly-wrong beats accurate-but-abandoned every time.
+              </p>
+            </details>
+            <details>
+              <summary>What happens if I run out of AI estimates?</summary>
+              <p>
+                Everything else keeps working — search, barcodes, saved meals,
+                re-logging anything already in your diary, all your charts. Only
+                new AI estimates pause, and they reset the next day.
+              </p>
+            </details>
+            <details>
+              <summary>Can I cancel? Do I get a refund?</summary>
+              <p>
+                Cancel any time from Settings, in two taps — it goes through
+                Stripe's own portal, not a form that emails somebody. Your plan
+                runs to the end of the period you've paid for. Ask within 14
+                days of subscribing and you get a full refund whether you've
+                used it or not.
+              </p>
+            </details>
+            <details>
+              <summary>Do I need a WHOOP?</summary>
+              <p>
+                No. Without one, QuicKcals estimates what you burn from your
+                stats and then corrects that estimate as it watches your actual
+                weight change — which for most people lands close. A WHOOP or
+                Apple Health connection replaces the estimate with a
+                measurement, which is sharper, and it's why that sits on Pro.
+              </p>
+            </details>
+            <details>
+              <summary>Is my diary private?</summary>
+              <p>
+                Yes. It isn't sold, and it's never given to an advertiser —
+                nothing you log is used to target ads, here or anywhere else.
+                Free accounts see ads, but the only thing the ad script learns
+                is that a page was opened. On a paid plan the advertising script
+                is never loaded at all. The
+                <a href="/privacy.html">privacy policy</a> spells out exactly
+                what goes where.
+              </p>
+            </details>
+            <details>
+              <summary>Is it an app or a website?</summary>
+              <p>
+                Both, really. It runs in a browser, and you can install it to
+                your home screen, where it opens full-screen, works with no
+                signal, and can send you reminders — like an app, without an
+                app store between you and an update.
+              </p>
+            </details>
+            <details>
+              <summary>Is this medical advice?</summary>
+              <p>
+                No, and it shouldn't be treated as it. It's a diary that
+                estimates. If you're managing a medical condition, pregnant,
+                under 18, or have a history of disordered eating, talk to a
+                doctor or a registered dietitian before changing how you eat.
+              </p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section class="lp-close">
+        <div class="lp-wrap">
+          <h2>Start with today's lunch.</h2>
+          <p>
+            Free, no card, and everything you log stays yours. If you never pay
+            a penny, the diary still works.
+          </p>
+          <a class="lp-cta lp-cta--lg" href="/?app=1&amp;signup=1">Create a free account</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="lp-footer">
+      <div class="lp-wrap lp-footer-inner">
+        <span>© 2026 QuicKcals</span>
+        <nav class="lp-footer-legal">
+          <a href="/privacy.html">Privacy</a>
+          <a href="/terms.html">Terms</a>
+          <a href="mailto:support@quickcals.com">Contact</a>
+        </nav>
+      </div>
+    </footer>
+
+    <script>
+      // Somebody already signed in shouldn't be told to "Sign in". One cheap
+      // request settles it; if it fails for any reason the button keeps its
+      // default wording, which is the safe way round.
+      fetch("/api/plan", { credentials: "same-origin" })
+        .then((r) => {
+          if (!r.ok) return;
+          const cta = document.getElementById("lp-header-cta");
+          if (cta) {
+            cta.textContent = "Open QuicKcals";
+            cta.href = "/?app=1";
+          }
+        })
+        .catch(() => {});
+    </script>
+  </body>
+</html>

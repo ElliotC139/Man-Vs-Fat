@@ -2907,6 +2907,13 @@ function showAuthScreen() {
   // switches it to sign-up when there is an invite to honour.
   authInviteEl.hidden = true;
   showInviteBanner();
+
+  // "Start free" on the landing page means sign up, not log in. Arriving on
+  // a log-in form after pressing a button that said "create an account" is a
+  // small thing that costs real sign-ups. An invite takes precedence, but it
+  // already lands on sign-up anyway, so the two agree.
+  if (new URLSearchParams(window.location.search).has("signup")) setAuthMode("signup");
+
   // Back to the top, so the form is where it should be rather than wherever
   // the last screen happened to be scrolled to.
   window.scrollTo(0, 0);

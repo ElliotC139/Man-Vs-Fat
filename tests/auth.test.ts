@@ -39,6 +39,7 @@ vi.mock("../src/db", () => {
 
 import {
   requireAuth,
+  sessionUserId,
   setSessionCookie,
   clearSessionCookie,
   hashPassword,
@@ -67,6 +68,52 @@ describe("hashPassword / verifyPassword", () => {
     const hash = await hashPassword("correct-horse-battery");
     expect(await verifyPassword("correct-horse-battery", hash)).toBe(true);
     expect(await verifyPassword("wrong-password", hash)).toBe(false);
+  });
+});
+
+describe("sessionUserId", () => {
+  /**
+   * The root route hangs off this: no session gets the landing page, a session
+   * gets the app. Both answers are correct, so unlike requireAuth this must
+   * never throw and never refuse — a thrown error here would be a 500 on the
+   * front door.
+   */
+  it("is nobody when there is no cookie", async () => {
+    expect(await sessionUserId({ cookies: {} } as any)).toBeNull();
+    expect(await sessionUserId({} as any)).toBeNull();
+  });
+
+  it("is nobody for a cookie that isn't a real token", async () => {
+    for (const junk of ["not-a-token", "", "a.b.c.d.e", "1.2.3"]) {
+      expect(await sessionUserId({ cookies: { [SESSION_COOKIE_NAME]: junk } } as any)).toBeNull();
+    }
+  });
+
+  it("is nobody for a non-string cookie rather than throwing", async () => {
+    // A signed-out stranger with a mangled cookie should see marketing, not a
+    // stack trace. This is the front door.
+    expect(await sessionUserId({ cookies: { [SESSION_COOKIE_NAME]: 42 } } as any)).toBeNull();
+    expect(await sessionUserId({ cookies: { [SESSION_COOKIE_NAME]: {} } } as any)).toBeNull();
+  });
+
+  it("is the user for a valid session", async () => {
+    const setRes = fakeRes();
+    await setSessionCookie(setRes, 7);
+    const token = setRes.cookies[SESSION_COOKIE_NAME]!;
+
+    expect(await sessionUserId({ cookies: { [SESSION_COOKIE_NAME]: token } } as any)).toBe(7);
+  });
+
+  it("is nobody once that session has been revoked", async () => {
+    // Otherwise signing out everywhere would still hand somebody the app on
+    // the front door, which is the one place it would be least noticed.
+    const setRes = fakeRes();
+    await setSessionCookie(setRes, 8);
+    const token = setRes.cookies[SESSION_COOKIE_NAME]!;
+    expect(await sessionUserId({ cookies: { [SESSION_COOKIE_NAME]: token } } as any)).toBe(8);
+
+    await revokeAllSessions(8);
+    expect(await sessionUserId({ cookies: { [SESSION_COOKIE_NAME]: token } } as any)).toBeNull();
   });
 });
 
