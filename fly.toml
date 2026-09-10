@@ -27,6 +27,21 @@ auto_stop_machines = false
 auto_start_machines = true
 min_machines_running = 1
 
+# Fly asking the app whether it is serving, rather than taking a started
+# machine as a working one. Without this a container that boots and then
+# throws before app.listen() still looks healthy from the outside, and the
+# proxy sends real traffic at it.
+[[http_service.checks]]
+  interval = "15s"
+  timeout = "5s"
+  # This stack is slow to boot — Prisma's engine, googleapis' top-level
+  # import, and `prisma migrate deploy` before the server even starts — so the
+  # grace period has to outlast all of that. Too short and Fly kills a machine
+  # that was only still starting, which turns a slow deploy into a failed one.
+  grace_period = "30s"
+  method = "GET"
+  path = "/healthz"
+
 [[vm]]
 size = "shared-cpu-1x"
 # Default shared-cpu-1x memory (256MB) isn't enough headroom for this stack —

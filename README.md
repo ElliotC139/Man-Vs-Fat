@@ -164,6 +164,72 @@ under Account → Access Tokens) plus the five secrets already listed above
 set once under **Settings → Secrets and variables → Actions** (leave
 `GOOGLE_SIGNIN_CLIENT_ID` unset there too if you don't want the button).
 
+### Staging
+
+`fly.staging.toml` + `.github/workflows/staging.yml` deploy a second Fly app,
+`quickcals-staging`, from **any** branch — push to a branch called `staging`,
+or run the workflow by hand and pick one. It is the inverse of the production
+workflow's rule: `deploy.yml` refuses anything but `main` unless you say so
+out loud, because deploying a stale branch to production is exactly how this
+app once served a months-old build for hours. Staging takes any branch on
+purpose. The worst it can do is show you something broken, which is the job.
+
+Its own volume, so its own throwaway SQLite file — nothing there can reach
+production data. It deliberately runs **without** Stripe, Resend, or the
+Google Drive credentials: a staging app holding a live secret key is one
+mis-set variable away from charging a real card, so billing reports itself
+unconfigured, `sendMail` does nothing, and the nightly backup files nothing.
+`ANTHROPIC_API_KEY` *is* set, because a staging app that can't answer a food
+estimate can't be used to check anything worth checking. Google sign-in won't
+work (the OAuth client doesn't list that host) — sign in with a username and
+password.
+
+Unlike production it is allowed to stop when idle, so it costs nothing
+between deploys and takes a few seconds to wake.
+
+### What happens when a deploy is broken
+
+`deploy.yml` reads the running image before it deploys, and if the new release
+fails its healthcheck it **puts the previous image back** before failing the
+job. Before that, a bad deploy went red in Actions and stayed live: the only
+thing between a broken build and its users was somebody happening to look at
+the run.
+
+The job still fails afterwards, always. A rollback is not a success, it is the
+outage being over with the cause still unfixed.
+
+One deliberate exception: **a deploy carrying a database migration is not
+rolled back automatically.** Rolling an image back does not roll a migration
+back, and while every migration here so far has been additive — a new column,
+a new table, which older code simply ignores — a destructive one would leave
+old code against a schema missing something it needs, breaking in a fresh way
+on top of whatever was already wrong. The workflow detects a migration in the
+push, refuses to roll back, and prints the two commands to do it by hand.
+
+### Why there is no zero-downtime deploy
+
+There is a gap of a few seconds on every production deploy, and it is not an
+oversight — it follows from SQLite on a Fly volume.
+
+A Fly volume attaches to exactly one machine at a time. Zero-downtime
+strategies (blue-green, rolling across instances) all require two machines
+serving at once, and two machines cannot share the volume holding the
+database. So the machine is replaced in place: stopped, updated, started, with
+the app unreachable while it boots.
+
+What has been done instead is to make that window as safe as it can be. Fly
+now health-checks `/healthz` before the proxy will route to a machine, with a
+grace period long enough to cover this stack's slow boot (Prisma's engine,
+`googleapis`, and `prisma migrate deploy` all run before `app.listen()`), so
+traffic is never sent at a container that has started but is not yet serving.
+Nothing is lost during the gap either — the service worker serves the shell
+from cache and queues writes offline.
+
+Closing the gap properly means changing where the database lives — LiteFS, or
+a hosted Postgres — and that is a real migration with real risk, not a config
+change. Worth doing when the traffic justifies it; not worth doing for a
+handful of seconds a few times a week.
+
 ## Input method
 
 Built: a mobile-friendly web form (text + photo, big touch targets, shows

@@ -1,0 +1,81 @@
+# Staging. A second Fly app, deliberately as close to production as it can be
+# without being able to touch anything that matters.
+#
+# The point of it is the thing that was missing on the night the app served a
+# months-old build for hours: somewhere to look at a change before customers
+# do. Deploy a branch here, open the URL, decide.
+#
+# ── What staging deliberately does NOT have ───────────────────────────────
+#
+# No Stripe keys. Not test keys either, until someone sets them by hand. A
+# staging app holding the live secret key is one mis-set variable away from
+# charging a real card, and the production webhook points at quickcals.com
+# regardless, so a purchase made here could never complete anyway. Billing
+# reports itself unconfigured and the plan picker offers nothing, which is a
+# supported state (see stripeConfigured in src/config.ts) rather than a broken
+# one.
+#
+# No Resend key, so nothing emails a real person from a test account. No
+# Google Drive credentials, so the nightly backup doesn't file staging's
+# throwaway database next to the real one.
+#
+# Google sign-in won't work here either — the OAuth client's authorised
+# redirect URIs list quickcals.com and not this host. That is not worth fixing:
+# username and password reaches every screen.
+#
+# ── The database is separate and disposable ───────────────────────────────
+#
+# Its own volume, so its own SQLite file. Nothing here can reach production
+# data, and losing all of it costs nothing. Migrations apply on boot exactly
+# as they do in production, which is most of the value: a migration that fails
+# fails here first.
+
+app = "quickcals-staging"
+primary_region = "lhr"
+
+[build]
+
+[env]
+PORT = "8080"
+TIMEZONE = "Europe/London"
+DATABASE_URL = "file:../data/dev.db"
+# Not a secret, and stating it here keeps the config self-describing. Left off
+# the canonical-host redirect on purpose: staging is only ever reached at its
+# fly.dev address, and a redirect to production is exactly the wrong thing for
+# a URL whose whole job is not being production.
+APP_BASE_URL = "https://quickcals-staging.fly.dev"
+
+[[mounts]]
+source = "staging_data"
+destination = "/app/data"
+
+[http_service]
+internal_port = 8080
+force_https = true
+# The opposite of production's settings, and for the opposite reason. There is
+# no weekly report worth firing here, so the machine is allowed to stop when
+# nobody is looking at it — staging costs nothing while idle and takes a few
+# seconds to wake. Production keeps a machine up precisely because its cron
+# has to fire whether or not anyone is visiting.
+auto_stop_machines = true
+auto_start_machines = true
+min_machines_running = 0
+
+# Fly asking the app whether it is actually serving, rather than assuming a
+# started machine is a working one. Same check as production so that a
+# deploy which would fail there fails here first.
+[[http_service.checks]]
+  interval = "15s"
+  timeout = "5s"
+  # This stack is slow to boot — Prisma's engine, googleapis' top-level
+  # import, migrate deploy — so the grace period has to outlast that or the
+  # first check fails a machine that was only still starting.
+  grace_period = "30s"
+  method = "GET"
+  path = "/healthz"
+
+[[vm]]
+size = "shared-cpu-1x"
+# Same as production. A staging box that OOMs where production wouldn't tells
+# you nothing useful, and the memory is only paid for while it is awake.
+memory = "1gb"
