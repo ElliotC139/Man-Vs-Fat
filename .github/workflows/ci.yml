@@ -1,0 +1,55 @@
+name: CI
+
+# The gap this closes: until now nothing in this repository ran on a pull
+# request. Both other workflows trigger on a push — deploy.yml on main,
+# staging.yml on staging — which meant the first thing that ever exercised a
+# change was the deploy that shipped it to customers. The tests existed and
+# were good; they just only ran if somebody remembered to run them.
+#
+# So this runs the two checks a contributor runs locally, on every PR and on
+# every push to main, and nothing else. It does not deploy, it holds no
+# secrets, and it is deliberately boring: a check that is slow or flaky is a
+# check people learn to ignore.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  # One run per branch. Pushing twice in a minute should cancel the first
+  # run rather than queue behind it — but never on main, where each commit's
+  # result is a record of whether that commit was sound.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the Dockerfile, so a type error that only appears on one
+          # Node version appears here rather than in the deploy.
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # The Prisma client is generated code, and tsc type-checks against it.
+      # Without this the build fails on a fresh checkout with a few hundred
+      # errors about missing model types — which looks like a broken PR and
+      # isn't. The Dockerfile does the same thing for the same reason.
+      - name: Generate the Prisma client
+        run: npx prisma generate
+
+      # tsc --noEmit. No secrets and no database: verified by running both of
+      # these with the .env file moved aside, which is the state a runner is
+      # actually in.
+      - name: Typecheck
+        run: npm run build
+
+      - name: Test
+        run: npm test
