@@ -9,6 +9,12 @@
  *
  * Nothing here calls a model. A suggestion box that costs money per suggestion
  * is one you end up rationing, which is the opposite of the point.
+ *
+ * An email goes out alongside the record. The record is still the system of
+ * record — it holds the context and it is where things get marked handled —
+ * but a screen nobody has a reason to open is a screen nobody opens, and a
+ * suggestion sitting unread for a fortnight may as well not have been made.
+ * The email is the nudge; the pile is still the pile.
  */
 
 import { Router } from "express";
@@ -17,6 +23,9 @@ import { prisma } from "../db";
 import { requireAuth } from "../auth";
 import { isAdminUser } from "../adminAccess";
 import { consume, type RateLimitRule } from "../rateLimit";
+import { canSendMail, sendMail } from "../mailer";
+import { config } from "../config";
+import { recordError } from "../errorLog";
 
 export const suggestionsRouter = Router();
 suggestionsRouter.use(requireAuth);
@@ -70,6 +79,12 @@ suggestionsRouter.post("/", async (req, res) => {
     },
     select: { id: true, createdAt: true },
   });
+
+  // After the write, and never in front of it: a suggestion that was saved
+  // but not announced is a small problem, and one that was announced but not
+  // saved is a lost one. Not awaited, so a slow mail provider doesn't hold
+  // the person on a spinner for something that isn't theirs to wait for.
+  void announce(suggestion.id, parsed.data.kind, parsed.data.body, req.userId!);
 
   res.status(201).json(suggestion);
 });
@@ -131,3 +146,38 @@ suggestionsRouter.patch("/:id", async (req, res) => {
   }
   res.json({ id: updated.id, handled: updated.handled });
 });
+
+/**
+ * Tell somebody a suggestion has arrived.
+ *
+ * Never throws and never rejects. This runs after the response has been
+ * decided, so anything that escapes here would be an unhandled rejection over
+ * a suggestion that was already saved successfully — the worst possible trade.
+ */
+async function announce(id: number, kind: string, body: string, userId: number): Promise<void> {
+  try {
+    if (!canSendMail()) return;
+
+    const who = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { username: true, plan: true },
+    });
+
+    await sendMail({
+      to: config.SUGGESTIONS_EMAIL,
+      subject: `QuicKcals suggestion (${kind}) from ${who?.username ?? "someone"}`,
+      text: [
+        body,
+        "",
+        "—",
+        `From: ${who?.username ?? "unknown"} (${who?.plan ?? "unknown"} plan)`,
+        `Kind: ${kind}`,
+        `Suggestion #${id}`,
+        "",
+        `Mark it handled in Settings → Admin → Suggestions: ${config.APP_BASE_URL}`,
+      ].join("\n"),
+    });
+  } catch (error) {
+    void recordError("suggestions:announce", error);
+  }
+}
