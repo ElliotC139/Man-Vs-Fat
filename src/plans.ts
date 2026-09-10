@@ -33,8 +33,13 @@
  * The prices below are **VAT-inclusive**: £4.99 is what a customer pays, and
  * the VAT is carved out of it rather than added on top. That is the right way
  * round for a consumer app — the price on the page is the price — but it means
- * a sixth of the headline is never ours. Add Stripe's 1.5% + 20p on a domestic
- * card and what's left is:
+ * a sixth of the headline is never ours.
+ *
+ * This account runs on Stripe's Managed Payments, so Stripe is the merchant of
+ * record: it works the VAT out, collects it, and remits it. That is settled
+ * rather than pending — the VAT comes out of every payment from the first one,
+ * not from whenever a registration threshold gets crossed. Take it off, take
+ * the processing fee off, and what's left is:
  *
  *                    price    VAT     fee    kept
  *   Plus monthly     £4.99   £0.83   £0.27   £3.89
@@ -44,9 +49,13 @@
  *
  * Every margin figure below is against the *kept* column, not the headline.
  *
- * There is no VAT registration yet, so today Stripe computes zero and the
- * whole £4.99 arrives. The ceilings are set as though there were one, because
- * crossing the threshold shouldn't require re-pricing the product.
+ * The fee column assumes 1.5% + 20p, a domestic card on standard pricing.
+ * Managed Payments may charge more than that for taking on the tax work, and
+ * the figure isn't pinned down here. It doesn't need to be: the promise this
+ * file exists to keep survives a much dearer fee. At 4% + 20p — well above any
+ * plausible premium — Pro still keeps £7.73 against a £3.50 ceiling, which is
+ * still under half. There is a test for exactly that, so the claim is checked
+ * rather than asserted.
  *
  * ── Why the free tier can exist at all ────────────────────────────────────
  *
