@@ -374,6 +374,7 @@
       }
       .lp-price span { font-size: 0.95rem; font-weight: 500; color: var(--muted); font-family: Inter, sans-serif; }
       .lp-plan-line { margin: 0; color: var(--muted); font-size: 0.9rem; line-height: 1.5; }
+      .lp-billed { font-weight: 700; color: var(--ink); }
       .lp-plan ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
       .lp-plan li {
         display: flex;
@@ -384,6 +385,79 @@
       }
       .lp-tick { flex: none; width: 17px; height: 17px; margin-top: 2px; color: var(--pitch); }
       .lp-plan .lp-cta { width: 100%; margin-top: auto; }
+
+      /* The billing switch. A segmented control rather than an on/off toggle:
+         "Monthly" and "Annual" are two answers to one question, and a switch
+         labelled with only one of them makes you work out what the other
+         state means. */
+      .lp-billing {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 30px;
+      }
+      .lp-billing-track {
+        display: flex;
+        gap: 3px;
+        padding: 3px;
+        border: 1px solid var(--hairline);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--hairline) 40%, transparent);
+      }
+      .lp-billing-opt {
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        font-size: 0.9rem;
+        font-weight: 600;
+        padding: 8px 20px;
+        cursor: pointer;
+        transition: background 0.18s var(--ease), color 0.18s var(--ease);
+      }
+      .lp-billing-opt[aria-checked="true"] {
+        background: var(--card);
+        color: var(--ink);
+        box-shadow: var(--shadow-sm);
+      }
+      .lp-billing-save {
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: var(--pitch-dark);
+        background: color-mix(in srgb, var(--pitch) 12%, transparent);
+        border-radius: 999px;
+        padding: 5px 12px;
+      }
+
+      /* The price is the one number on the page that changes, so it gets the
+         one animation. Brief, and only on the digits. */
+      .lp-price { transition: opacity 0.18s var(--ease), transform 0.18s var(--ease); }
+      .lp-price.is-changing { opacity: 0; transform: translateY(-6px); }
+
+      /* The recommended plan sits proud of the other two above tablet width.
+         Below it, everything is stacked and lifting one card would only make
+         the column look broken. */
+      @media (min-width: 860px) {
+        .lp-plan--feature { transform: translateY(-14px); }
+        .lp-plan--feature .lp-plan-inner { padding-bottom: 14px; }
+      }
+
+      /* Cards arrive as you reach them. Movement is small on purpose — this
+         is a page about a diary, not a product launch. */
+      .lp-reveal {
+        opacity: 0;
+        transform: translateY(18px);
+        transition: opacity 0.55s var(--ease), transform 0.55s var(--ease);
+      }
+      .lp-reveal.is-in { opacity: 1; transform: none; }
+      @media (prefers-reduced-motion: reduce) {
+        .lp-reveal, .lp-price { transition: none; }
+        .lp-reveal { opacity: 1; transform: none; }
+        .lp-plan--feature { transform: none; }
+      }
 
       /* ── Comparison table ───────────────────────────────────────────── */
       .lp-table-scroll { overflow-x: auto; }
@@ -588,7 +662,7 @@
           </div>
 
           <div class="lp-grid">
-            <article class="lp-feature">
+            <article class="lp-feature lp-reveal">
               <h3>Log by photo</h3>
               <p>
                 A plate of food is faster to photograph than to describe. The
@@ -598,7 +672,7 @@
               <span class="lp-feature-tag">Plus and Pro</span>
             </article>
 
-            <article class="lp-feature">
+            <article class="lp-feature lp-reveal">
               <h3>Barcodes and real food databases</h3>
               <p>
                 Millions of packaged products, looked up rather than guessed.
@@ -608,7 +682,7 @@
               <span class="lp-feature-tag lp-feature-tag--free">Free, unlimited</span>
             </article>
 
-            <article class="lp-feature">
+            <article class="lp-feature lp-reveal">
               <h3>Adaptive targets</h3>
               <p>
                 Standard calculators guess your maintenance calories from your
@@ -618,7 +692,7 @@
               <span class="lp-feature-tag lp-feature-tag--free">Free</span>
             </article>
 
-            <article class="lp-feature">
+            <article class="lp-feature lp-reveal">
               <h3>Trend weight, not scale weight</h3>
               <p>
                 Daily weight is mostly water. The trend line is the thing that
@@ -628,7 +702,7 @@
               <span class="lp-feature-tag lp-feature-tag--free">Free</span>
             </article>
 
-            <article class="lp-feature">
+            <article class="lp-feature lp-reveal">
               <h3>WHOOP and Apple Health</h3>
               <p>
                 Turn "burned" from a formula's guess into a measurement. Your
@@ -638,7 +712,7 @@
               <span class="lp-feature-tag lp-feature-tag--pro">Pro</span>
             </article>
 
-            <article class="lp-feature">
+            <article class="lp-feature lp-reveal">
               <h3>Scan a recipe or a label</h3>
               <p>
                 Photograph a recipe card or the back of a packet and get the
@@ -647,7 +721,7 @@
               <span class="lp-feature-tag lp-feature-tag--pro">Pro</span>
             </article>
 
-            <article class="lp-feature">
+            <article class="lp-feature lp-reveal">
               <h3>Saved meals and recipes</h3>
               <p>
                 Your porridge is your porridge. Log it once, re-log it in a
@@ -657,7 +731,7 @@
               <span class="lp-feature-tag lp-feature-tag--free">Free, unlimited</span>
             </article>
 
-            <article class="lp-feature">
+            <article class="lp-feature lp-reveal">
               <h3>Works with no signal</h3>
               <p>
                 A proper offline app, not a website that breaks in a lift.
@@ -667,7 +741,7 @@
               <span class="lp-feature-tag lp-feature-tag--free">Free</span>
             </article>
 
-            <article class="lp-feature">
+            <article class="lp-feature lp-reveal">
               <h3>Macros, keto and fasting</h3>
               <p>
                 Protein, carbs and fat tracked against your own split. A keto
@@ -677,7 +751,7 @@
               <span class="lp-feature-tag lp-feature-tag--free">Free</span>
             </article>
 
-            <article class="lp-feature">
+            <article class="lp-feature lp-reveal">
               <h3>The weekly report</h3>
               <p>
                 A PDF that lands every week — what you ate, what moved, what
@@ -687,7 +761,7 @@
               <span class="lp-feature-tag lp-feature-tag--pro">Pro</span>
             </article>
 
-            <article class="lp-feature">
+            <article class="lp-feature lp-reveal">
               <h3>Your data is yours</h3>
               <p>
                 Export the lot, any time, as a file you keep. Delete the
@@ -697,7 +771,7 @@
               <span class="lp-feature-tag lp-feature-tag--free">Free</span>
             </article>
 
-            <article class="lp-feature">
+            <article class="lp-feature lp-reveal">
               <h3>Invite a friend, both gain</h3>
               <p>
                 They get their first month free. You get a month of your own
@@ -720,11 +794,19 @@
             </p>
           </div>
 
+          <div class="lp-billing" role="radiogroup" aria-label="Billing period">
+            <div class="lp-billing-track">
+              <button type="button" class="lp-billing-opt" role="radio" aria-checked="true" data-billing="monthly">Monthly</button>
+              <button type="button" class="lp-billing-opt" role="radio" aria-checked="false" data-billing="yearly">Annual</button>
+            </div>
+            <span class="lp-billing-save">3 months free</span>
+          </div>
+
           <div class="lp-plans" id="lp-plans">
-            <div class="lp-plan">
+            <div class="lp-plan lp-reveal">
               <div><span class="lp-plan-name">Free</span></div>
-              <div class="lp-price">£0<span> forever</span></div>
-              <p class="lp-plan-line">The whole diary, with the AI rationed.</p>
+              <div class="lp-price" data-monthly="£0" data-yearly="£0" data-monthly-note="forever" data-yearly-note="forever">£0<span> forever</span></div>
+              <p class="lp-plan-line"><span class="lp-billed">No card, ever</span> · The whole diary, with the AI rationed.</p>
               <ul>
                 <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>Unlimited barcode scans and food search</li>
                 <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>Unlimited saved meals, recipes and re-logs</li>
@@ -734,23 +816,22 @@
               <a class="lp-cta lp-cta--ghost" href="/?app=1&amp;signup=1">Start free</a>
             </div>
 
-            <div class="lp-plan lp-plan--feature">
+            <div class="lp-plan lp-plan--feature lp-reveal">
               <div><span class="lp-plan-name">Plus</span><span class="lp-plan-badge">Most people</span></div>
-              <div class="lp-price">£4.99<span> /month</span></div>
-              <p class="lp-plan-line">No ads, log by photo, ten estimates a day.</p>
+              <div class="lp-price" data-monthly="£4.99" data-yearly="£44.91" data-monthly-note="/month" data-yearly-note="/year">£4.99<span> /month</span></div>
+              <p class="lp-plan-line"><span class="lp-billed" data-monthly-note="Billed monthly" data-yearly-note="Billed once a year">Billed monthly</span> · No ads, log by photo, ten estimates a day.</p>
               <ul>
                 <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>Everything in Free, with no ads</li>
                 <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>Log by photo</li>
                 <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>10 AI estimates a day</li>
-                <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>£44.91 a year — three months free</li>
-              </ul>
+                              </ul>
               <a class="lp-cta" href="/?app=1&amp;signup=1">Get Plus</a>
             </div>
 
-            <div class="lp-plan">
+            <div class="lp-plan lp-reveal">
               <div><span class="lp-plan-name">Pro</span></div>
-              <div class="lp-price">£9.99<span> /month</span></div>
-              <p class="lp-plan-line">Everything the app can do, connected to what you wear.</p>
+              <div class="lp-price" data-monthly="£9.99" data-yearly="£89.91" data-monthly-note="/month" data-yearly-note="/year">£9.99<span> /month</span></div>
+              <p class="lp-plan-line"><span class="lp-billed" data-monthly-note="Billed monthly" data-yearly-note="Billed once a year">Billed monthly</span> · Everything the app can do, connected to what you wear.</p>
               <ul>
                 <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>Everything in Plus</li>
                 <li><svg class="lp-tick" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>40 AI estimates a day</li>
@@ -920,6 +1001,62 @@
     </footer>
 
     <script>
+      // ── The billing switch ────────────────────────────────────────────
+      // Prices live in data attributes on the markup rather than in here, so
+      // the page still states three real prices with no JavaScript at all —
+      // which matters for a crawler, and for the seconds before this runs.
+      (function () {
+        const options = document.querySelectorAll(".lp-billing-opt");
+        const prices = document.querySelectorAll(".lp-price");
+        const billed = document.querySelectorAll(".lp-billed[data-monthly-note]");
+        if (!options.length) return;
+
+        const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        function show(period) {
+          for (const opt of options) {
+            opt.setAttribute("aria-checked", String(opt.dataset.billing === period));
+          }
+          for (const el of billed) el.textContent = el.dataset[period === "yearly" ? "yearlyNote" : "monthlyNote"];
+
+          for (const price of prices) {
+            const amount = price.dataset[period === "yearly" ? "yearly" : "monthly"];
+            const note = price.dataset[period === "yearly" ? "yearlyNote" : "monthlyNote"];
+            const write = () => { price.innerHTML = amount + "<span> " + note + "</span>"; };
+            if (still) { write(); continue; }
+            // Out, swap, back in — so the number changes rather than jumping.
+            price.classList.add("is-changing");
+            setTimeout(() => { write(); price.classList.remove("is-changing"); }, 180);
+          }
+        }
+
+        for (const opt of options) {
+          opt.addEventListener("click", () => show(opt.dataset.billing));
+        }
+      })();
+
+      // ── Cards arrive as you reach them ────────────────────────────────
+      // Everything is visible without this: the class that hides them is only
+      // added once we know an observer is available to bring them back. A
+      // page that stays blank because an API was missing is a worse page than
+      // one that never animated.
+      (function () {
+        const cards = document.querySelectorAll(".lp-reveal");
+        if (!cards.length) return;
+        if (!("IntersectionObserver" in window)) {
+          for (const c of cards) c.classList.add("is-in");
+          return;
+        }
+        const io = new IntersectionObserver((entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            entry.target.classList.add("is-in");
+            io.unobserve(entry.target);
+          }
+        }, { rootMargin: "0px 0px -60px 0px" });
+        for (const c of cards) io.observe(c);
+      })();
+
       // Somebody already signed in shouldn't be told to "Sign in". One cheap
       // request settles it; if it fails for any reason the button keeps its
       // default wording, which is the safe way round.
