@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   entries: [] as { timestamp: Date; kcal: number }[],
@@ -51,7 +51,28 @@ function logWeighIns(days: number, startKg: number, endKg: number, everyDays = 2
   }
 }
 
+/**
+ * Pin the clock to local midday for every test in this file.
+ *
+ * Fixtures here are built from Date.now() — "three hours ago", "yesterday" —
+ * which quietly carries the time of day the suite happens to run at. Near a
+ * local midnight that stops meaning what the test says: "three hours ago" is
+ * yesterday, so an entry meant to be today isn't, and the assertion fails on
+ * a clock rather than on the code.
+ *
+ * Only Date is faked, so timers, servers and network calls behave normally —
+ * and it is midday *of the real current day*, so everything stays relative
+ * and nothing here depends on a hardcoded date that would rot.
+ */
+function pinToLocalMidday(): void {
+  const now = new Date();
+  const midday = new Date(now);
+  midday.setHours(12, 0, 0, 0);
+  vi.useFakeTimers({ toFake: ["Date"], now: midday });
+}
+
 beforeEach(() => {
+  pinToLocalMidday();
   state.entries.length = 0;
   state.weighIns.length = 0;
   state.cycles.length = 0;
@@ -162,4 +183,8 @@ describe("estimateAdaptiveTdee", () => {
     const result = await estimateAdaptiveTdee(1);
     expect(isAdaptiveTdeeAvailable(result) ? result.underLoggingKcalPerDay : "n/a").toBeNull();
   });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });

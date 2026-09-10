@@ -3,7 +3,12 @@ name: Deploy to Fly.io
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      i_understand_this_is_not_main:
+        description: "Deploy a branch that ISN'T main (type: yes)"
+        required: false
+        default: "no"
 
 concurrency:
   group: fly-deploy
@@ -12,6 +17,25 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      # The branch picker on a manual run defaults to whatever GitHub feels
+      # like offering, and every stale branch in the repo is on that list.
+      # Choosing one silently deploys it: flyctl builds whatever checkout
+      # pulled, so an abandoned branch from months ago goes straight to
+      # production, taking the app back to whatever it was then. That is not
+      # hypothetical — it happened, and the app served a build old enough to
+      # predate password reset until someone noticed.
+      #
+      # Deploying a branch on purpose is still possible; it just has to be
+      # said out loud in the input rather than arrived at by accepting a
+      # default.
+      - name: Refuse to deploy anything but main by accident
+        if: github.ref_name != 'main' && inputs.i_understand_this_is_not_main != 'yes'
+        run: |
+          echo "::error::Refusing to deploy '${{ github.ref_name }}'."
+          echo "This workflow deploys to production. Run it on main, or set the"
+          echo "'Deploy a branch that ISN'T main' input to 'yes' if you mean it."
+          exit 1
+
       - uses: actions/checkout@v4
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
