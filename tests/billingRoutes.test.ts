@@ -14,6 +14,11 @@ const state = vi.hoisted(() => ({
   constructEvent: null as any,
   /** Credits issued through Stripe, so a test can assert one landed. */
   credits: [] as any[],
+  /** What Stripe would return from subscriptions.retrieve right now. */
+  current: null as any,
+  lastEvent: null as any,
+  /** Emails the app tried to send. */
+  mails: [] as any[],
   /** Set to make the credit call fail, which is how a retry gets tested. */
   creditFails: false,
   nextCustomer: 1,
@@ -39,6 +44,11 @@ vi.mock("../src/config", () => ({
 
 vi.mock("../src/errorLog", () => ({ recordError: vi.fn(async () => {}) }));
 
+vi.mock("../src/mailer", () => ({
+  canSendMail: () => true,
+  sendMail: async (mail: any) => { state.mails.push(mail); return true; },
+}));
+
 vi.mock("../src/billing", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/billing")>();
   return {
@@ -46,7 +56,21 @@ vi.mock("../src/billing", async (importOriginal) => {
     // The real client would reach for the network. The signature check and
     // the customer-balance credit are the parts these tests care about.
     stripe: () => ({
-      webhooks: { constructEvent: (...args: any[]) => state.constructEvent(...args) },
+      webhooks: {
+        constructEvent: (...args: any[]) => {
+          const event = state.constructEvent(...args);
+          state.lastEvent = event;
+          return event;
+        },
+      },
+      subscriptions: {
+        // The handler re-reads the subscription rather than trusting the
+        // event, so the mock has to answer for it. state.current is what
+        // Stripe "currently" holds — set it apart from the event body to
+        // prove the handler acts on the former.
+        retrieve: async (id: string) =>
+          state.current ?? state.lastEvent?.data?.object ?? { id, customer: "cus_1", status: "active", metadata: {}, items: { data: [] } },
+      },
       customers: {
         create: async (data: any) => ({ id: `cus_new_${state.nextCustomer++}`, ...data }),
         createBalanceTransaction: async (customer: string, data: any) => {
@@ -99,6 +123,9 @@ let baseUrl: string;
 beforeEach(async () => {
   state.users.length = 0;
   state.credits.length = 0;
+  state.mails.length = 0;
+  state.current = null;
+  state.lastEvent = null;
   state.creditFails = false;
   state.nextCustomer = 1;
   state.constructEvent = () => { throw new Error("no signature configured"); };
@@ -383,5 +410,125 @@ describe("the referral reward", () => {
 
     await post(subscriptionEvent());
     expect(state.users[0]!.referralTrialUsed).toBe(false);
+  });
+});
+
+/**
+ * Webhook delivery is not ordered, so the handler re-reads the subscription
+ * rather than believing the event body. These set the two apart deliberately:
+ * whichever event arrives, the state written must be what Stripe currently
+ * holds.
+ */
+describe("out-of-order events", () => {
+  it("acts on Stripe's current state, not a stale event body", async () => {
+    state.users.push({ id: 1, plan: "free", stripeCustomerId: "cus_1" });
+
+    // A delayed "updated" saying the account is on Pro and active…
+    const stale = subscriptionEvent({ status: "active" });
+    state.constructEvent = () => stale;
+    // …arriving after the subscription was actually cancelled outright.
+    state.current = {
+      id: "sub_1", customer: "cus_1", status: "canceled", metadata: {},
+      items: { data: [{ price: { id: "price_pro_m" }, current_period_end: 1_000_000 }] },
+    };
+
+    expect((await post(stale)).status).toBe(200);
+    // Believing the payload would have handed Pro back to someone who cancelled.
+    expect(state.users[0]!.plan).toBe("free");
+    expect(state.users[0]!.subscriptionStatus).toBe("canceled");
+  });
+
+  it("still applies a change when the event and Stripe agree", async () => {
+    state.users.push({ id: 1, plan: "free", stripeCustomerId: "cus_1" });
+    const event = subscriptionEvent();
+    state.constructEvent = () => event;
+    state.current = event.data.object;
+
+    await post(event);
+    expect(state.users[0]!.plan).toBe("pro");
+  });
+});
+
+describe("a failed payment", () => {
+  function failedInvoice(over: Record<string, unknown> = {}) {
+    return {
+      type: "invoice.payment_failed",
+      data: { object: { id: "in_9", customer: "cus_1", attempt_count: 1, currency: "gbp", ...over } },
+    };
+  }
+
+  it("emails the customer once, on the first attempt", async () => {
+    state.users.push({ id: 1, plan: "plus", username: "alice", email: "alice@example.test", stripeCustomerId: "cus_1" });
+    const event = failedInvoice();
+    state.constructEvent = () => event;
+
+    expect((await post(event)).status).toBe(200);
+    expect(state.mails).toHaveLength(1);
+    expect(state.mails[0]).toMatchObject({ to: "alice@example.test" });
+    expect(state.mails[0].subject).toContain("QuicKcals");
+    // Says the plan still works, because at the first failure it does.
+    expect(state.mails[0].text).toContain("Manage subscription");
+  });
+
+  it("stays quiet on the retries", async () => {
+    // Stripe retries a failed invoice for about a fortnight and every attempt
+    // fires this event. One nudge is help; six is nagging.
+    state.users.push({ id: 1, plan: "plus", username: "alice", email: "alice@example.test", stripeCustomerId: "cus_1" });
+    const event = failedInvoice({ attempt_count: 3 });
+    state.constructEvent = () => event;
+
+    await post(event);
+    expect(state.mails).toHaveLength(0);
+  });
+
+  it("says nothing to an account with no address on file", async () => {
+    // Username and password alone is a normal way to have an account.
+    state.users.push({ id: 1, plan: "plus", username: "alice", email: null, stripeCustomerId: "cus_1" });
+    const event = failedInvoice();
+    state.constructEvent = () => event;
+
+    expect((await post(event)).status).toBe(200);
+    expect(state.mails).toHaveLength(0);
+  });
+
+  it("never fails the webhook over an email", async () => {
+    // Billing state must not depend on whether a courtesy email could be sent.
+    const event = failedInvoice({ customer: null });
+    state.constructEvent = () => event;
+    expect((await post(event)).status).toBe(200);
+  });
+});
+
+describe("the referral reward's currency", () => {
+  it("refuses to pay against an invoice in another currency", async () => {
+    // amount_paid is in the invoice's own smallest unit, and it is compared
+    // against plan prices in GBP pence to cap the reward. 5,000 JPY against a
+    // 499p cap reads as "plenty" — the cap would stop capping.
+    state.users.push({ id: 1, plan: "free", username: "alice", email: null, stripeCustomerId: "cus_alice", referredById: null, referralRewardedAt: null });
+    state.users.push({ id: 2, plan: "plus", username: "bob", email: null, stripeCustomerId: "cus_bob", referredById: 1, referralRewardedAt: null });
+
+    const event = {
+      type: "invoice.payment_succeeded",
+      data: { object: { id: "in_2", customer: "cus_bob", amount_paid: 5000, currency: "jpy" } },
+    };
+    state.constructEvent = () => event;
+
+    expect((await post(event)).status).toBe(200);
+    expect(state.credits).toHaveLength(0);
+    expect(state.users[1]!.referralRewardedAt).toBeNull();
+  });
+
+  it("credits in GBP rather than whatever the invoice named", async () => {
+    state.users.push({ id: 1, plan: "free", username: "alice", email: null, stripeCustomerId: "cus_alice", referredById: null, referralRewardedAt: null });
+    state.users.push({ id: 2, plan: "plus", username: "bob", email: null, stripeCustomerId: "cus_bob", referredById: 1, referralRewardedAt: null });
+
+    const event = {
+      type: "invoice.payment_succeeded",
+      data: { object: { id: "in_3", customer: "cus_bob", amount_paid: 499, currency: "GBP" } },
+    };
+    state.constructEvent = () => event;
+
+    await post(event);
+    expect(state.credits[0]).toMatchObject({ currency: "gbp", amount: -499 });
   });
 });
