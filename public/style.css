@@ -155,7 +155,7 @@ body {
      own padding has to clear it — otherwise the back arrow and the corner
      icons sit behind the clock on an installed iPhone app and can't be
      pressed at all. Zero on every device without a notch. */
-  padding: calc(22px + env(safe-area-inset-top)) 20px 18px;
+  padding: calc(14px + env(safe-area-inset-top)) 20px 13px;
   text-align: center;
   overflow: hidden;
 }
@@ -206,8 +206,8 @@ body {
    widths (see the ≥1024px block below) — same four destinations, wired to
 .banner h1 {
   margin: 0;
-  padding: 0 92px;
-  font-size: clamp(1.15rem, 5.4vw, 1.45rem);
+  padding: 0 84px;
+  font-size: clamp(1.05rem, 4.6vw, 1.3rem);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -235,9 +235,9 @@ body {
    there is much less line box to fall back into — the mark is a little
    smaller and the margin correspondingly larger to land on the same 28px. */
 .banner--fixture h1 .brand-mark {
-  width: 56px;
-  height: 56px;
-  margin-block: -14px;
+  width: 40px;
+  height: 40px;
+  margin-block: -8px;
 }
 
 /* Three header icons on the main app-shell banner (food library, stats,
@@ -294,11 +294,15 @@ body {
    second asset for the dark theme. The corollary: it is invisible on a light
    ground, which is why the sign-in card keeps its own green-on-white asset
    (.auth-brand-mark) rather than sharing this one. */
+/* Big enough that the fork in the K reads at arm's length, small enough that
+   the header is a header. 68px was sized when the mark was the app's only
+   brand presence on screen; at 46px the tines are still legible and the bar
+   stops being a splash screen. */
 .brand-mark {
   display: block;
-  width: 68px;
-  height: 68px;
-  margin-block: -18px;
+  width: 46px;
+  height: 46px;
+  margin-block: -10px;
   flex-shrink: 0;
 }
 
@@ -393,12 +397,21 @@ main {
   padding: 16px;
 }
 
+/* Every card used to be the same white rectangle with the same shadow, which
+   is why the app read as flat: uniform elevation is no elevation. A hairline
+   defines the surface, the shadow only lifts it, and the two together give an
+   edge that survives on a light ground where a soft shadow alone disappears.
+
+   Depth now comes from three levels rather than one — see --shadow-sm for
+   things that sit on the page, this for things you act on, and .card--hero
+   for the one thing per screen that is the point of it. */
 .card {
   background: var(--card);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
   padding: 18px;
   margin-bottom: 16px;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-sm);
   animation: fadeInUp 0.35s var(--ease);
 }
 
@@ -1888,30 +1901,15 @@ tr.has-tooltip:active {
     justify-content: flex-start;
   }
 
-  /* Settings: the fieldsets are already flat siblings inside one card, so a
-     grid here lets them flow two-up without touching the markup — the
-     account line, save button, error and logout stay full-width. */
-  #settings-card {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4px 24px;
-    align-items: start;
+  /* Settings is panes now (see .settings-panes), so the two-column grid that
+     used to live here is gone along with the column it was solving for. A
+     form is read one field under the next, and a pane running the full width
+     of a laptop is the stretched-phone problem in miniature — so the pane
+     keeps a reading width and the space goes to the list beside it. */
+  .settings-pane {
+    max-width: 780px;
   }
-  #settings-card > .muted,
-  #settings-card > .settings-group,
-  /* The plan card is a three-way comparison and the invite card is a single
-     offer with a link to copy. Both were being squeezed into half the width
-     while the column beside them held one collapsed row and a lot of nothing
-     — which is what "squashed" looked like on this screen. */
-  #settings-card > #plan-card,
-  #settings-card > #referral-card,
-  #settings-card > #settings-save,
-  #settings-card > #settings-error,
-  #settings-card > #logout-btn,
-  #settings-card > .settings-section--danger,
-  #settings-card > .settings-legal {
-    grid-column: 1 / -1;
-  }
+
 
   /* Three plans across, rather than a stack of full-width rows with the
      price marooned a thousand pixels from the name it belongs to. Side by
@@ -4173,6 +4171,191 @@ tr.has-tooltip:active {
   }
 }
 
+/* Settings has no card of its own. It was a white box containing a list and
+   a column of cards — an outline drawn around an outline — and on a desktop
+   that box floated in the middle of the screen with the real content inset
+   twice. The panes sit straight on the page instead. */
+#settings-card {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+  margin-bottom: 0;
+}
+
+/* ── Settings panes ─────────────────────────────────────────────────────
+   One group at a time, chosen from a list. On a phone the list fills the
+   screen and a group replaces it, with a back arrow — the pattern every
+   phone's own settings uses. On a desktop both sit side by side, because
+   there is room and hiding the list behind a tap would be hiding it for no
+   reason.
+
+   The structure is built at runtime from the markup already there; see
+   buildSettingsNav in app.js. */
+.settings-panes {
+  display: grid;
+  gap: 20px;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings-nav-item {
+  width: 100%;
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 34px 1fr 18px;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.98rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.14s var(--ease), color 0.14s var(--ease);
+}
+.settings-nav-item + .settings-nav-item {
+  border-top: 1px solid var(--hairline);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.settings-nav-item:hover {
+  background: color-mix(in srgb, var(--pitch) 7%, transparent);
+}
+.settings-nav-item:active {
+  transform: none;
+}
+.settings-nav-chevron {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  color: var(--muted);
+}
+/* A shape per section, in a tinted well. Six identical rows of text is a
+   list you read; six rows with a mark each is a list you scan — and the
+   second time you come looking for macros you go by the shape. */
+.settings-nav-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--pitch) 11%, transparent);
+  color: var(--pitch-dark);
+}
+.settings-nav-icon .icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+.settings-nav-item--active .settings-nav-icon {
+  background: var(--pitch);
+  color: #fff;
+}
+
+.settings-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.settings-tail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+.settings-pane-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+.settings-pane-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: var(--pitch-dark);
+}
+.settings-pane-back {
+  width: auto;
+  min-height: 0;
+  flex: none;
+  padding: 6px;
+  margin-left: -6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  box-shadow: none;
+  color: var(--pitch-dark);
+  cursor: pointer;
+}
+.settings-pane-back .icon {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+.settings-pane-back:active {
+  transform: none;
+}
+
+/* On a phone the two never share the screen: the list is a screen, and a
+   group is the screen you go to from it. */
+@media (max-width: 1023px) {
+  .settings-panes[data-open=""] .settings-pane-host {
+    display: none;
+  }
+  .settings-panes:not([data-open=""]) .settings-nav {
+    display: none;
+  }
+}
+
+@media (min-width: 1024px) {
+  /* Both at once, the list narrow and fixed, the group taking the rest.
+     272px is what "You and your targets" needs to stay on one line beside
+     its icon and chevron. */
+  .settings-panes {
+    grid-template-columns: 272px minmax(0, 1fr);
+    gap: 32px;
+    align-items: start;
+  }
+  /* The list stays put while a long group scrolls past it, which is most of
+     what makes a two-pane settings screen feel navigable rather than long. */
+  .settings-nav {
+    position: sticky;
+    top: 84px;
+  }
+  .settings-nav-item--active {
+    background: color-mix(in srgb, var(--pitch) 12%, transparent);
+    color: var(--pitch-dark);
+  }
+  .settings-nav-item--active .settings-nav-chevron {
+    color: var(--pitch);
+  }
+  /* Back out of a pane only makes sense where the list can be hidden. */
+  .settings-pane-back {
+    display: none;
+  }
+  /* Under the pane, not under the whole screen. */
+  .settings-tail {
+    grid-column: 2;
+    max-width: 780px;
+  }
+  .settings-nav-chevron {
+    opacity: 0.55;
+  }
+}
+
 /* ── The desktop shell ──────────────────────────────────────────────────
    Above 1024px the app stops being a phone screen shown on a monitor.
    The change that does most of that work is the navigation: a bar pinned
@@ -4289,6 +4472,17 @@ tr.has-tooltip:active {
     display: none;
   }
 
+  /* Room. Phone padding on a laptop is what makes a widened layout look
+     like a widened layout: the same 18px gutter, just further from the
+     edge of the screen. */
+  .card {
+    padding: 24px;
+    border-radius: var(--radius-lg);
+  }
+  .settings-section {
+    padding: 18px 20px;
+  }
+
   /* ── Two columns on Today ────────────────────────────────────────────
      A single stack of full-width cards at 1180px is the "phone stretched
      wide" look in its purest form: a text box a thousand pixels across for
@@ -4302,20 +4496,37 @@ tr.has-tooltip:active {
   #today-screen main {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
+    /* Wider than the card padding, so the gap between two cards reads as
+       deliberate space rather than a seam. */
+    gap: 22px;
     align-items: start;
   }
   #today-screen main > * {
     margin-bottom: 0;
     min-width: 0;
   }
+  /* Full width: the day's summary, the thing you type into, the results of
+     a search, and the list of what you logged. Everything else is a card of
+     roughly one size that pairs with another. Placing these explicitly is
+     what stops the grid auto-flowing short cards next to tall ones and
+     leaving holes down the right — the "bento with gaps in it" problem. */
+  .today-hero,
   #today-offline-banner,
   #macro-today,
+  /* A one-line summary that opens: full width reads as a strip across the
+     top of the day, half width leaves the column beside it empty. */
+  #what-now-card,
   #entry-form,
+  #quick-add,
   #food-search-card,
   #today-entries-section,
   #ad-today {
     grid-column: 1 / -1;
+  }
+  /* Paired cards match each other's height rather than each stopping at its
+     own content, which is the difference between a grid and a pile. */
+  #today-screen main > .card:not(.today-hero) {
+    align-self: stretch;
   }
 
   /* The bottom bar used to sit over the last card, so every screen carried
