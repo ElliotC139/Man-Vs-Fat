@@ -36,7 +36,11 @@ jobs:
           echo "'Deploy a branch that ISN'T main' input to 'yes' if you mean it."
           exit 1
 
+      # Full history: the rollback guard below needs to diff this commit
+      # against the one before it to see whether a migration came with it.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
@@ -71,21 +75,123 @@ jobs:
             GOOGLE_SIGNIN_CLIENT_ID="${{ secrets.GOOGLE_SIGNIN_CLIENT_ID }}" \
             --app "$APP_NAME"
 
+      # What is serving right now, captured before it stops being true. This
+      # is what a failed deploy gets put back to.
+      #
+      # flyctl's JSON has changed shape between versions, so this tries the
+      # spellings rather than trusting one, and prints what it found. An empty
+      # result is not fatal — a first deploy has nothing to go back to — but
+      # it does mean the safety net below isn't there, and the log says so
+      # rather than leaving it to be discovered during an outage.
+      - name: Remember what is currently serving
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -uo pipefail
+          PREV_IMAGE=$(flyctl machines list --app "$APP_NAME" --json 2>/dev/null \
+            | jq -r '[.[] | (.config.image? // .Config.Image? // empty)] | first // empty' || true)
+          if [ -z "$PREV_IMAGE" ]; then
+            PREV_IMAGE=$(flyctl releases --app "$APP_NAME" --json 2>/dev/null \
+              | jq -r '[.[] | (.ImageRef? // .imageRef? // empty)] | first // empty' || true)
+          fi
+          echo "PREV_IMAGE=$PREV_IMAGE" >> "$GITHUB_ENV"
+          if [ -n "$PREV_IMAGE" ]; then
+            echo "Current image: $PREV_IMAGE"
+          else
+            echo "::warning::Couldn't read the running image — automatic rollback is unavailable for this deploy."
+          fi
+
+      # Rolling an image back does not roll a migration back.
+      #
+      # Every migration in this repo so far has been additive — a new column,
+      # a new table — and older code simply ignores those, so going back is
+      # safe. A destructive one is different: put the old code back against a
+      # schema that has lost a column and it breaks in a new way, on top of
+      # whatever was already wrong. So a deploy carrying a migration doesn't
+      # get the automatic net; it gets a loud failure and a human decision.
+      - name: Decide whether rollback is safe
+        run: |
+          set -uo pipefail
+          BEFORE="${{ github.event.before }}"
+          case "$BEFORE" in
+            ""|0000000000000000000000000000000000000000) BEFORE=$(git rev-parse HEAD~1 2>/dev/null || echo "") ;;
+          esac
+
+          if [ -z "$BEFORE" ]; then
+            echo "ROLLBACK_SAFE=unknown" >> "$GITHUB_ENV"
+            echo "No previous commit to compare against."
+          elif [ -n "$(git diff --name-only "$BEFORE" "${{ github.sha }}" -- prisma/migrations || true)" ]; then
+            echo "ROLLBACK_SAFE=no" >> "$GITHUB_ENV"
+            echo "This deploy adds a migration — automatic rollback is disabled for it."
+          else
+            echo "ROLLBACK_SAFE=yes" >> "$GITHUB_ENV"
+            echo "No migration in this deploy — automatic rollback is available."
+          fi
+
       - name: Deploy
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: flyctl deploy --remote-only --app "$APP_NAME"
 
       # Deploy success only means flyctl could update the machine config, not
-      # that the app inside it is actually serving HTTP — fails the job if it
-      # never comes up healthy.
+      # that the app inside it is actually serving HTTP.
       - name: Healthcheck
+        id: health
         run: |
+          set -uo pipefail
           for i in $(seq 1 18); do
             code=$(curl -sS --max-time 10 -o /dev/null -w "%{http_code}" "https://$APP_NAME.fly.dev/healthz" || echo "000")
             echo "attempt $i: HTTP $code"
             [ "$code" = "200" ] && exit 0
             sleep 10
           done
-          echo "App never returned HTTP 200 on /healthz"
+          echo "::error::App never returned HTTP 200 on /healthz"
+          exit 1
+
+      # The part that was missing. Before this, a deploy that failed its
+      # healthcheck went red in Actions and stayed live in production — the
+      # build was broken and serving, and the only thing standing between that
+      # and customers was somebody happening to look at the run. Now the job
+      # puts the last working image back before it goes red.
+      #
+      # It still fails afterwards, always. A rollback is not a success; it is
+      # the outage being over while the cause is still unfixed.
+      - name: Put the last working release back
+        if: failure() && steps.health.outcome == 'failure'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -uo pipefail
+
+          # "unknown" — no parent commit to compare, which in practice means
+          # never — rolls back anyway. Between an unexamined rollback and a
+          # known-broken production, the rollback is the better bet, and
+          # saying so here keeps it a decision rather than an accident.
+          if [ "${ROLLBACK_SAFE:-unknown}" = "no" ]; then
+            echo "::error::Not rolling back automatically: this deploy carried a migration."
+            echo "The schema has moved and the previous image may not match it. Decide by hand:"
+            echo "  flyctl releases --app $APP_NAME"
+            echo "  flyctl deploy --image <previous> --app $APP_NAME"
+            exit 1
+          fi
+
+          if [ -z "${PREV_IMAGE:-}" ]; then
+            echo "::error::Nothing to roll back to — the running image couldn't be read before deploying."
+            exit 1
+          fi
+
+          echo "Rolling back to $PREV_IMAGE"
+          flyctl deploy --image "$PREV_IMAGE" --app "$APP_NAME"
+
+          for i in $(seq 1 18); do
+            code=$(curl -sS --max-time 10 -o /dev/null -w "%{http_code}" "https://$APP_NAME.fly.dev/healthz" || echo "000")
+            echo "rollback attempt $i: HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "::error::Deploy failed its healthcheck and was rolled back to $PREV_IMAGE. Production is serving the previous release."
+              exit 1
+            fi
+            sleep 10
+          done
+
+          echo "::error::Rolled back to $PREV_IMAGE and it is STILL not healthy. Production is down — look at 'flyctl logs --app $APP_NAME' now."
           exit 1

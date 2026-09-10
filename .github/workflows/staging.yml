@@ -1,0 +1,98 @@
+name: Deploy to staging
+
+# The inverse of deploy.yml's rule. That workflow refuses anything but main
+# unless you say so out loud; this one takes any branch on purpose, because
+# looking at a branch before it merges is the entire point.
+#
+# Two ways in: push to a branch called `staging`, or run it by hand against
+# whatever branch you want to see. There is no branch guard here and there
+# should not be one — the worst case is that staging shows something broken,
+# which is what staging is for.
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+concurrency:
+  # Separate from fly-deploy so a staging push never queues behind, or
+  # cancels, a production release.
+  group: fly-staging
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Ensure the staging app and volume exist
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          APP_NAME=$(grep '^app =' fly.staging.toml | sed -E 's/app = "(.*)"/\1/')
+          REGION=$(grep '^primary_region =' fly.staging.toml | sed -E 's/primary_region = "(.*)"/\1/')
+          echo "APP_NAME=$APP_NAME" >> "$GITHUB_ENV"
+
+          if ! flyctl apps list --json | jq -e --arg n "$APP_NAME" '.[] | select(.Name==$n)' > /dev/null; then
+            flyctl apps create "$APP_NAME"
+          fi
+
+          if ! flyctl volumes list --app "$APP_NAME" --json | jq -e '.[] | select(.name=="staging_data")' > /dev/null; then
+            flyctl volumes create staging_data --app "$APP_NAME" --region "$REGION" --size 1 --yes
+          fi
+
+      # Deliberately a shorter list than production's.
+      #
+      # ANTHROPIC_API_KEY is here because a staging app that can't answer a
+      # food estimate can't be used to check anything worth checking, and the
+      # spend is a handful of pence.
+      #
+      # Everything that could reach a real person or a real card is absent:
+      # no Stripe, so billing reports itself unconfigured; no Resend, so
+      # sendMail does nothing; no Google credentials, so the nightly backup
+      # doesn't file staging's throwaway database anywhere. See
+      # fly.staging.toml for the full reasoning.
+      - name: Set staging secrets
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          flyctl secrets set \
+            ANTHROPIC_API_KEY="${{ secrets.ANTHROPIC_API_KEY }}" \
+            --app "$APP_NAME"
+
+      - name: Deploy
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --remote-only --config fly.staging.toml --app "$APP_NAME"
+
+      - name: Healthcheck
+        run: |
+          set -uo pipefail
+          # Longer than production's wait: staging is allowed to stop when
+          # idle, so the first request after a deploy is also a cold start.
+          for i in $(seq 1 24); do
+            code=$(curl -sS --max-time 10 -o /dev/null -w "%{http_code}" "https://$APP_NAME.fly.dev/healthz" || echo "000")
+            echo "attempt $i: HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "::error::Staging never returned HTTP 200 on /healthz"
+          exit 1
+
+      - name: Where to look
+        if: success()
+        run: |
+          {
+            echo "### Staging is up"
+            echo
+            echo "Branch \`${{ github.ref_name }}\` at \`${GITHUB_SHA:0:7}\`"
+            echo
+            echo "**https://$APP_NAME.fly.dev**"
+            echo
+            echo "Its own database, no Stripe, no email. Sign in with a username"
+            echo "and password — Google sign-in isn't authorised for this host."
+          } >> "$GITHUB_STEP_SUMMARY"
