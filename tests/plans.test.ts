@@ -31,11 +31,22 @@ import { costMicros } from "../src/modelPricing";
  * headline is the number that flatters and this is the number that pays the
  * API bill.
  */
-function netPence(pricePence: number): number {
+function netPence(pricePence: number, feeRate = 0.015): number {
   if (pricePence === 0) return 0;
   const exVat = Math.round(pricePence / 1.2);
-  return exVat - Math.round(pricePence * 0.015) - 20;
+  return exVat - Math.round(pricePence * feeRate) - 20;
 }
+
+/**
+ * A fee well above anything Stripe plausibly charges.
+ *
+ * Managed Payments takes on the tax work and may price higher than standard
+ * card processing for it, and that rate isn't fixed here. Rather than track a
+ * number that lives in someone else's dashboard, the promise is checked
+ * against a fee dearer than any of them — if it holds at 4%, the exact rate
+ * stops being something this file has to know.
+ */
+const PESSIMISTIC_FEE = 0.04;
 
 /** The dearest single estimate a plan can produce: a photo, on its model. */
 function worstEstimateMicros(model: string): number {
@@ -88,6 +99,24 @@ describe("the ceiling is what makes the promise, not the allowance", () => {
     expect(allowanceWorstCase / net).toBeGreaterThan(0.5);
     // The ceiling guarantees at least half of it stays, whatever anyone does.
     expect(plan.monthlyCostCapMicros / net).toBeLessThan(0.5);
+  });
+
+  it("keeps that floor under Pro even on a much dearer processing fee", () => {
+    // The point of the ceiling is that it holds when the numbers around it
+    // move. The processing rate is one of those numbers and it belongs to
+    // Stripe, not to this file — so the guarantee is checked against a fee
+    // well above any of theirs rather than against the one in the header.
+    const plan = planFor("pro");
+    const net = netPence(plan.pricePence, PESSIMISTIC_FEE) * 10_000;
+    expect(plan.monthlyCostCapMicros / net).toBeLessThan(0.5);
+  });
+
+  it("still makes money on every paid plan at that fee", () => {
+    for (const plan of allPlans()) {
+      if (plan.pricePence === 0) continue;
+      const net = netPence(plan.pricePence, PESSIMISTIC_FEE) * 10_000;
+      expect(plan.monthlyCostCapMicros, `${plan.name} at a 4% fee`).toBeLessThan(net);
+    }
   });
 
   it("makes a year of either plan cheaper to serve than it is to buy", () => {
