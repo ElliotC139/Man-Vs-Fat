@@ -6296,6 +6296,104 @@ function showTabBar(visible) {
   document.body.classList.toggle("has-rail", visible);
 }
 
+/* ── Filling the holes in the two-column layouts ─────────────────────────
+ *
+ * Two grids on this page have a card count that isn't known until the page
+ * has rendered: Today's card grid (which of fasting, keto, insights,
+ * recovery, water and the day note are on screen depends on the day and on
+ * what's switched on) and the weigh-in summary tiles (between two and five,
+ * depending on what you've told it about yourself).
+ *
+ * Both are two columns wide, so an odd number of items leaves the last one
+ * sitting in the left column with an item-shaped hole beside it. CSS can't
+ * fix that, because :nth-last-child counts the children that are hidden as
+ * well as the ones that aren't. So the last one is given a class that makes
+ * it span the row, and this is what works out when to give it.
+ *
+ * It runs off a MutationObserver rather than being called from each of the
+ * dozen places that toggle a card, so a card added later is covered without
+ * anyone remembering to come back here.
+ */
+const todayGrid = document.querySelector("#today-screen main");
+
+function onScreen(el) {
+  return !el.hidden && el.offsetParent !== null;
+}
+
+function balanceTodayGrid() {
+  if (!todayGrid) return;
+  const cards = [...todayGrid.children].filter(onScreen);
+  // Cleared before anything is measured, because a card still carrying the
+  // class from the last run reads back as full width and would keep it
+  // forever.
+  for (const el of cards) el.classList.remove("card--wide");
+
+  // Walk the cards in order, tracking which column the next one lands in.
+  // A half-width card is only ever a problem when the card after it can't
+  // sit beside it — because it's full width, or because there isn't one.
+  // Counting how many half-width cards there are in total isn't enough: they
+  // are interleaved with full-width ones, so three of them can leave three
+  // holes rather than one.
+  let waiting = null;
+  for (const el of cards) {
+    const full = getComputedStyle(el).gridColumnStart === "1";
+    if (full) {
+      if (waiting) waiting.classList.add("card--wide");
+      waiting = null;
+    } else if (waiting) {
+      waiting = null; // a pair — both keep their half of the row
+    } else {
+      waiting = el;
+    }
+  }
+  if (waiting) waiting.classList.add("card--wide");
+}
+
+function balanceGrids(root) {
+  const grids = root.querySelectorAll(
+    ".balance-grid:not(.balance-grid--three):not(.balance-grid--single)",
+  );
+  for (const grid of grids) {
+    const cells = [...grid.children].filter((el) => !el.hidden);
+    for (const cell of cells) cell.classList.remove("balance-cell--wide");
+    if (cells.length % 2 === 1) {
+      cells[cells.length - 1].classList.add("balance-cell--wide");
+    }
+  }
+}
+
+let layoutQueued = false;
+function settleLayout() {
+  if (layoutQueued) return;
+  layoutQueued = true;
+  requestAnimationFrame(() => {
+    layoutQueued = false;
+    balanceTodayGrid();
+    balanceGrids(document);
+  });
+}
+
+if (typeof MutationObserver === "function") {
+  // `hidden` is how every card and tile on this page appears and disappears,
+  // so watching that one attribute catches all of it. The class filter is
+  // there to stop the observer firing on its own writes.
+  const layoutObserver = new MutationObserver((records) => {
+    for (const r of records) {
+      if (r.attributeName === "hidden") {
+        settleLayout();
+        return;
+      }
+    }
+  });
+  layoutObserver.observe(document.body, {
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["hidden"],
+  });
+  window.addEventListener("resize", settleLayout);
+  settleLayout();
+}
+
 const TAB_SCREENS = {
   today: () => todayScreen,
   week: () => appShell,
@@ -12011,8 +12109,33 @@ async function loadToday() {
   loadWhatNow();
 }
 
+// "Wednesday 10 September" as the server sends it, split so the weekday can
+// lead and the date can step back behind it — one line, two levels, rather
+// than a single tracked-out run of capitals where nothing is the headline.
+// The day you are actually on gets named rather than dated, because "Today"
+// is what you'd call it and it's the answer to the only question the header
+// is being asked.
+function renderDayLabel(label, isToday) {
+  todayDateEl.textContent = "";
+  todayDateEl.classList.toggle("today-date--today", isToday === true);
+
+  const space = label.indexOf(" ");
+  const day = document.createElement("span");
+  day.className = "today-date-day";
+  const rest = document.createElement("span");
+  rest.className = "today-date-rest";
+
+  if (space === -1) {
+    day.textContent = label;
+  } else {
+    day.textContent = isToday === true ? "Today" : label.slice(0, space);
+    rest.textContent = ` ${label.slice(space + 1)}`;
+  }
+  todayDateEl.append(day, rest);
+}
+
 function renderToday(data) {
-  todayDateEl.textContent = data.label;
+  renderDayLabel(data.label, data.isToday !== false);
   currentTodayDate = data.date;
   viewingToday = data.isToday !== false;
   renderDayNav(data);
