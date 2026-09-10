@@ -143,6 +143,19 @@ billingRouter.post("/checkout", requireAuth, async (req, res) => {
         ...(trialDays ? { trial_period_days: trialDays } : {}),
       },
       allow_promotion_codes: true,
+      // VAT. The prices in Stripe are configured tax-inclusive, so £4.99 is
+      // what someone pays and the VAT is carved out of it rather than added
+      // at the last step — see src/plans.ts for what that leaves.
+      //
+      // Until there is a tax registration in Stripe, this computes zero and
+      // charges the same £4.99; it starts doing real work the day one is
+      // added, with no code change. Stripe needs an address to decide the
+      // rate, and it needs permission to write that address back onto an
+      // existing customer, which is what customer_update is for — combining
+      // `customer` with `automatic_tax` without it is an error.
+      automatic_tax: { enabled: true },
+      billing_address_collection: "required",
+      customer_update: { address: "auto", name: "auto" },
     });
 
     res.json({ url: session.url });

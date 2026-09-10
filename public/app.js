@@ -1463,6 +1463,16 @@ async function renderPlanOptions(currentId) {
 
       planOptionsEl.appendChild(row);
     }
+
+    // Said once at the bottom rather than stamped on every price. The prices
+    // are VAT-inclusive, so the figure above is what gets charged — which is
+    // the whole point of saying it: nothing is added at the last step.
+    if (planOptionsEl.querySelector(".plan-buy")) {
+      const note = document.createElement("p");
+      note.className = "plan-tax-note";
+      note.textContent = "Prices include VAT. No surprises at checkout.";
+      planOptionsEl.appendChild(note);
+    }
   } catch {
     // Same reasoning as loadPlan: nothing useful to say about it.
   }
