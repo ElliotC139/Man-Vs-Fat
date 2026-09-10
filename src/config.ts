@@ -100,6 +100,15 @@ const envSchema = z.object({
   // The From: address for those emails. Must be on a domain verified with
   // Resend, or delivery is rejected.
   MAIL_FROM: z.string().default("QuicKcals <onboarding@resend.dev>"),
+  // Where a new suggestion is announced. The suggestion itself is always
+  // stored — the admin screen is the system of record and the place things
+  // get marked handled — but nobody checks a screen they have no reason to
+  // open, so an email says one has arrived.
+  //
+  // A default rather than an optional: the address is the app's own, it isn't
+  // a secret, and leaving it unset would mean the feature silently does
+  // nothing on a deployment that never noticed the variable existed.
+  SUGGESTIONS_EMAIL: z.string().default("hello@quickcals.com"),
   // Optional Nutritionix credentials. These are what put restaurant and pub
   // menus into food search — Open Food Facts is packaged groceries only, so
   // without a key nothing off a menu is findable. See src/foodSearchProviders.ts.

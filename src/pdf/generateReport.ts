@@ -1,14 +1,35 @@
+import path from "node:path";
+import fs from "node:fs";
 import PDFDocument from "pdfkit";
 import type { Entry, MatchWeek } from "@prisma/client";
 import { localDayKey, localDayLabel, localTimeLabel, weightedDaysLogged } from "../matchWeek";
 import type { WeekInsights } from "../insights";
 
-const PITCH_GREEN = "#1f7a3f";
-const INK = "#1a1a1a";
-const MUTED = "#6b7280";
-const HAIRLINE = "#d8e3dc";
+/**
+ * The weekly report, in the app's own colours.
+ *
+ * These are lifted from public/style.css rather than approximated, because a
+ * report that arrives in a slightly different green than the app it came from
+ * reads as a document somebody else made. BRAND is the header band and the
+ * mark; PITCH is the lighter accent used for totals and the K in the wordmark.
+ *
+ * The one thing not carried across is the typeface. The app is set in Barlow
+ * Condensed and Inter; PDFKit can only use the fourteen standard PDF fonts
+ * unless the .ttf files are committed to this repo, which is a real cost for
+ * a document nobody reads for its lettering. Helvetica is the neutral choice
+ * and stays until there is a reason to pay for the alternative.
+ */
+const BRAND = "#176b3a";
+const PITCH = "#1f9d52";
+const INK = "#0f1417";
+const MUTED = "#6e7b74";
+const HAIRLINE = "#e6ece8";
+const BAND_INK = "#e7f3ec";
 
 const MARGIN = 56;
+
+/** The app icon, drawn into the header band. */
+const MARK_PATH = path.join(process.cwd(), "public", "icons", "icon-192.png");
 
 function formatDateRange(week: MatchWeek, timeZone: string): string {
   const fmt = new Intl.DateTimeFormat("en-GB", { timeZone, day: "numeric", month: "long", year: "numeric" });
@@ -18,40 +39,100 @@ function formatDateRange(week: MatchWeek, timeZone: string): string {
 
 function drawHeader(doc: PDFKit.PDFDocument, week: MatchWeek, timeZone: string) {
   const pageWidth = doc.page.width;
-  const bandHeight = 100;
+  const bandHeight = 104;
 
-  doc.rect(0, 0, pageWidth, bandHeight).fill(PITCH_GREEN);
+  doc.rect(0, 0, pageWidth, bandHeight).fill(BRAND);
 
-  // A small halfway-line + centre-circle pitch motif, subtle and not in the way of legibility.
-  const lineX = pageWidth - 150;
+  // The mark itself, not an approximation of it. If the file is missing — a
+  // trimmed image, a build that didn't copy public/ — the report still has to
+  // arrive, so the failure costs a logo and nothing else.
+  let textX = MARGIN;
+  try {
+    if (fs.existsSync(MARK_PATH)) {
+      doc.image(MARK_PATH, MARGIN, 26, { width: 34, height: 34 });
+      textX = MARGIN + 46;
+    }
+  } catch {
+    // Header without a mark. Still a report.
+  }
+
+  // "QuicKcals" with the K picked out, the same way the app draws its
+  // wordmark. Three runs on one line: PDFKit continues where the last text
+  // ended when `continued` is set, so the spacing is the font's own.
   doc
-    .save()
-    .strokeColor("#ffffff")
-    .opacity(0.35)
-    .lineWidth(1.5)
-    .moveTo(lineX, 18)
-    .lineTo(lineX, bandHeight - 18)
-    .stroke()
-    .circle(lineX, bandHeight / 2, 16)
-    .stroke()
-    .opacity(1)
-    .restore();
-
-  doc
-    .fillColor("#ffffff")
     .font("Helvetica-Bold")
-    .fontSize(22)
-    .text("QuicKcals", MARGIN, 30);
+    .fontSize(23)
+    .fillColor("#ffffff")
+    .text("Quic", textX, 28, { continued: true })
+    .fillColor(PITCH)
+    .text("K", { continued: true })
+    .fillColor("#ffffff")
+    .text("cals");
 
   doc
     .font("Helvetica")
+    .fontSize(11)
+    .fillColor(BAND_INK)
+    .text("Your week", textX, 60);
+
+  // The dates sit right-aligned against the band's other edge, so the header
+  // reads as one line of masthead rather than a stack in the top-left corner.
+  doc
+    .font("Helvetica-Bold")
     .fontSize(12)
-    .fillColor("#e7f3ec")
-    .text(formatDateRange(week, timeZone), MARGIN, 60);
+    .fillColor("#ffffff")
+    .text(formatDateRange(week, timeZone), pageWidth / 2, 62, {
+      width: pageWidth / 2 - MARGIN,
+      align: "right",
+    });
 
   doc.y = bandHeight + 30;
   doc.x = MARGIN;
   doc.fillColor(INK);
+}
+
+/**
+ * The same line on the foot of every page: where it came from, and where you
+ * are in it. Drawn at the end over buffered pages, because the page count is
+ * not knowable until the last entry has been laid out.
+ */
+function drawFooters(doc: PDFKit.PDFDocument) {
+  const range = doc.bufferedPageRange();
+  for (let i = range.start; i < range.start + range.count; i += 1) {
+    doc.switchToPage(i);
+
+    // The footer sits below the bottom margin, and PDFKit reacts to text
+    // placed past the margin by starting a new page — which then gets its own
+    // footer, and so on. A four-page report came out as six with four blank.
+    // Dropping the margin for the duration is the documented way to write
+    // into that band on purpose.
+    doc.page.margins.bottom = 0;
+
+    const y = doc.page.height - 38;
+
+    doc
+      .moveTo(MARGIN, y - 10)
+      .lineTo(doc.page.width - MARGIN, y - 10)
+      .strokeColor(HAIRLINE)
+      .lineWidth(1)
+      .stroke();
+
+    doc
+      .font("Helvetica")
+      .fontSize(8.5)
+      .fillColor(MUTED)
+      .text("quickcals.com", MARGIN, y, { width: 200, lineBreak: false });
+
+    doc
+      .font("Helvetica")
+      .fontSize(8.5)
+      .fillColor(MUTED)
+      .text(`Page ${i - range.start + 1} of ${range.count}`, doc.page.width - MARGIN - 200, y, {
+        width: 200,
+        align: "right",
+        lineBreak: false,
+      });
+  }
 }
 
 function ensureSpace(doc: PDFKit.PDFDocument, needed: number) {
@@ -61,6 +142,21 @@ function ensureSpace(doc: PDFKit.PDFDocument, needed: number) {
     doc.y = MARGIN;
     doc.x = MARGIN;
   }
+}
+
+interface Macros {
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
+/** Whether there is enough here to be worth a line. */
+function hasMacros(m: Macros): boolean {
+  return m.protein + m.carbs + m.fat >= 1;
+}
+
+function macroText(m: Macros): string {
+  return `P ${Math.round(m.protein)}g   ·   C ${Math.round(m.carbs)}g   ·   F ${Math.round(m.fat)}g`;
 }
 
 function kcalText(kcal: number | null): string {
@@ -99,7 +195,7 @@ function drawInsights(doc: PDFKit.PDFDocument, insights: WeekInsights) {
   doc.y = MARGIN;
   doc.x = MARGIN;
 
-  doc.font("Helvetica-Bold").fontSize(18).fillColor(PITCH_GREEN).text("Weekly Summary", MARGIN);
+  doc.font("Helvetica-Bold").fontSize(18).fillColor(PITCH).text("Weekly Summary", MARGIN);
   doc.moveDown(0.7);
 
   for (const section of INSIGHT_SECTIONS) {
@@ -113,7 +209,7 @@ function drawInsights(doc: PDFKit.PDFDocument, insights: WeekInsights) {
     for (const item of items) {
       ensureSpace(doc, 36);
       const rowY = doc.y;
-      doc.font("Helvetica").fontSize(10.5).fillColor(PITCH_GREEN).text("•", MARGIN, rowY, { width: 14 });
+      doc.font("Helvetica").fontSize(10.5).fillColor(PITCH).text("•", MARGIN, rowY, { width: 14 });
       doc
         .font("Helvetica")
         .fontSize(10.5)
@@ -131,7 +227,13 @@ export async function generateMatchWeekReport(
   timeZone: string,
   insights: WeekInsights | null = null,
 ): Promise<Buffer> {
-  const doc = new PDFDocument({ size: "A4", margins: { top: 0, bottom: 56, left: MARGIN, right: MARGIN } });
+  // bufferPages so the footer can say "page 2 of 5" — a count that isn't
+  // known until the last entry has been laid out.
+  const doc = new PDFDocument({
+    size: "A4",
+    bufferPages: true,
+    margins: { top: 0, bottom: 64, left: MARGIN, right: MARGIN },
+  });
   const chunks: Buffer[] = [];
   doc.on("data", (chunk: Buffer) => chunks.push(chunk));
   const finished = new Promise<Buffer>((resolve) => doc.on("end", () => resolve(Buffer.concat(chunks))));
@@ -147,6 +249,7 @@ export async function generateMatchWeekReport(
 
   let weekTotal = 0;
   let unestimatedCount = 0;
+  const weekMacros = { protein: 0, carbs: 0, fat: 0 };
 
   for (const day of days) {
     ensureSpace(doc, 50);
@@ -156,6 +259,7 @@ export async function generateMatchWeekReport(
     doc.moveDown(0.6);
 
     let daySubtotal = 0;
+    const dayMacros = { protein: 0, carbs: 0, fat: 0 };
     for (const entry of day.entries) {
       ensureSpace(doc, 22);
       const time = localTimeLabel(entry.timestamp, timeZone);
@@ -179,15 +283,33 @@ export async function generateMatchWeekReport(
       } else {
         unestimatedCount += 1;
       }
+
+      // Macros are optional per row — an older entry, or one logged before a
+      // database had figures for it — so they accumulate independently of
+      // kcal rather than being skipped alongside it.
+      dayMacros.protein += entry.proteinG ?? 0;
+      dayMacros.carbs += entry.carbsG ?? 0;
+      dayMacros.fat += entry.fatG ?? 0;
+      weekMacros.protein += entry.proteinG ?? 0;
+      weekMacros.carbs += entry.carbsG ?? 0;
+      weekMacros.fat += entry.fatG ?? 0;
     }
 
     ensureSpace(doc, 20);
     doc.moveDown(0.2);
+    const subtotalY = doc.y;
+    if (hasMacros(dayMacros)) {
+      doc
+        .font("Helvetica")
+        .fontSize(9.5)
+        .fillColor(MUTED)
+        .text(macroText(dayMacros), MARGIN, subtotalY, { width: 300, lineBreak: false });
+    }
     doc
       .font("Helvetica-Bold")
       .fontSize(10.5)
-      .fillColor(PITCH_GREEN)
-      .text(`Day subtotal: ${daySubtotal} kcal`, MARGIN, doc.y, {
+      .fillColor(PITCH)
+      .text(`Day subtotal: ${daySubtotal} kcal`, MARGIN, subtotalY, {
         width: doc.page.width - MARGIN * 2,
         align: "right",
       });
@@ -199,7 +321,7 @@ export async function generateMatchWeekReport(
 
   ensureSpace(doc, 110);
   doc.moveDown(0.4);
-  doc.moveTo(MARGIN, doc.y).lineTo(doc.page.width - MARGIN, doc.y).strokeColor(PITCH_GREEN).lineWidth(2).stroke();
+  doc.moveTo(MARGIN, doc.y).lineTo(doc.page.width - MARGIN, doc.y).strokeColor(PITCH).lineWidth(2).stroke();
   doc.moveDown(0.8);
 
   doc.font("Helvetica-Bold").fontSize(16).fillColor(INK).text(`Week total: ${weekTotal} kcal`, MARGIN);
@@ -209,6 +331,15 @@ export async function generateMatchWeekReport(
     .fontSize(12)
     .fillColor(MUTED)
     .text(`Daily average: ${dailyAverage} kcal (over ${daysLogged} day${daysLogged === 1 ? "" : "s"} logged)`, MARGIN);
+
+  if (hasMacros(weekMacros)) {
+    doc.moveDown(0.3);
+    doc
+      .font("Helvetica")
+      .fontSize(11)
+      .fillColor(MUTED)
+      .text(`Macros for the week: ${macroText(weekMacros)}`, MARGIN);
+  }
 
   if (unestimatedCount > 0) {
     doc.moveDown(0.4);
@@ -228,6 +359,7 @@ export async function generateMatchWeekReport(
     drawInsights(doc, insights);
   }
 
+  drawFooters(doc);
   doc.end();
   return finished;
 }

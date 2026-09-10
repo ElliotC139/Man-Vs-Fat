@@ -9,11 +9,36 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * pile comes back in the order somebody works through it.
  */
 
-const state = vi.hoisted(() => ({ users: [] as any[], suggestions: [] as any[], nextId: 1 }));
+const state = vi.hoisted(() => ({
+  users: [] as any[],
+  suggestions: [] as any[],
+  nextId: 1,
+  /** Announcement emails the route tried to send. */
+  mails: [] as any[],
+  /** Set to make sending throw, which is the case that must not lose data. */
+  mailFails: false,
+  mailOn: true,
+}));
 
 vi.mock("../src/config", () => ({
-  config: { TIMEZONE: "Europe/London", GOOGLE_SIGNIN_CLIENT_ID: undefined },
+  config: {
+    TIMEZONE: "Europe/London",
+    GOOGLE_SIGNIN_CLIENT_ID: undefined,
+    APP_BASE_URL: "https://quickcals.test",
+    SUGGESTIONS_EMAIL: "hello@quickcals.test",
+  },
   adminUsernames: [],
+}));
+
+vi.mock("../src/errorLog", () => ({ recordError: vi.fn(async () => {}) }));
+
+vi.mock("../src/mailer", () => ({
+  canSendMail: () => state.mailOn,
+  sendMail: async (mail: any) => {
+    if (state.mailFails) throw new Error("Resend is down");
+    state.mails.push(mail);
+    return true;
+  },
 }));
 
 vi.mock("../src/db", () => {
@@ -70,6 +95,9 @@ beforeEach(async () => {
   state.users.length = 0;
   state.suggestions.length = 0;
   state.nextId = 1;
+  state.mails.length = 0;
+  state.mailFails = false;
+  state.mailOn = true;
   vi.clearAllMocks();
   const app = express();
   app.use(express.json());
@@ -193,5 +221,60 @@ describe("marking one done", () => {
     // Not even their own: the pile is one person's to work through.
     expect(res.status).toBe(404);
     expect(state.suggestions[0]!.handled).toBe(false);
+  });
+});
+
+describe("announcing a suggestion", () => {
+  /**
+   * The record is the system of record; the email is only a nudge. Every test
+   * here is really the same assertion from a different angle: the nudge
+   * failing must never cost the thing it was nudging about.
+   */
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  /**
+   * The rate limiter is module state and outlives a test, so two tests that
+   * both sign up as user 1 share one daily allowance and the second gets a
+   * 429. A distinct id per test keeps them independent.
+   */
+  const freshUser = (id: number) => { state.nextId = id; };
+
+  it("emails the address in config when one arrives", async () => {
+    freshUser(101);
+    const cookie = await signUp("alice");
+    await send(cookie, { kind: "idea", body: "Let me pin a meal to the top of the list." });
+    await settle();
+
+    expect(state.mails).toHaveLength(1);
+    expect(state.mails[0].to).toBe("hello@quickcals.test");
+    expect(state.mails[0].text).toContain("Let me pin a meal to the top of the list.");
+    // Who and what, because a suggestion with no context is a sentence with
+    // nobody to go back to.
+    expect(state.mails[0].text).toContain("alice");
+    expect(state.mails[0].subject).toContain("idea");
+  });
+
+  it("still saves the suggestion when the email throws", async () => {
+    state.mailFails = true;
+    freshUser(102);
+    const cookie = await signUp("alice");
+    const res = await send(cookie, { kind: "problem", body: "The week nav sticks on Sundays." });
+
+    expect(res.status).toBe(201);
+    await settle();
+    expect(state.suggestions).toHaveLength(1);
+    expect(state.mails).toHaveLength(0);
+  });
+
+  it("still saves the suggestion when mail isn't configured at all", async () => {
+    state.mailOn = false;
+    freshUser(103);
+    const cookie = await signUp("alice");
+    const res = await send(cookie, { kind: "idea", body: "Dark mode on the weekly report." });
+
+    expect(res.status).toBe(201);
+    await settle();
+    expect(state.suggestions).toHaveLength(1);
+    expect(state.mails).toHaveLength(0);
   });
 });
