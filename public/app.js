@@ -1438,7 +1438,19 @@ function openRepeatSheet(items, { title, note } = {}) {
     // Not "ai": these figures were approved once already, and re-approving
     // them doesn't make them a fresh guess.
     source: "manual",
-    date: loggingDate(),
+    // Today, full stop — not loggingDate().
+    //
+    // Every button that reaches this sheet says "Add to today", and two of
+    // the three are on screens where the Today screen isn't even visible:
+    // the week diary and the food library. loggingDate() reports the day the
+    // *Today screen* is parked on, so stepping Today back one day and then
+    // going to My Week meant "Add to today" silently filed to yesterday —
+    // confirmed, saved, and nowhere to be seen on today.
+    //
+    // Null rather than a computed date: the server stamps `new Date()` when
+    // no date arrives, which is the same answer without this file having to
+    // agree with the server about which timezone the day turns over in.
+    date: null,
     mealType: chosenMealTag(),
     sourceLabel: title ?? "From your diary",
     note: note ?? "Change the amount if it was different, then log it.",
