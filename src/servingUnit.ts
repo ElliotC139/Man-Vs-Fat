@@ -21,6 +21,53 @@
 /** Units a fractional amount reads naturally in. */
 const MASS_UNITS = new Set(["g", "kg", "ml", "l", "oz", "fl oz"]);
 
+/**
+ * Is this a unit you weigh, rather than one you count?
+ *
+ * The distinction decides what a bare number in front of a food means. "2
+ * hobnobs" is two biscuits; "2 chicken", where the chicken was last logged as
+ * 200 g, is not two grams of chicken — it is two of what you had. A unit you
+ * count can be multiplied directly; a unit you weigh can only scale the whole
+ * amount. Getting this backwards logs 3 kcal where 660 belonged.
+ */
+export function isMeasuredByWeight(unit: string | null | undefined): boolean {
+  const clean = normalizeUnit(unit);
+  return clean !== null && MASS_UNITS.has(clean);
+}
+
+/**
+ * "rashers" and "rasher" are the same unit.
+ *
+ * Only ever used to compare two units for sameness, never to store one, so a
+ * crude trailing-s strip is the right amount of cleverness: the cost of
+ * getting an irregular plural wrong is one model call that would otherwise
+ * have been free, not a wrong figure in the diary.
+ */
+export function sameUnit(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = stems(a);
+  const right = stems(b);
+  return [...left].some((stem) => right.has(stem));
+}
+
+/**
+ * Every singular a unit word might be, rather than one guess at it.
+ *
+ * Guessing once gets "slices" wrong in both directions: strip two letters and
+ * it is "slic", strip one and "glasses" is "glasse". Since these are only ever
+ * compared for overlap, offering all the plausible stems costs nothing and
+ * means the awkward endings a food database actually uses — glasses, patties,
+ * slices — all meet their own singular.
+ */
+function stems(value: string | null | undefined): Set<string> {
+  const clean = normalizeUnit(value);
+  if (!clean) return new Set();
+  const out = new Set([clean]);
+  if (clean.endsWith("ies")) out.add(`${clean.slice(0, -3)}y`);
+  if (clean.endsWith("es")) out.add(clean.slice(0, -2));
+  if (clean.endsWith("s")) out.add(clean.slice(0, -1));
+  return out;
+}
+
 const MAX_UNIT_LENGTH = 20;
 
 /**

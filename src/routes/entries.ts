@@ -64,7 +64,15 @@ async function findShortcut(
   }
 }
 
-type ShortcutItem = EstimateItem & { quantity?: number; unitLabel?: string | null };
+/**
+ * What a shortcut hands back, plus the two fields only a packet has.
+ *
+ * The amount used to be bolted on here too, because an estimate had no idea
+ * how much it was for. It does now — EstimateItem carries the quantity and the
+ * unit — so every route through this file, estimated or shortcut, answers the
+ * same question the same way.
+ */
+type ShortcutItem = EstimateItem & { per100?: unknown; grams?: number };
 
 const createEntrySchema = z.object({
   text: z.string().trim().optional(),
@@ -204,7 +212,7 @@ entriesRouter.post("/", upload.single("photo"), async (req, res) => {
     estimateModel = gate.model;
   }
 
-  const items: (EstimateItem & { quantity?: number; unitLabel?: string | null })[] = directKcal
+  const items: ShortcutItem[] = directKcal
     ? [
         {
           label: text?.trim() || "Scanned item",

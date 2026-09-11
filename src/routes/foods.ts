@@ -28,6 +28,7 @@ foodsRouter.get("/", async (req, res) => {
       select: {
         label: true, kcal: true, proteinG: true, carbsG: true, fatG: true,
         fibreG: true, sugarG: true, satFatG: true, saltG: true, timestamp: true,
+        quantity: true, unitLabel: true,
       },
     }),
     prisma.foodFavorite.findMany({ where: { userId: req.userId! } }),
@@ -60,6 +61,12 @@ foodsRouter.get("/", async (req, res) => {
       sugarG: number | null;
       satFatG: number | null;
       saltG: number | null;
+      // The amount the figures are for, off the most recent logging. A row
+      // without it is a plate of food that can't say how much was on it, which
+      // is what made re-logging "2 rashers" at a different count give back the
+      // two-rasher figure.
+      quantity: number;
+      unitLabel: string | null;
       count: number;
       lastLoggedAt: Date;
     }
@@ -82,6 +89,8 @@ foodsRouter.get("/", async (req, res) => {
         sugarG: entry.sugarG,
         satFatG: entry.satFatG,
         saltG: entry.saltG,
+        quantity: entry.quantity,
+        unitLabel: entry.unitLabel,
         count: 1,
         lastLoggedAt: entry.timestamp,
       });

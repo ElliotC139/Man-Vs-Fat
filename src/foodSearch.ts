@@ -26,7 +26,7 @@
  */
 
 import { normalizeLabel } from "./labelKey";
-import { normalizeUnit } from "./servingUnit";
+import { describeAmount, normalizeUnit } from "./servingUnit";
 
 export type FoodSource = "library" | "off" | "nutritionix" | "usda";
 
@@ -500,6 +500,21 @@ export interface LibraryRow {
   satFatG?: number | null;
   saltG?: number | null;
   count: number;
+  /**
+   * The amount the figures above are for, and what one of that amount is —
+   * carried straight off the most recent logging of this food.
+   *
+   * Without these a library row is a plate of food with no idea how much food
+   * was on it, which is fine until someone re-logs it at a different amount.
+   * "Two rashers, 180 kcal" and "one rasher, 90 kcal" are the same row; only
+   * the quantity tells them apart, and only with it can either be worked out
+   * from the other.
+   *
+   * Absent, or a null unit, means exactly what it always meant: one of
+   * whatever this is, a plain multiple of itself.
+   */
+  quantity?: number;
+  unitLabel?: string | null;
 }
 
 /**
@@ -526,11 +541,12 @@ export function searchLibrary(rows: LibraryRow[], query: string, limit: number):
       per100g: null,
       servingGrams: null,
       servingLabel: null,
-      // Their own past entry, logged however they logged it — there is no
-      // packet behind it to name a unit.
-      servingUnit: null,
+      // What one of it is, where a past logging named one. No packet behind it
+      // to state a serving weight, but "rasher" or "slice" came off the entry
+      // itself and is the unit this food is actually counted in.
+      servingUnit: row.unitLabel ?? null,
       portion: {
-        label: "as you logged it",
+        label: describeAmount(row.quantity ?? 1, row.unitLabel) ?? "as you logged it",
         kcal: row.kcal!,
         protein: row.proteinG,
         carbs: row.carbsG,
