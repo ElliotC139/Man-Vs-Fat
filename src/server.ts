@@ -30,6 +30,7 @@ import { referralsRouter } from "./routes/referrals";
 import { billingRouter, billingWebhookRouter } from "./routes/billing";
 import { sharesRouter } from "./routes/shares";
 import { startScheduler } from "./jobs/scheduler";
+import { installPlanOverrides } from "./planOverrides";
 
 ensureUploadsDir();
 
@@ -230,7 +231,7 @@ app.use((err: unknown, _req: express.Request, res: express.Response, next: expre
   res.status(500).json({ error: "Something went wrong." });
 });
 
-Promise.all([ensureSessionSecret(), ensureVapidKeys()])
+Promise.all([ensureSessionSecret(), ensureVapidKeys(), installPlanOverrides()])
   .then(() => {
     app.listen(config.PORT, () => {
       console.log(`QuicKcals listening on :${config.PORT} (timezone ${config.TIMEZONE})`);
