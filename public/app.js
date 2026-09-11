@@ -281,8 +281,55 @@ function toDateInputValue(timestamp) {
   return `${year}-${month}-${day}`;
 }
 
-photoInput.addEventListener("change", () => {
-  photoStatus.textContent = photoInput.files?.[0] ? photoInput.files[0].name : "Add a photo (optional)";
+/**
+ * The two ways to attach a photo, kept down to one file.
+ *
+ * "Take a photo" is a second file input carrying capture="environment", which
+ * is what opens the rear camera rather than a file browser. Rather than teach
+ * the submit path, the offline queue and the suggestion suppression about a
+ * second input, the camera hands its file straight to #photo — so there is
+ * still exactly one place the chosen photo lives.
+ *
+ * DataTransfer is the only way to write a FileList; assigning input.files
+ * directly is otherwise read-only. Wrapped, because an older browser without
+ * it should fall back to the file picker still working rather than throwing on
+ * every camera tap.
+ */
+const photoCameraInput = document.getElementById("photo-camera");
+
+function showChosenPhoto() {
+  const file = photoInput.files?.[0];
+  photoStatus.textContent = file ? file.name : "";
+  photoStatus.hidden = !file;
+}
+
+/** After a successful log: no file on either input, and nothing said. */
+function clearChosenPhoto() {
+  photoInput.value = "";
+  if (photoCameraInput) photoCameraInput.value = "";
+  showChosenPhoto();
+}
+
+photoInput.addEventListener("change", showChosenPhoto);
+
+photoCameraInput?.addEventListener("change", () => {
+  const file = photoCameraInput.files?.[0];
+  if (!file) return;
+  try {
+    const carrier = new DataTransfer();
+    carrier.items.add(file);
+    photoInput.files = carrier.files;
+  } catch {
+    // No DataTransfer: the camera shot can't be moved across, so say so rather
+    // than silently logging without the photo the person just took.
+    photoStatus.textContent = "Couldn't attach that photo — try Choose a photo.";
+    photoStatus.hidden = false;
+    return;
+  }
+  // Cleared so re-taking a second photo fires `change` again; without this,
+  // picking the same filename twice in a row is a no-op.
+  photoCameraInput.value = "";
+  showChosenPhoto();
 });
 
 weekPrevBtn.addEventListener("click", () => {
@@ -1033,7 +1080,7 @@ function renderEntryRow(entry) {
   delBtn.className = "entry-action-icon";
   delBtn.title = "Delete";
   delBtn.setAttribute("aria-label", "Delete entry");
-  delBtn.addEventListener("click", () => deleteEntry(entry.id));
+  delBtn.addEventListener("click", () => deleteEntry(entry));
   actions.append(editBtn, repeatBtn, delBtn);
 
   row.append(main, kcal);
@@ -1339,8 +1386,22 @@ function enterEditMode(row, entry) {
   row.appendChild(wrap);
 }
 
-async function deleteEntry(id) {
-  await fetch(`/api/entries/${id}`, { method: "DELETE" });
+/**
+ * Deleting an entry, which until now happened on the first tap.
+ *
+ * The × sits between "Edit" and "+" in a row of three small buttons on a
+ * phone, and a mis-tap threw away a logged meal with no undo and no way to
+ * find out what it had been. Same window.confirm the other destructive
+ * actions in this app use — leaving the team, deleting a saved meal, wiping
+ * an account — rather than a fifth way of asking the same question.
+ *
+ * Named, because "Delete this entry?" tells you nothing about which one your
+ * thumb actually landed on.
+ */
+async function deleteEntry(entry) {
+  const name = entry.label ? `"${entry.label}"` : "this entry";
+  if (!window.confirm(`Delete ${name}? There's no undo.`)) return;
+  await fetch(`/api/entries/${entry.id}`, { method: "DELETE" });
   refreshCurrentView();
 }
 
@@ -2480,7 +2541,7 @@ form.addEventListener("submit", async (event) => {
       });
       haptic();
       form.reset();
-      photoStatus.textContent = "Add a photo (optional)";
+      clearChosenPhoto();
       logToLastWeek = false;
       logWeekCurrentBtn.classList.add("log-week-btn--active");
       logWeekLastBtn.classList.remove("log-week-btn--active");
@@ -2503,7 +2564,7 @@ form.addEventListener("submit", async (event) => {
     void loadPlan();
 
     form.reset();
-    photoStatus.textContent = "Add a photo (optional)";
+    clearChosenPhoto();
 
     // The server answers from what it already knows where it can, and only
     // calls the model when it can't (see src/estimateShortcut.ts) — so the
@@ -8289,7 +8350,9 @@ const LOG_METHOD_NOTES = {
 
 const logMethodToggles = document.getElementById("log-method-toggles");
 const logMethodInputs = {};
-const photoLabelEl = document.querySelector(".photo-label");
+// The field, not one of the two labels inside it — hiding only the first left
+// "Choose a photo" on screen for someone who had turned photo logging off.
+const photoLabelEl = document.querySelector(".photo-field");
 
 function enabledLogMethods() {
   const chosen = currentUser?.logMethods;

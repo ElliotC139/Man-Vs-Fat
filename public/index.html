@@ -280,11 +280,28 @@
              Empty and hidden until there is something to show. -->
         <div id="text-suggestions" class="text-suggestions" role="listbox" aria-label="Matching foods" hidden></div>
 
-        <label for="photo" class="photo-label">
+        <!-- Two controls, not one. A bare accept="image/*" leaves it to the
+             browser whether the camera is offered at all, and on Android it
+             often isn't — which meant photographing your dinner was: leave the
+             app, open the camera, come back, find the file. capture="environment"
+             opens the rear camera directly, so the fast path is one tap.
+
+             They write to the same input: the camera one hands its file to
+             #photo (see app.js), which stays the single source of truth for
+             the submit path, the offline queue and the suggestion suppression. -->
+        <div class="photo-field">
+        <label for="photo-camera" class="photo-label">
         <svg class="icon" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg>
-        <span id="photo-status">Add a photo (optional)</span>
+        <span>Take a photo</span>
+        <input type="file" id="photo-camera" accept="image/*" capture="environment" />
+        </label>
+        <label for="photo" class="photo-label">
+        <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+        <span>Choose a photo</span>
         <input type="file" id="photo" name="photo" accept="image/*" />
         </label>
+        </div>
+        <p id="photo-status" class="photo-status" hidden></p>
 
         <div class="capture-row">
         <button type="button" id="scan-barcode-btn" class="capture-btn">
