@@ -65,13 +65,33 @@ export async function gateAiCall(
 }
 
 /** Everything a plan can switch on that isn't an AI call. */
-export type PlanFeature = "photo" | "recipeScan" | "health" | "weeklyReport";
+export type PlanFeature =
+  | "photo"
+  | "recipeScan"
+  | "health"
+  | "weeklyReport"
+  | "weeklyReview"
+  | "eatingWindow"
+  | "fasting"
+  | "keto"
+  | "measurements"
+  | "progressPhotos";
 
+// Each names the plan it belongs to rather than saying "upgrade", because the
+// useful half of a refusal is which plan answers it.
 const FEATURE_COPY: Record<PlanFeature, string> = {
-  photo: "Logging by photo is part of Plus.",
+  photo: "Logging by photo is part of Pro.",
   recipeScan: "Scanning a recipe is part of Pro.",
   health: "Connecting WHOOP or Apple Health is part of Pro.",
   weeklyReport: "The weekly report is part of Pro.",
+  weeklyReview: "The weekly review is part of Plus.",
+  eatingWindow: "Your eating window is part of Plus.",
+  fasting: "The fasting timer is part of Plus.",
+  keto: "Keto mode is part of Plus.",
+  // Both of these gate *recording* something new. Reading back what an account
+  // already has is never gated — see the note on the Plan interface.
+  measurements: "Recording measurements is part of Plus.",
+  progressPhotos: "Progress photos are part of Plus.",
 };
 
 /**

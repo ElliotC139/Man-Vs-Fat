@@ -942,8 +942,47 @@ describe("PATCH /api/auth/me — keto mode", () => {
       body: JSON.stringify(body),
     });
 
-  it("brings its settings with it", async () => {
+  /**
+   * Keto is a Plus feature, so these — which are about what switching it on
+   * *does* — need an account allowed to switch it on. The gate is covered on
+   * its own below.
+   */
+  async function signUpAliceOnPlus(): Promise<string> {
     const cookie = await signUpAlice();
+    const user = state.users.find((u: any) => u.username === "alice");
+    if (!user) throw new Error("No alice to upgrade");
+    user.plan = "plus";
+    return cookie;
+  }
+
+  it("is Plus, and says so rather than just refusing", async () => {
+    const cookie = await signUpAlice();
+    const res = await patch(cookie, { ketoMode: true });
+    expect(res.status).toBe(402);
+    expect(((await res.json()) as any).error).toMatch(/part of Plus/i);
+  });
+
+  it("lets a free account turn it back off, and save everything else", async () => {
+    // The gate is on switching it ON. Someone who ends up on a plan without
+    // it must still be able to turn it off, and — the part that would be a
+    // nasty bug — must still be able to save the forty other settings that
+    // share this one endpoint.
+    const cookie = await signUpAliceOnPlus();
+    await patch(cookie, { ketoMode: true });
+    const user = state.users.find((u: any) => u.username === "alice");
+    user.plan = "free";
+
+    const off = await patch(cookie, { ketoMode: false });
+    expect(off.status).toBe(200);
+    expect(((await off.json()) as any).ketoMode).toBe(false);
+
+    const unrelated = await patch(cookie, { dailyCalorieTarget: 2100 });
+    expect(unrelated.status).toBe(200);
+    expect(((await unrelated.json()) as any).dailyCalorieTarget).toBe(2100);
+  });
+
+  it("brings its settings with it", async () => {
+    const cookie = await signUpAliceOnPlus();
     // Sent the way the settings form does: keto on, alongside the form's own
     // stale values for the settings keto is about to change.
     const body = (await (await patch(cookie, {
@@ -960,14 +999,14 @@ describe("PATCH /api/auth/me — keto mode", () => {
   });
 
   it("keeps a carb ceiling they have already set", async () => {
-    const cookie = await signUpAlice();
+    const cookie = await signUpAliceOnPlus();
     await patch(cookie, { macroMode: "grams", carbsTargetG: 35, carbsOp: "max" });
     const body = (await (await patch(cookie, { ketoMode: true })).json()) as any;
     expect(body.carbsTargetG).toBe(35);
   });
 
   it("leaves the settings alone once it is already on", async () => {
-    const cookie = await signUpAlice();
+    const cookie = await signUpAliceOnPlus();
     await patch(cookie, { ketoMode: true });
     // Raising the ceiling afterwards must stick, not be reset by the next save.
     await patch(cookie, { carbsTargetG: 30 });
@@ -976,7 +1015,7 @@ describe("PATCH /api/auth/me — keto mode", () => {
   });
 
   it("changes nothing else when switched off", async () => {
-    const cookie = await signUpAlice();
+    const cookie = await signUpAliceOnPlus();
     await patch(cookie, { ketoMode: true });
     const body = (await (await patch(cookie, { ketoMode: false })).json()) as any;
 

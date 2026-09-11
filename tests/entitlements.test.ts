@@ -52,9 +52,13 @@ import { planFor } from "../src/plans";
 
 const NOW = new Date("2026-09-15T12:00:00Z");
 
+// A fresh id each time. It used to hand out id 1 every call, and the mocked
+// findUnique returns the first match — so a test that made two accounts
+// silently tested the first one twice.
 function account(plan: string) {
-  state.users.push({ id: 1, plan });
-  return 1;
+  const id = state.users.length + 1;
+  state.users.push({ id, plan });
+  return id;
 }
 
 /** N calls today, each costing the given micros. */
@@ -86,7 +90,7 @@ describe("the daily allowance", () => {
 
   it("refuses once the day's estimates are gone", async () => {
     const id = account("free");
-    seedUsage(id, 3, 1000);
+    seedUsage(id, planFor("free").dailyEstimates, 1000);
     const verdict = await checkEntitlement(id, "estimate", NOW);
     expect(verdict.allowed).toBe(false);
     if (!verdict.allowed) {
@@ -144,9 +148,19 @@ describe("what a plan includes", () => {
     }
   });
 
-  it("allows a photo on Plus", async () => {
-    const id = account("plus");
-    expect((await checkEntitlement(id, "photo", NOW)).allowed).toBe(true);
+  it("allows a photo on Pro, and refuses one below it", async () => {
+    // Photo is the second most expensive call the app makes, so it sits with
+    // the most expensive one rather than on the cheaper paid tier.
+    expect((await checkEntitlement(account("pro"), "photo", NOW)).allowed).toBe(true);
+    expect((await checkEntitlement(account("plus"), "photo", NOW)).allowed).toBe(false);
+    expect((await checkEntitlement(account("free"), "photo", NOW)).allowed).toBe(false);
+  });
+
+  it("names the plan that answers a refusal, not just the refusal", async () => {
+    // "You can't" is a fault; "that's part of Pro" is a choice.
+    const verdict = await checkEntitlement(account("free"), "photo", NOW);
+    expect(verdict.allowed).toBe(false);
+    if (!verdict.allowed) expect(verdict.message).toMatch(/part of Pro/i);
   });
 
   it("reads an unrecognised plan as free rather than as unlimited", async () => {

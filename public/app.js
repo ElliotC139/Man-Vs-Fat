@@ -1534,6 +1534,58 @@ function yearlySaving(plan) {
   return months === 1 ? "1 month free" : `${months} months free`;
 }
 
+/**
+ * Hides what this plan can't reach.
+ *
+ * The server refuses these on its own — this is not the security boundary,
+ * and it isn't trying to be. It is the difference between a control that
+ * isn't there and a control that is there and says no: the second one reads
+ * as the app being broken, and you only find out after you have taken the
+ * photograph.
+ *
+ * Two shapes, and the difference matters:
+ *
+ *   Recording something new is gated; reading what is already recorded never
+ *   is. So the measurements and progress-photo cards stay exactly where they
+ *   are with all their history — it is the "+ Add" that goes. An account that
+ *   logged a waist every week for six months can still see and export every
+ *   one of them on any plan.
+ *
+ *   A card that is purely computed (the eating window) has no history of its
+ *   own to protect, so the whole card goes.
+ *
+ * Anything the server didn't send a flag for is treated as allowed, so an
+ * older cached copy of /api/plan degrades to the app it already was rather
+ * than to a locked one.
+ */
+function applyPlanGates(plan) {
+  const allowed = (name) => plan[name] !== false;
+
+  const hide = (el, ok) => { if (el) el.hidden = !ok; };
+
+  // Logging by photo. The user's own log-method preference also hides this
+  // (see applyLogMethods), so read both rather than fighting over one flag.
+  if (photoLabelEl) {
+    const wanted = !photoLabelEl.dataset.methodOff;
+    photoLabelEl.hidden = !(allowed("photo") && wanted);
+  }
+
+  // Live features: the control that turns them on is what needs the plan.
+  // Anyone who already had one running keeps it — the server gates changing
+  // the setting, not holding it.
+  hide(settingsEatingWindow?.closest(".settings-field"), allowed("fasting"));
+  const ketoRow = ketoOnBtn?.closest(".settings-field");
+  hide(ketoRow, allowed("keto"));
+
+  // Records: the history stays, the "add" goes.
+  hide(measurementToggle, allowed("measurements"));
+  hide(progressPhotoInput?.closest(".photo-label"), allowed("progressPhotos"));
+
+  // Purely computed, so nothing of the user's is behind it.
+  hide(document.getElementById("eating-window-card"), allowed("eatingWindow"));
+  hide(openReviewBtn, allowed("weeklyReview"));
+}
+
 async function loadPlan() {
   try {
     const res = await fetch("/api/plan");
@@ -1565,6 +1617,7 @@ function renderPlan() {
 
   renderPlanOptions(plan.id);
   renderAds(currentPlan.ads);
+  applyPlanGates(plan);
 
   // The line under the log button: silent until it isn't.
   const low = !monthlyCapReached && estimates.remaining <= ALLOWANCE_WARN_AT;
@@ -5232,6 +5285,25 @@ function renderAverages(averages, avgKcalPerDay) {
 
   set(statAvgKcal, num(averages.kcalInPerDay7 ?? avgKcalPerDay));
   set(statAvgKcal28, num(averages.kcalInPerDay28));
+
+  /**
+   * Say what the average is actually over.
+   *
+   * A missed day isn't a zero-calorie day, so the server averages across the
+   * days that were logged rather than across the window. That makes the
+   * figure honest and the caption a lie: "kcal in/day (7d)" over five logged
+   * days reads as a seven-day average. So the caption follows the data —
+   * "over 5 days" — and only says 7d when it really was seven.
+   */
+  const overDays = (caption, logged, window) => {
+    if (!caption) return;
+    if (logged === undefined || logged === null) return;
+    caption.textContent = logged >= window
+      ? `kcal in/day (${window}d)`
+      : `kcal in/day (over ${logged} ${logged === 1 ? "day" : "days"})`;
+  };
+  overDays(statAvgKcal?.nextElementSibling, averages.daysLogged7, averages.windowDays7 ?? 7);
+  overDays(statAvgKcal28?.nextElementSibling, averages.daysLogged28, averages.windowDays ?? 28);
   set(statAvgBurn, num(averages.kcalBurnedPerDay));
 
   if (averages.netKcalPerDay === null || averages.netKcalPerDay === undefined) {
@@ -8374,7 +8446,13 @@ function enabledLogMethods() {
 /** Shows and hides the buttons on the log form to match the setting. */
 function applyLogMethods() {
   const on = new Set(enabledLogMethods());
-  if (photoLabelEl) photoLabelEl.hidden = !on.has("photo");
+  if (photoLabelEl) {
+    // Recorded as well as applied, because the plan gate reads it back —
+    // whichever of the two runs last must not undo the other.
+    if (on.has("photo")) delete photoLabelEl.dataset.methodOff;
+    else photoLabelEl.dataset.methodOff = "1";
+    photoLabelEl.hidden = !on.has("photo") || currentPlan?.plan?.photo === false;
+  }
   scanBarcodeBtn.hidden = !on.has("scan");
   foodSearchBtn.hidden = !on.has("search");
   quickKcalBtn.hidden = !on.has("number");

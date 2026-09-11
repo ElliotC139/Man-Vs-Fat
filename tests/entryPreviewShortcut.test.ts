@@ -74,6 +74,7 @@ vi.mock("../src/estimate", () => ({
 import { authRouter } from "../src/routes/auth";
 import { entriesRouter } from "../src/routes/entries";
 import { estimateMeal } from "../src/estimate";
+import { planFor } from "../src/plans";
 
 let server: http.Server;
 let baseUrl: string;
@@ -192,8 +193,9 @@ describe("POST /api/entries/preview — the model is a last resort", () => {
 describe("POST /api/entries/preview — the plan gate", () => {
   it("refuses once the day's estimates are gone, and says what still works", async () => {
     const cookie = await signUp();
-    // A fresh account is on the free plan's three a day.
-    state.estimatesToday = 3;
+    // Whatever the free plan's allowance is — read rather than repeated, so
+    // this test is about running out and not about the number.
+    state.estimatesToday = planFor("free").dailyEstimates;
 
     const { status, body } = await preview(cookie, "chicken stir fry with a naan");
 
