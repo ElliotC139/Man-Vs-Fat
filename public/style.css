@@ -519,6 +519,38 @@ select {
   display: none;
 }
 
+/* Two ways in, side by side: the camera and the library. Equal width because
+   neither is the lesser option — which one is faster depends entirely on
+   whether the food is still in front of you. */
+.photo-field {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.photo-field .photo-label {
+  margin-bottom: 0;
+  /* Two captions in half the width each: the padding comes in and the label
+     is allowed to sit under its icon on a narrow phone rather than truncate. */
+  gap: 6px;
+  padding: 12px 8px;
+  font-size: 0.9rem;
+  text-align: center;
+}
+@media (max-width: 380px) {
+  .photo-field .photo-label {
+    flex-direction: column;
+  }
+}
+/* Only there once a photo is attached, so it says what is attached rather
+   than restating the invitation above it. */
+.photo-status {
+  margin: -4px 0 12px;
+  font-size: 0.8rem;
+  color: var(--pitch-dark);
+  overflow-wrap: anywhere;
+}
+
 button {
   width: 100%;
   min-height: 48px;
