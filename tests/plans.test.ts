@@ -10,7 +10,7 @@ vi.mock("../src/config", () => ({
   },
 }));
 
-import { allPlans, planFor, PLAN_IDS } from "../src/plans";
+import { allPlans, planFor, PLAN_IDS , type Plan } from "../src/plans";
 import { costMicros } from "../src/modelPricing";
 
 /**
@@ -133,13 +133,41 @@ describe("the ceiling is what makes the promise, not the allowance", () => {
 
 describe("the ladder", () => {
   it("gives every tier something the one below it hasn't", () => {
-    const [free, plus, pro] = allPlans();
     // A ladder made only of quota converts badly: people upgrade for
     // capability, not for a bigger number.
-    expect(free!.ads && !plus!.ads).toBe(true);
-    expect(!free!.photo && plus!.photo).toBe(true);
-    expect(!plus!.recipeScan && pro!.recipeScan).toBe(true);
-    expect(!plus!.health && pro!.health).toBe(true);
+    //
+    // Checked structurally rather than by naming features, because which
+    // feature sits on which rung is a pricing decision that moves. What must
+    // not move is that every step up buys a capability at all — the day one
+    // of these steps becomes "the same app, with a bigger number", this is
+    // the test that should fail.
+    const plans = allPlans();
+    const capabilities = (plan: Plan) =>
+      (Object.keys(plan) as (keyof Plan)[]).filter((key) => plan[key] === true);
+
+    for (let i = 1; i < plans.length; i += 1) {
+      const lower = plans[i - 1]!;
+      const higher = plans[i]!;
+      const gained = capabilities(higher).filter((key) => lower[key] !== true);
+      // `ads` runs the other way — having it is the worse deal — so losing it
+      // counts as something gained.
+      const adsDropped = lower.ads && !higher.ads;
+      expect(
+        gained.length > 0 || adsDropped,
+        `${higher.name} adds no capability over ${lower.name}`,
+      ).toBe(true);
+    }
+  });
+
+  it("puts the two calls that cost the most at the top", () => {
+    // Photo and recipe scanning are the expensive paths — roughly 1.7x and 6x
+    // a typed estimate. Wherever else the ladder gets reshuffled, these two
+    // belong where the revenue is, or the ceiling ends up funding a headline
+    // the plan didn't charge for.
+    const [free, plus, pro] = allPlans();
+    expect(pro!.photo && pro!.recipeScan).toBe(true);
+    expect(free!.photo || free!.recipeScan).toBe(false);
+    expect(plus!.recipeScan).toBe(false);
   });
 
   it("never goes backwards on allowance or price", () => {

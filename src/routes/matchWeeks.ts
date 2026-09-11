@@ -17,6 +17,7 @@ import { dayNotesForWeek } from "../dayNotes";
 import { uploadReportToDrive } from "../drive/uploadToDrive";
 import { getWhoopWeekBudget } from "../whoop/sync";
 import { normalizeLabel } from "./foods";
+import { gateFeature } from "./planGate";
 
 export const matchWeeksRouter = Router();
 matchWeeksRouter.use(requireAuth);
@@ -140,6 +141,9 @@ matchWeeksRouter.get("/current", async (req, res) => {
  * week still in progress; without it a cached review is served as-is.
  */
 matchWeeksRouter.get("/current/review", async (req, res) => {
+  // Plus. Unlike the PDF this one can spend a model call, so it is gated
+  // before any of the work rather than after it.
+  if (!(await gateFeature(req, res, "weeklyReview"))) return;
   const weeksAgo = parseWeeksAgo(req.query.weeksAgo);
   const weekStart = await getUserWeekStart(req.userId!);
   const { start, end } = getMatchWeekBoundariesForWeeksAgo(new Date(), weeksAgo, config.TIMEZONE, weekStart);

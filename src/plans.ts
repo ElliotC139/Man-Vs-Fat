@@ -130,6 +130,34 @@ export interface Plan {
   health: boolean;
   /** The weekly PDF report, and filing it to Google Drive. */
   weeklyReport: boolean;
+
+  /* ── The six that cost nothing to serve ──────────────────────────────
+     None of these spend anything at Anthropic: they are settings, a
+     computed card, and two kinds of record-keeping. They are tier levers
+     purely because they are worth paying for, which means the rule about
+     them has to be different from the rule about the metered ones:
+
+       Having the feature is what needs the plan. Reading what you already
+       recorded with it never does.
+
+     So a free account that logged measurements for six months keeps seeing
+     and exporting all of them; what needs Plus is adding the next one. A
+     paywall in front of somebody's own history is not a plan boundary, it
+     is a hostage. Every gate below is written that way. */
+
+  /** The in-app end-of-week review. */
+  weeklyReview: boolean;
+  /** The eating-window card on Stats. */
+  eatingWindow: boolean;
+  /** The fasting timer, and setting an eating window to drive it. */
+  fasting: boolean;
+  /** Keto mode: net carbs, and Today leading with them. */
+  keto: boolean;
+  /** Recording body measurements. */
+  measurements: boolean;
+  /** Recording progress photos. */
+  progressPhotos: boolean;
+
   /** One line for the plan picker. */
   tagline: string;
   /** What the plan adds over the one below it. */
@@ -157,20 +185,29 @@ function yearlyFor(monthlyPence: number): number {
  * Free — funded by ads, so it has to cost less than ads bring in.
  *
  * Display advertising on an app like this brings in roughly 20–40p per active
- * user per month, and that is the number the ceiling has to sit under. Three
- * estimates a day on Haiku is at most 31 × 3 × 0.31p ≈ 29p, and the ceiling is
- * set at 20p — below the allowance's own worst case on purpose, because the
- * ceiling is the promise and the allowance is only the headline.
+ * user per month, and that is the number the ceiling has to sit under. Four
+ * estimates a day on Haiku is at most 31 × 4 × 0.31p ≈ 38p, and the ceiling
+ * stays at 20p — well below the allowance's own worst case, on purpose,
+ * because the ceiling is the promise and the allowance is only the headline.
  *
- * Photo logging is off here: it is the expensive path, and it is the clearest
- * thing to hold back.
+ * Worth stating plainly, because the gap widened when the allowance went from
+ * three a day to four: 20p buys about 2.1 estimates a day averaged over a
+ * month, so somebody who really does use four every day runs out of budget
+ * before the month does. That costs nothing — the ceiling is what makes this
+ * tier safe — but the headline promises more than the ceiling funds, and the
+ * fix for that is raising the ceiling rather than trimming the headline.
+ *
+ * What the free tier keeps is the diary itself, all of it: every chart, the
+ * adaptive burn engine, unlimited barcode scanning, meals and recipes. What
+ * it doesn't get is the AI at volume, and the extras that are worth paying
+ * for.
  */
 const FREE: Plan = {
   id: "free",
   name: "Free",
   pricePence: 0,
   yearlyPence: null,
-  dailyEstimates: 3,
+  dailyEstimates: 4,
   monthlyCostCapMicros: 0.2 * POUND,
   model: config.ANTHROPIC_MODEL_FREE,
   ads: true,
@@ -178,12 +215,19 @@ const FREE: Plan = {
   recipeScan: false,
   health: false,
   weeklyReport: false,
+  weeklyReview: false,
+  eatingWindow: false,
+  fasting: false,
+  keto: false,
+  measurements: false,
+  progressPhotos: false,
   tagline: "The whole diary, with the AI rationed.",
   highlights: [
     "Unlimited barcode scans and food search",
     "Unlimited saved meals, recipes and re-logs",
-    "Your charts, trends and targets",
-    "3 AI estimates a day",
+    "Every chart, trend and target",
+    "Weigh-ins, goal weight and the burn engine",
+    "4 AI estimates a day",
     "Shows ads",
   ],
 };
@@ -191,17 +235,22 @@ const FREE: Plan = {
 /**
  * Plus — the ordinary paid plan.
  *
- * £4.99 less VAT and Stripe's fee keeps £3.89. Ten photo estimates a day on
- * the full model is at most 31 × 10 × 0.608p ≈ £1.88, and the ceiling is
- * £2.00. Worst case margin is therefore about £1.89 a month, and the realistic
- * margin is far better than that, because most days are nowhere near ten and
- * most entries never reach the model at all.
+ * £4.99 less VAT and Stripe's fee keeps £3.89. Photo logging moved up to Pro,
+ * so the worst case here is ten *typed* estimates a day on the full model:
+ * 31 × 10 × 0.36p ≈ £1.11, against a £2.00 ceiling. Worst case margin is
+ * £1.89 and the realistic margin is far better, because most days are nowhere
+ * near ten and most entries never reach the model at all.
  *
- * The ceiling is a slightly larger share of Plus's revenue than of Pro's, and
- * deliberately so: at ten a day the *allowance* already costs £1.88, so a
- * tighter ceiling would start cutting people off inside what they were sold.
- * A ceiling that bites before the allowance does isn't a safety net, it's a
- * smaller plan sold as a bigger one.
+ * Losing photo actually put this plan the right way round. The allowance now
+ * costs less than the ceiling, so it is the allowance that runs out first and
+ * the ceiling is a genuine safety net rather than a smaller plan wearing a
+ * bigger plan's headline. £2.00 buys about eighteen typed estimates a day,
+ * comfortably past the ten anyone is sold.
+ *
+ * What Plus is *for* is no longer "no ads and photos". It is the set of
+ * things that cost nothing to run and are worth paying for anyway: the
+ * fasting timer, keto mode, measurements, progress photos, the eating-window
+ * card and the weekly review — plus a quiet app and more of the AI.
  *
  * Undercuts MyFitnessPal Premium (about £15.99 a month) by a wide margin,
  * which is the point: the diary is the product, not the subscription.
@@ -215,15 +264,23 @@ const PLUS: Plan = {
   monthlyCostCapMicros: 2 * POUND,
   model: config.ANTHROPIC_MODEL,
   ads: false,
-  photo: true,
+  photo: false,
   recipeScan: false,
   health: false,
   weeklyReport: false,
-  tagline: "No ads, log by photo, ten estimates a day.",
+  weeklyReview: true,
+  eatingWindow: true,
+  fasting: true,
+  keto: true,
+  measurements: true,
+  progressPhotos: true,
+  tagline: "No ads, ten estimates a day, and the tools that keep you honest.",
   highlights: [
     "Everything in Free, with no ads",
-    "Log by photo",
     "10 AI estimates a day",
+    "Fasting timer and keto mode",
+    "Body measurements and progress photos",
+    "Your eating window, and the weekly review",
   ],
 };
 
@@ -243,6 +300,12 @@ const PLUS: Plan = {
  * is about 575 photo estimates in a month, roughly eighteen a day, and a diary
  * doesn't have eighteen meals in it. The allowance stays at forty because
  * "effectively unlimited" is what the plan is for.
+ *
+ * Photo logging lives here now rather than on Plus. It is the second most
+ * expensive call the app makes, and it belongs with the first one: the ceiling
+ * that funds forty typed estimates funds about eighteen photographed ones, so
+ * putting photo anywhere cheaper would mean either a thinner margin or a
+ * headline the ceiling can't pay for.
  */
 const PRO: Plan = {
   id: "pro",
@@ -257,10 +320,17 @@ const PRO: Plan = {
   recipeScan: true,
   health: true,
   weeklyReport: true,
+  weeklyReview: true,
+  eatingWindow: true,
+  fasting: true,
+  keto: true,
+  measurements: true,
+  progressPhotos: true,
   tagline: "Everything the app can do, connected to what you wear.",
   highlights: [
     "Everything in Plus",
     "40 AI estimates a day",
+    "Log by photo",
     "Scan a recipe or a label into a full breakdown",
     "WHOOP and Apple Health — burn measured, not guessed",
     "The weekly report, filed to your Drive",

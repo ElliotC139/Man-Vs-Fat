@@ -3,6 +3,7 @@ import { Router } from "express";
 import { OAuth2Client } from "google-auth-library";
 import { z } from "zod";
 import { config } from "../config";
+import { gateFeature } from "./planGate";
 import { prisma } from "../db";
 import {
   hashPassword,
@@ -540,6 +541,26 @@ authRouter.patch("/me", requireAuth, async (req, res) => {
   // rather than as a second one so the whole change lands together, and only
   // where this request is the one turning it on — editing the carb ceiling
   // afterwards must not be undone by the next unrelated save.
+  // Keto and the fasting timer are Plus features, so *switching them on*
+  // needs the plan. Switching them off never does, and neither does saving
+  // any of the other forty settings in this request — a paywall that blocks
+  // an unrelated save because a flag it doesn't touch is set would be a bug
+  // wearing a plan's clothes.
+  //
+  // Gated here rather than at the router, because this one endpoint carries
+  // the whole settings form: refusing the request wholesale would refuse the
+  // whole form.
+  if (parsed.data.ketoMode === true && !current.ketoMode) {
+    if (!(await gateFeature(req, res, "keto"))) return;
+  }
+  if (
+    parsed.data.eatingWindowHours !== undefined
+    && parsed.data.eatingWindowHours !== null
+    && current.eatingWindowHours !== parsed.data.eatingWindowHours
+  ) {
+    if (!(await gateFeature(req, res, "fasting"))) return;
+  }
+
   if (parsed.data.ketoMode === true && !current.ketoMode) {
     Object.assign(data, ketoSettings(current));
     // Whatever they had chosen to see, plus the two figures the count is made

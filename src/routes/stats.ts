@@ -36,6 +36,7 @@ import { normalizeLabel } from "./foods";
 import { effectiveMealType, readMealTagNames } from "../mealTags";
 import { MEAL_TYPES, type MealType } from "../mealType";
 import { getRecentSleepRecovery, refreshWhoopSoon } from "../whoop/sync";
+import { gateFeature } from "./planGate";
 
 export const statsRouter = Router();
 statsRouter.use(requireAuth);
@@ -61,16 +62,54 @@ function clampInt(value: unknown, min: number, max: number, fallback: number): n
   return Math.min(max, Math.max(min, n));
 }
 
-/** Average daily calories logged over the trailing window, or null with no entries in it. */
-async function avgKcalPerDay(userId: number, days = AVG_KCAL_WINDOW_DAYS): Promise<number | null> {
+/**
+ * Average daily calories over the trailing window — across the days that were
+ * actually logged, not across the window.
+ *
+ * This used to divide by the window length, so a week with two days missed
+ * reported five days of eating spread over seven. The figure was always too
+ * low, it was most wrong exactly when someone had been away from the app, and
+ * it fed the "kcal in/day" tile, the net-balance figure below it and every
+ * comparison drawn against them.
+ *
+ * A missed day is not a zero-calorie day. Nobody ate nothing; they just
+ * didn't write it down, and an average has no business inventing the
+ * difference. The rule this file already applied to WHOOP burn — see
+ * trailingAverages, which averages only over days the watch actually scored —
+ * is the same rule, and it now applies to both halves.
+ *
+ * Returns the day count alongside, so the screen can say what the average is
+ * actually over rather than implying seven.
+ */
+interface WindowAverage {
+  kcal: number | null;
+  /** Distinct local days in the window with at least one entry carrying kcal. */
+  daysLogged: number;
+}
+
+async function avgKcalPerDay(userId: number, days = AVG_KCAL_WINDOW_DAYS): Promise<WindowAverage> {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   const entries = await prisma.entry.findMany({
     where: { matchWeek: { userId }, timestamp: { gte: since }, kcal: { not: null } },
-    select: { kcal: true },
+    select: { kcal: true, timestamp: true },
   });
-  if (entries.length === 0) return null;
-  const total = entries.reduce((sum, e) => sum + (e.kcal ?? 0), 0);
-  return Math.round(total / days);
+  if (entries.length === 0) return { kcal: null, daysLogged: 0 };
+
+  // Local days, so a late supper and the next morning's breakfast don't merge
+  // or split on UTC's idea of midnight.
+  const byDay = new Map<string, number>();
+  for (const entry of entries) {
+    const key = localDayKey(entry.timestamp, config.TIMEZONE);
+    byDay.set(key, (byDay.get(key) ?? 0) + (entry.kcal ?? 0));
+  }
+  // Today is still being logged, so counting it as a whole day drags the
+  // average down all morning. Dropped unless it is all there is.
+  const todayKey = localDayKey(new Date(), config.TIMEZONE);
+  if (byDay.size > 1) byDay.delete(todayKey);
+
+  const totals = [...byDay.values()];
+  const total = totals.reduce((sum, kcal) => sum + kcal, 0);
+  return { kcal: Math.round(total / totals.length), daysLogged: totals.length };
 }
 
 const AVG_LONG_WINDOW_DAYS = 28;
@@ -201,15 +240,22 @@ statsRouter.get("/summary", async (req, res) => {
     user?.goalWeightKg && currentWeightKg !== null ? projectGoal(user.goalWeightKg, currentWeightKg, kgPerWeek ?? 0) : null;
 
   res.json({
-    avgKcalPerDay: avgKcal,
+    avgKcalPerDay: avgKcal.kcal,
     averages: {
       windowDays: AVG_LONG_WINDOW_DAYS,
-      kcalInPerDay7: avgKcal,
-      kcalInPerDay28: avgKcal28,
+      kcalInPerDay7: avgKcal.kcal,
+      kcalInPerDay28: avgKcal28.kcal,
+      // How many days each figure is actually over, so the screen can say
+      // "over 5 days" rather than letting the window imply seven.
+      daysLogged7: avgKcal.daysLogged,
+      daysLogged28: avgKcal28.daysLogged,
+      windowDays7: AVG_KCAL_WINDOW_DAYS,
       kcalBurnedPerDay: averages.kcalBurnedPerDay,
       // Net is only meaningful when both halves came from real data.
       netKcalPerDay:
-        avgKcal28 !== null && averages.kcalBurnedPerDay !== null ? avgKcal28 - averages.kcalBurnedPerDay : null,
+        avgKcal28.kcal !== null && averages.kcalBurnedPerDay !== null
+          ? avgKcal28.kcal - averages.kcalBurnedPerDay
+          : null,
       recovery: averages.recovery,
       sleepMinutes: averages.sleepMinutes,
       workoutsPerWeek: averages.workoutsPerWeek,
@@ -474,14 +520,11 @@ statsRouter.get("/weekly-breakdown", async (req, res) => {
 
   const result = boundaries.map(({ start, end }) => {
     const startKey = localDayKey(start, config.TIMEZONE);
-    const endMs = Math.min(end.getTime(), now.getTime());
-    const daysElapsed = Math.max(1, Math.min(7, Math.round((endMs - start.getTime()) / (24 * 60 * 60 * 1000))));
 
     const entriesThisWeek = entries.filter(
       (e) => e.timestamp.getTime() >= start.getTime() && e.timestamp.getTime() < end.getTime(),
     );
     const weekKcal = entriesThisWeek.reduce((sum, e) => sum + (e.kcal ?? 0), 0);
-    const avgKcalPerDayThisWeek = weekKcal > 0 ? Math.round(weekKcal / daysElapsed) : null;
     // A match week spans 8 calendar days, because it starts and ends
     // mid-Monday — so the two boundary days are half a day each. Counting
     // distinct calendar days would report "8 of 7".
@@ -490,6 +533,13 @@ statsRouter.get("/weekly-breakdown", async (req, res) => {
       start,
       config.TIMEZONE,
     );
+    // Over the days logged, not the days elapsed. This divided by elapsed
+    // days, so a week with two days missed reported five days of eating
+    // spread across seven — always low, and lowest exactly when someone had
+    // been away from the app. daysWithEntries was already sitting right here
+    // being reported in the next column.
+    const avgKcalPerDayThisWeek =
+      weekKcal > 0 && daysWithEntries > 0 ? Math.round(weekKcal / daysWithEntries) : null;
 
     const workoutCount = workouts.filter(
       (w) => w.timestamp.getTime() >= start.getTime() && w.timestamp.getTime() < end.getTime(),
@@ -1301,6 +1351,10 @@ const WINDOW_MIN_DAYS = 7;
 const WINDOW_MAX_DAYS = 90;
 
 statsRouter.get("/eating-window", async (req, res) => {
+  // Plus. Nothing about this costs anything to produce — it is a different
+  // reading of timestamps the diary already holds — so it sits behind the
+  // plan for what it is worth, not what it costs.
+  if (!(await gateFeature(req, res, "eatingWindow"))) return;
   const userId = req.userId!;
   const days = clampInt(req.query.days, WINDOW_MIN_DAYS, WINDOW_MAX_DAYS, WINDOW_DEFAULT_DAYS);
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);

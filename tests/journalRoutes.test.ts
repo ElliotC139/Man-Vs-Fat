@@ -148,6 +148,22 @@ async function signUp(username: string): Promise<string> {
   return cookie.split(";")[0]!;
 }
 
+/**
+ * Signs up and puts the account on Plus.
+ *
+ * Recording a measurement or a progress photo is a Plus feature, so the tests
+ * about how recording *behaves* — overwrite semantics, validation — need an
+ * account that is allowed to record. The gate itself is covered separately,
+ * below.
+ */
+async function signUpOnPlus(username: string): Promise<string> {
+  const cookie = await signUp(username);
+  const user = state.users.find((u) => u.username === username);
+  if (!user) throw new Error(`No user ${username} to upgrade`);
+  user.plan = "plus";
+  return cookie;
+}
+
 function post(path: string, cookie: string, body: unknown) {
   return fetch(`${baseUrl}${path}`, {
     method: "POST",
@@ -161,8 +177,27 @@ describe("measurements", () => {
     expect((await fetch(`${baseUrl}/api/body/measurements`)).status).toBe(401);
   });
 
+  it("lets a free account read its history, and refuses a new row", async () => {
+    // The whole point of how this gate is written. Recording is Plus;
+    // everything already recorded stays readable on any plan, because a
+    // paywall in front of somebody's own history is not a plan boundary.
+    const cookie = await signUpOnPlus("hasplus");
+    await post("/api/body/measurements", cookie, { date: "2026-02-01", waistCm: 96 });
+
+    const user = state.users.find((u) => u.username === "hasplus")!;
+    user.plan = "free";
+
+    const read = await fetch(`${baseUrl}/api/body/measurements`, { headers: { Cookie: cookie } });
+    expect(read.status).toBe(200);
+    expect((await read.json()) as any[]).toHaveLength(1);
+
+    const write = await post("/api/body/measurements", cookie, { date: "2026-02-02", waistCm: 95 });
+    expect(write.status).toBe(402);
+    expect(((await write.json()) as any).error).toMatch(/part of Plus/i);
+  });
+
   it("overwrites the same day rather than adding a second row", async () => {
-    const cookie = await signUp("alice");
+    const cookie = await signUpOnPlus("alice");
     await post("/api/body/measurements", cookie, { date: "2026-02-01", waistCm: 96 });
     await post("/api/body/measurements", cookie, { date: "2026-02-01", waistCm: 95.5 });
 
@@ -172,19 +207,19 @@ describe("measurements", () => {
   });
 
   it("refuses a row with no measurements in it", async () => {
-    const cookie = await signUp("alice");
+    const cookie = await signUpOnPlus("alice");
     const res = await post("/api/body/measurements", cookie, { date: "2026-02-01" });
     expect(res.status).toBe(400);
   });
 
   it("refuses a future date", async () => {
-    const cookie = await signUp("alice");
+    const cookie = await signUpOnPlus("alice");
     const res = await post("/api/body/measurements", cookie, { date: "2099-01-01", waistCm: 90 });
     expect(res.status).toBe(400);
   });
 
   it("refuses a measurement well outside human range", async () => {
-    const cookie = await signUp("alice");
+    const cookie = await signUpOnPlus("alice");
     // A misplaced decimal point (960 rather than 96.0) is the realistic slip.
     expect((await post("/api/body/measurements", cookie, { date: "2026-02-01", waistCm: 960 })).status).toBe(400);
   });

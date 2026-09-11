@@ -255,6 +255,7 @@ async function middayInCurrentWeek(cookie: string, dayOffset: number): Promise<D
 
 interface SummaryResponse {
   avgKcalPerDay: number | null;
+  averages: { daysLogged7: number; daysLogged28: number; [key: string]: unknown };
   weightPace: { kgPerWeek: number; goalKgPerWeek: number; onTrack: boolean } | null;
   weightTrend: { kgPerWeek: number; projectedWeightKg4wk: number } | null;
 }
@@ -276,18 +277,61 @@ describe("GET /api/stats/summary", () => {
     expect(body.avgKcalPerDay).toBeNull();
   });
 
-  it("averages kcal from entries in the trailing 7 days, ignoring older ones and nulls", async () => {
+  it("averages over the days that were logged, not over the window", async () => {
+    // The thing this test exists to pin down. A day nobody logged is not a
+    // day on which nobody ate — it is a day with no data — so it must not be
+    // averaged in as a zero. Dividing by the window made the figure always
+    // too low, and most wrong exactly when someone had been away from the app.
     const { cookie, userId } = await signUp("alice");
     state.entries.push(
       { userId, timestamp: daysAgo(1), kcal: 2000 },
       { userId, timestamp: daysAgo(2), kcal: 1400 },
-      { userId, timestamp: daysAgo(3), kcal: null },
+      { userId, timestamp: daysAgo(3), kcal: null }, // no figure: not a day
       { userId, timestamp: daysAgo(10), kcal: 5000 }, // outside the window
     );
 
     const body = await fetchSummary(cookie);
-    // (2000 + 1400) / 7 = 485.71... -> rounds to 486
-    expect(body.avgKcalPerDay).toBe(486);
+    // Two days logged, so (2000 + 1400) / 2 — not / 7.
+    expect(body.avgKcalPerDay).toBe(1700);
+    expect(body.averages.daysLogged7).toBe(2);
+  });
+
+  it("counts a day once however many times it was logged", async () => {
+    // Four entries across two days is a two-day average, not a four-day one.
+    const { cookie, userId } = await signUp("alice");
+    state.entries.push(
+      { userId, timestamp: daysAgo(1), kcal: 500 },
+      { userId, timestamp: daysAgo(1), kcal: 700 },
+      { userId, timestamp: daysAgo(2), kcal: 400 },
+      { userId, timestamp: daysAgo(2), kcal: 400 },
+    );
+
+    const body = await fetchSummary(cookie);
+    expect(body.averages.daysLogged7).toBe(2);
+    expect(body.avgKcalPerDay).toBe(1000); // (1200 + 800) / 2
+  });
+
+  it("leaves today out, because today is still being logged", async () => {
+    // Counting a half-finished day as a whole one drags the average down all
+    // morning. Only dropped when there is something else to average.
+    const { cookie, userId } = await signUp("alice");
+    state.entries.push(
+      { userId, timestamp: daysAgo(0), kcal: 200 },
+      { userId, timestamp: daysAgo(1), kcal: 2000 },
+    );
+
+    const body = await fetchSummary(cookie);
+    expect(body.averages.daysLogged7).toBe(1);
+    expect(body.avgKcalPerDay).toBe(2000);
+  });
+
+  it("uses today when today is all there is", async () => {
+    const { cookie, userId } = await signUp("alice");
+    state.entries.push({ userId, timestamp: daysAgo(0), kcal: 1234 });
+
+    const body = await fetchSummary(cookie);
+    expect(body.averages.daysLogged7).toBe(1);
+    expect(body.avgKcalPerDay).toBe(1234);
   });
 
   it("returns a null weightPace with fewer than two weigh-ins or no goal set", async () => {

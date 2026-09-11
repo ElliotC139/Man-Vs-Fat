@@ -111,7 +111,7 @@ export async function checkEntitlement(
     return {
       allowed: false,
       reason: "plan",
-      message: `Logging by photo is part of ${plan.id === "free" ? "Plus" : "your plan"}. Everything else still works — scan a barcode, search for it, or type it.`,
+      message: "Logging by photo is part of Pro. Everything else still works — scan a barcode, search for it, or type it.",
       allowance,
     };
   }

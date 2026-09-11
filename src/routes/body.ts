@@ -7,6 +7,7 @@ import { requireAuth } from "../auth";
 import { localDayKey } from "../matchWeek";
 import { saveUploadedImage, deleteUploadedImage } from "../lib/storage";
 import { normalizeUploadedImage } from "../lib/imageProcessing";
+import { gateFeature } from "./planGate";
 
 /**
  * Body measurements and progress photos — the two ways of tracking a change
@@ -40,7 +41,12 @@ bodyRouter.get("/measurements", async (req, res) => {
   res.json(measurements);
 });
 
+// Recording a new measurement is Plus. Reading and deleting the ones already
+// there is not, and never will be: see the note on the Plan interface. A free
+// account that logged a waist every week for six months keeps every one of
+// them, on screen and in its export.
 bodyRouter.post("/measurements", async (req, res) => {
+  if (!(await gateFeature(req, res, "measurements"))) return;
   const parsed = measurementSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Check those measurements — they look out of range." });
@@ -78,7 +84,10 @@ bodyRouter.get("/photos", async (req, res) => {
   res.json(photos);
 });
 
+// Same rule as measurements: taking a new one is Plus, keeping the ones you
+// have is not.
 bodyRouter.post("/photos", upload.single("photo"), async (req, res) => {
+  if (!(await gateFeature(req, res, "progressPhotos"))) return;
   if (!req.file) {
     res.status(400).json({ error: "Choose a photo first." });
     return;
