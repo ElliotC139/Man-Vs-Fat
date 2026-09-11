@@ -1,6 +1,6 @@
 import { prisma } from "../db";
 import { config } from "../config";
-import { findOrCreateMatchWeek, getUserWeekStart, localDayKey, matchWeekCalendarDays, zonedTimeToUtc } from "../matchWeek";
+import { findOrCreateMatchWeek, getLocalParts, getUserWeekStart, localDayKey, matchWeekCalendarDays, zonedTimeToUtc } from "../matchWeek";
 import { fetchRecentCycles, fetchRecentRecovery, fetchRecentSleep, fetchRecentWorkouts, refreshAccessToken } from "./client";
 import { recordError } from "../errorLog";
 import { shouldWriteScore } from "./scoreState";
@@ -123,9 +123,64 @@ async function syncUserSleep(userId: number, accessToken: string, since: Date): 
  * since the cycle it scores is still running — the recovery's own creation time
  * says the same thing, because WHOOP creates it when that cycle begins.
  */
-export function recoveryDate(cycleStart: Date | null, createdAt: Date | null): string | null {
+/**
+ * The day a recovery belongs to: the day you woke up.
+ *
+ * This used to be the calendar day of the cycle's start, and that is a
+ * different day from the one the sleep lands on whenever you fall asleep
+ * before midnight. A WHOOP cycle begins at sleep onset, so a cycle starting
+ * at 23:30 on the 3rd is the *4th's* day — but its recovery was filed under
+ * the 3rd, while the sleep that produced it was filed under the 4th, where
+ * getRecentSleepRecovery buckets sleep by when it ended.
+ *
+ * The result: the Today screen showed a sleep figure and no recovery beside
+ * it. Editing sleep times in the WHOOP app is the usual way to notice, because
+ * pulling a bedtime back across midnight is exactly what moves a night from
+ * the working case to the broken one — but nothing about the edit caused it.
+ * Anyone who reliably falls asleep before midnight never saw a recovery at all.
+ *
+ * `wokeAt` is the end of the sleep that started this cycle, and is the whole
+ * fix: taking the date from the same instant sleep takes it from means the two
+ * cannot disagree. It isn't always known — a cycle still running before that
+ * night's sleep has synced — so the fallbacks are ordered by how close they
+ * get to the same answer:
+ *
+ *   1. The sleep's end, when we have it. Identical to what sleep uses.
+ *   2. The cycle's start, rolled forward a day when it lands in the evening,
+ *      because an evening start means you wake tomorrow.
+ *   3. When WHOOP created the record, same rule.
+ *
+ * The rolled-forward fallbacks are the same guess sleep would have made, not a
+ * second opinion.
+ */
+
+/**
+ * Local hour at or after which a cycle start is taken to be tonight's sleep
+ * rather than this morning's wake.
+ *
+ * 17:00 rather than something later: a cycle that starts in the early evening
+ * is somebody going to bed, and nobody's *wake* time is 6pm. The exact hour
+ * only matters for the fallbacks — the sleep's own end is used whenever it is
+ * there, and that needs no threshold.
+ */
+const EVENING_START_HOUR = 17;
+
+function dayWokenInto(anchor: Date): string {
+  const { year, month, day, hour } = getLocalParts(anchor, config.TIMEZONE);
+  if (hour < EVENING_START_HOUR) return localDayKey(anchor, config.TIMEZONE);
+  // Built through zonedTimeToUtc rather than by adding 24h, so the day after a
+  // clock change is still the day after.
+  return localDayKey(zonedTimeToUtc(year, month, day + 1, 12, 0, config.TIMEZONE), config.TIMEZONE);
+}
+
+export function recoveryDate(
+  cycleStart: Date | null,
+  createdAt: Date | null,
+  wokeAt: Date | null = null,
+): string | null {
+  if (wokeAt) return localDayKey(wokeAt, config.TIMEZONE);
   const anchor = cycleStart ?? createdAt;
-  return anchor ? localDayKey(anchor, config.TIMEZONE) : null;
+  return anchor ? dayWokenInto(anchor) : null;
 }
 
 async function syncUserRecovery(userId: number, accessToken: string, since: Date): Promise<void> {
@@ -152,7 +207,32 @@ async function syncUserRecovery(userId: number, accessToken: string, since: Date
     // the same day; that is used when the cycle isn't there, and a later sync
     // that does find the cycle corrects the date through the upsert below.
     const cycle = await prisma.whoopCycle.findUnique({ where: { whoopCycleId: recovery.whoopCycleId } });
-    const date = recoveryDate(cycle?.start ?? null, recovery.createdAt);
+
+    // The sleep that opened this cycle — the first one to END at or after the
+    // cycle began. A WHOOP cycle starts at sleep onset, so that sleep's end is
+    // the morning this recovery is about, and dating from it is what keeps
+    // recovery on the same day as the sleep figure beside it.
+    //
+    // Capped at 36 hours so a cycle with no sleep of its own (the watch off,
+    // a missed night) can't reach forward and borrow the next night's.
+    // syncUserSleep runs before this, so the row is there when it exists.
+    const wokeAt = cycle
+      ? (
+          await prisma.whoopSleep.findFirst({
+            where: {
+              userId,
+              end: {
+                gte: cycle.start,
+                lt: new Date(cycle.start.getTime() + 36 * 60 * 60 * 1000),
+              },
+            },
+            orderBy: { end: "asc" },
+            select: { end: true },
+          })
+        )?.end ?? null
+      : null;
+
+    const date = recoveryDate(cycle?.start ?? null, recovery.createdAt, wokeAt);
     if (!date) continue;
 
     const stored = await prisma.whoopRecovery.findUnique({ where: { whoopCycleId: recovery.whoopCycleId } });
