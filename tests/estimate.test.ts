@@ -24,6 +24,14 @@ import { estimateMeal } from "../src/estimate";
  */
 const NO_NUTRIENTS = { fibreG: null, sugarG: null, satFatG: null, saltG: null };
 
+/**
+ * The amount, when the model's reply said nothing about one — one of whatever
+ * this is, in no named unit. Spread alongside NO_NUTRIENTS for the same
+ * reason: an estimate that quietly starts claiming a quantity it never worked
+ * out would rescale the calories under whoever logged it.
+ */
+const ONE_OF_IT = { quantity: 1, unitLabel: null };
+
 function textResponse(json: unknown) {
   return { content: [{ type: "text", text: JSON.stringify(json) }] };
 }
@@ -46,7 +54,7 @@ describe("estimateMeal", () => {
     // The buffer goes on the macros as well as the calories, so an entry's
     // four figures stay consistent with each other.
     expect(result).toEqual([
-      { label: "Chicken stir fry with rice", kcal: 728, proteinG: 44.8, carbsG: 78.4, fatG: 20.2, ...NO_NUTRIENTS },
+      { label: "Chicken stir fry with rice", kcal: 728, proteinG: 44.8, carbsG: 78.4, fatG: 20.2, ...NO_NUTRIENTS, ...ONE_OF_IT },
     ]);
     expect(createMock).toHaveBeenCalledTimes(1);
   });
@@ -67,8 +75,8 @@ describe("estimateMeal", () => {
 
     // 650 * 1.12 = 728, 120 * 1.12 = 134.4 -> rounds to 134
     expect(result).toEqual([
-      { label: "Chicken stir fry with rice", kcal: 728, proteinG: 44.8, carbsG: 78.4, fatG: 20.2, ...NO_NUTRIENTS },
-      { label: "Small handful of crisps", kcal: 134, proteinG: 1.1, carbsG: 14.6, fatG: 7.8, ...NO_NUTRIENTS },
+      { label: "Chicken stir fry with rice", kcal: 728, proteinG: 44.8, carbsG: 78.4, fatG: 20.2, ...NO_NUTRIENTS, ...ONE_OF_IT },
+      { label: "Small handful of crisps", kcal: 134, proteinG: 1.1, carbsG: 14.6, fatG: 7.8, ...NO_NUTRIENTS, ...ONE_OF_IT },
     ]);
   });
 
@@ -82,7 +90,7 @@ describe("estimateMeal", () => {
     const result = await estimateMeal({ text: "a sandwich" });
 
     // 400 * 1.12 = 448
-    expect(result).toEqual([{ label: "Sandwich", kcal: 448, proteinG: 22.4, carbsG: 50.4, fatG: 15.7, ...NO_NUTRIENTS }]);
+    expect(result).toEqual([{ label: "Sandwich", kcal: 448, proteinG: 22.4, carbsG: 50.4, fatG: 15.7, ...NO_NUTRIENTS, ...ONE_OF_IT }]);
     expect(createMock).toHaveBeenCalledTimes(2);
   });
 
@@ -104,7 +112,7 @@ describe("estimateMeal", () => {
     });
 
     expect(result).toEqual([
-      { label: "Milkybar Giant Buttons", kcal: 122, proteinG: 2, carbsG: 13, fatG: 7, ...NO_NUTRIENTS },
+      { label: "Milkybar Giant Buttons", kcal: 122, proteinG: 2, carbsG: 13, fatG: 7, ...NO_NUTRIENTS, ...ONE_OF_IT },
     ]);
   });
 
@@ -120,7 +128,7 @@ describe("estimateMeal", () => {
     const result = await estimateMeal({ text: "just a sandwich" });
 
     // 400 * 1.12 = 448 — the buffer stands.
-    expect(result).toEqual([{ label: "Sandwich", kcal: 448, proteinG: 22.4, carbsG: 50.4, fatG: 15.7, ...NO_NUTRIENTS }]);
+    expect(result).toEqual([{ label: "Sandwich", kcal: 448, proteinG: 22.4, carbsG: 50.4, fatG: 15.7, ...NO_NUTRIENTS, ...ONE_OF_IT }]);
   });
 
   it("buffers each item on its own, not the whole entry", async () => {
@@ -137,7 +145,7 @@ describe("estimateMeal", () => {
 
     // The weighed chicken is left alone; the unmeasured chips still get the
     // buffer (300 * 1.12 = 336).
-    expect(result[0]).toEqual({ label: "Chicken breast", kcal: 330, proteinG: 62, carbsG: 0, fatG: 7, ...NO_NUTRIENTS });
+    expect(result[0]).toEqual({ label: "Chicken breast", kcal: 330, proteinG: 62, carbsG: 0, fatG: 7, ...NO_NUTRIENTS, ...ONE_OF_IT });
     expect(result[1]!.kcal).toBe(336);
   });
 
@@ -215,7 +223,70 @@ describe("estimateMeal", () => {
     // Nulls, not zeroes: nobody worked these out, which is a different thing
     // from the food containing none of them.
     expect(result).toEqual([
-      { label: "mystery meal", kcal: null, proteinG: null, carbsG: null, fatG: null, ...NO_NUTRIENTS },
+      { label: "mystery meal", kcal: null, proteinG: null, carbsG: null, fatG: null, ...NO_NUTRIENTS, ...ONE_OF_IT },
     ]);
   }, 15000);
+});
+
+/**
+ * How much of it, as the model reports it.
+ *
+ * The calories have always been the total for the whole entry and still are —
+ * nothing below changes a figure. What changes is that the entry now also says
+ * what amount that total is FOR, which is the only way one rasher of bacon can
+ * ever be worked out from the two you logged last week.
+ */
+describe("estimateMeal, on how much was eaten", () => {
+  it("takes the count and the unit the model gave", async () => {
+    createMock.mockResolvedValueOnce(
+      textResponse({
+        items: [{ label: "Bacon", kcal: 180, protein: 12, carbs: 0, fat: 14, count: 2, unit: "rasher", quantified: true }],
+      }),
+    );
+
+    const result = await estimateMeal({ text: "2 rashers of bacon" });
+
+    // The kcal is still the total for both rashers, unbuffered because the
+    // amount was stated. The count is what makes it divisible.
+    expect(result[0]).toMatchObject({ label: "Bacon", kcal: 180, quantity: 2, unitLabel: "rasher" });
+  });
+
+  it("leaves a food with no unit as one of itself", async () => {
+    // The case that must not be forced: a stew divides into nothing, and a
+    // unit invented for it would have everything downstream dividing by a
+    // number nobody measured.
+    createMock.mockResolvedValueOnce(
+      textResponse({ items: [{ label: "Beef stew", kcal: 520, protein: 30, carbs: 40, fat: 20, count: 1, unit: null }] }),
+    );
+
+    expect((await estimateMeal({ text: "beef stew" }))[0]).toMatchObject({ quantity: 1, unitLabel: null });
+  });
+
+  it("drops a serving, which says nothing a bare count didn't", async () => {
+    createMock.mockResolvedValueOnce(
+      textResponse({ items: [{ label: "Lasagne", kcal: 700, protein: 30, carbs: 60, fat: 35, count: 2, unit: "serving" }] }),
+    );
+
+    // The 2 survives — it is a real amount — but "serving" is not a unit.
+    expect((await estimateMeal({ text: "2 servings of lasagne" }))[0]).toMatchObject({ quantity: 2, unitLabel: null });
+  });
+
+  it("falls back to one of it when the model says nothing sensible", async () => {
+    // Every one of these used to be the only behaviour there was, so a model
+    // that omits the fields, or returns nonsense in them, costs nothing.
+    for (const count of [undefined, null, 0, -3, "lots", 99999]) {
+      createMock.mockResolvedValueOnce(
+        textResponse({ items: [{ label: "Toast", kcal: 100, protein: 3, carbs: 18, fat: 1, count, unit: "slice" }] }),
+      );
+      expect((await estimateMeal({ text: "toast" }))[0]).toMatchObject({ quantity: 1, unitLabel: "slice" });
+    }
+  });
+
+  it("keeps a fractional count to something a database can hold", async () => {
+    createMock.mockResolvedValueOnce(
+      textResponse({ items: [{ label: "Pizza", kcal: 300, protein: 12, carbs: 30, fat: 14, count: 1 / 3, unit: "slice" }] }),
+    );
+
+    expect((await estimateMeal({ text: "a third of a pizza" }))[0]).toMatchObject({ quantity: 0.33 });
+  });
 });

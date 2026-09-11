@@ -4,6 +4,7 @@ import { recordError } from "./errorLog";
 import { clampMacrosToKcal } from "./macros";
 import { clampNutrients } from "./nutrients";
 import { statesExplicitQuantity } from "./quantity";
+import { normalizeUnit } from "./servingUnit";
 import { bufferMultiplier, resolveBuffer, type BufferSettings, type ResolvedBuffer } from "./kcalBuffer";
 import type { EstimateReference } from "./estimateGrounding";
 import type { ModelUsage } from "./modelPricing";
@@ -70,6 +71,23 @@ Rules:
   per gram of protein and carbs and 9 per gram of fat. They will not \
   reconcile exactly and that is fine — but they should not imply far more \
   energy than the item contains.
+- SAY WHAT ONE OF IT IS. Where a food comes in countable units — rashers of \
+  bacon, slices of pizza, biscuits, eggs, sausages — give "count" as how many \
+  were eaten and "unit" as the singular name of ONE of them ("rasher", \
+  "slice", "biscuit"). Where the amount is a weight or a volume, give the \
+  number and "g" or "ml": 200g of chicken is count 200, unit "g".
+- The label then names the food on its own, with no amount in it: "Bacon", not \
+  "2 rashers of bacon"; "Chocolate digestive", not "3 digestives". The count \
+  says how many, so the label does not have to.
+- Plenty of food has no unit worth counting, and that is a real answer. A stir \
+  fry, a bowl of soup, a plate of leftovers, a roast dinner — each is one \
+  serving of itself, so give count 1 and unit null. NEVER invent a unit to \
+  make something divisible: deciding a curry is "3 portions" is worse than \
+  saying it is one plate of food, because everything downstream will then \
+  divide by three.
+- kcal and the macros are ALWAYS the total for everything eaten, whatever the \
+  count says. Two rashers at 45 kcal each is kcal 90 with count 2, never kcal \
+  45.
 - If there's a photo but no text, estimate from the photo alone — split into \
   multiple items only if the photo clearly shows separate distinct foods.
 - Each label should be short (max 6 words), plain, and human-readable, e.g. \
@@ -77,7 +95,7 @@ Rules:
 - Respond with ONLY a JSON object, no markdown fences, no commentary: \
   {"items": [{"label": "...", "kcal": 000, "protein": 00, "carbs": 00, \
   "fat": 00, "fibre": 00, "sugar": 00, "satFat": 00, "salt": 0.0, \
-  "quantified": true}]}`;
+  "quantified": true, "count": 1, "unit": null}]}`;
 
 export interface EstimateInput {
   text?: string;
@@ -122,6 +140,26 @@ export interface EstimateItem {
   sugarG: number | null;
   satFatG: number | null;
   saltG: number | null;
+  /**
+   * How many of it, in the unit below. Always at least 1, and 1 is the honest
+   * answer for most entries — a stir fry is one stir fry.
+   *
+   * The figures above stay the total for the whole entry regardless (that is
+   * the convention `Entry.kcal` has always had), so this is a divisor, not a
+   * multiplier: it is what lets everything downstream work out what ONE of
+   * something costs, which is the only way "I had two yesterday, one today"
+   * can reuse yesterday's answer.
+   */
+  quantity: number;
+  /**
+   * The singular name of one of them — "rasher", "slice", "g" — or null when
+   * the food has no unit worth counting.
+   *
+   * Null is a real answer and the common one. A bowl of soup divides into
+   * nothing, and a unit invented to make it divisible would have everything
+   * downstream confidently dividing by a number nobody measured.
+   */
+  unitLabel: string | null;
 }
 
 export type EstimateResult = EstimateItem[];
@@ -228,6 +266,38 @@ function bufferFor(quantified: unknown, textHasQuantity: boolean, buffer: Resolv
   return quantified === true && textHasQuantity ? NO_BUFFER : bufferMultiplier(buffer);
 }
 
+/**
+ * The largest count worth believing.
+ *
+ * Matches the ceiling the PATCH route already puts on a quantity, so a figure
+ * the model invented can't produce an entry the edit form would then refuse to
+ * save. Anything past it is a misread, not a meal.
+ */
+const MAX_COUNT = 5000;
+
+/**
+ * How many of it, and what one of them is.
+ *
+ * Both are advisory — the calories are the total either way, and everything
+ * here falls back to "one of whatever this is", which is precisely how every
+ * entry behaved before the model was asked the question at all. So a model
+ * that omits the fields, returns nulls, or returns something absurd costs
+ * nothing: the entry logs exactly as it used to.
+ *
+ * `normalizeUnit` drops "serving" on purpose, which is the same decision made
+ * twice for the same reason: a row reading "1 serving of lasagne" says nothing
+ * that "lasagne" didn't, and a quantity attached to a unit nobody measured is
+ * a divisor waiting to give a wrong answer.
+ */
+function amountOf(rawCount: unknown, rawUnit: unknown): { quantity: number; unitLabel: string | null } {
+  const unitLabel = normalizeUnit(typeof rawUnit === "string" ? rawUnit : null);
+  const n = typeof rawCount === "number" ? rawCount : Number(rawCount);
+  if (!Number.isFinite(n) || n <= 0 || n > MAX_COUNT) return { quantity: 1, unitLabel };
+  // Two decimals is as fine as any amount anyone eats, and keeps a repeating
+  // fraction from reaching the database as fifteen significant figures.
+  return { quantity: Math.round(n * 100) / 100, unitLabel };
+}
+
 function parseEstimateResponse(raw: string, textHasQuantity: boolean, bufferSettings: ResolvedBuffer): EstimateResult {
   const cleaned = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   const parsed = JSON.parse(cleaned) as { items?: unknown };
@@ -245,6 +315,8 @@ function parseEstimateResponse(raw: string, textHasQuantity: boolean, bufferSett
       satFat?: unknown;
       salt?: unknown;
       quantified?: unknown;
+      count?: unknown;
+      unit?: unknown;
     };
     const label = typeof candidate.label === "string" && candidate.label.trim() ? candidate.label.trim() : "Unlabelled meal";
     const buffer = bufferFor(candidate.quantified, textHasQuantity, bufferSettings);
@@ -280,6 +352,7 @@ function parseEstimateResponse(raw: string, textHasQuantity: boolean, bufferSett
     return {
       label,
       kcal,
+      ...amountOf(candidate.count, candidate.unit),
       proteinG: round1(clamped.protein),
       carbsG: round1(clamped.carbs),
       fatG: round1(clamped.fat),
@@ -367,6 +440,12 @@ export async function estimateMeal(input: EstimateInput): Promise<EstimateResult
       sugarG: null,
       satFatG: null,
       saltG: null,
+      // Nothing was worked out, so nothing is claimed about the amount either:
+      // one of whatever this is, with no unit. The user is about to type the
+      // calories in by hand, and a quantity invented here would rescale the
+      // figure they typed.
+      quantity: 1,
+      unitLabel: null,
     },
   ];
 }

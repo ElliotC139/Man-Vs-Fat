@@ -27,23 +27,23 @@ function product(over: Partial<FoodSearchResult> & { name: string }): FoodSearch
 
 describe("readAmount", () => {
   it("reads a leading weight and converts it to grams", () => {
-    expect(readAmount("200g chicken breast")).toEqual({ phrase: "chicken breast", count: null, grams: 200 });
-    expect(readAmount("1.5 kg potatoes")).toEqual({ phrase: "potatoes", count: null, grams: 1500 });
+    expect(readAmount("200g chicken breast")).toEqual({ phrase: "chicken breast", count: null, unit: null, grams: 200 });
+    expect(readAmount("1.5 kg potatoes")).toEqual({ phrase: "potatoes", count: null, unit: null, grams: 1500 });
     expect(readAmount("4 oz steak").grams).toBeCloseTo(113.398, 2);
   });
 
   it("reads a leading count", () => {
-    expect(readAmount("2 hobnobs")).toEqual({ phrase: "hobnobs", count: 2, grams: null });
-    expect(readAmount("3 x jaffa cakes")).toEqual({ phrase: "jaffa cakes", count: 3, grams: null });
+    expect(readAmount("2 hobnobs")).toEqual({ phrase: "hobnobs", count: 2, unit: null, grams: null });
+    expect(readAmount("3 x jaffa cakes")).toEqual({ phrase: "jaffa cakes", count: 3, unit: null, grams: null });
   });
 
   it("reads no amount where none was stated", () => {
-    expect(readAmount("chicken stir fry")).toEqual({ phrase: "chicken stir fry", count: null, grams: null });
+    expect(readAmount("chicken stir fry")).toEqual({ phrase: "chicken stir fry", count: null, unit: null, grams: null });
     // Millilitres are deliberately not weight: converting needs a density,
     // which is exactly the kind of thing this must not invent.
-    expect(readAmount("330ml coke")).toEqual({ phrase: "330ml coke", count: null, grams: null });
+    expect(readAmount("330ml coke")).toEqual({ phrase: "330ml coke", count: null, unit: null, grams: null });
     // A trailing amount is left alone rather than parsed loosely.
-    expect(readAmount("chicken 200g")).toEqual({ phrase: "chicken 200g", count: null, grams: null });
+    expect(readAmount("chicken 200g")).toEqual({ phrase: "chicken 200g", count: null, unit: null, grams: null });
   });
 });
 
@@ -63,9 +63,13 @@ describe("libraryShortcut", () => {
     expect(libraryShortcut(rows, readAmount("a bowl of rice and chicken"))?.kcal).toBe(620);
   });
 
-  it("multiplies by a stated count", () => {
+  it("multiplies by a stated count, and leaves the label alone", () => {
+    // The label used to come back "2 × Greek yoghurt", which then went into
+    // the diary and back out through the food library as a listing of its
+    // own — one row per number of yoghurts anyone had ever eaten. The count
+    // belongs in the quantity, where the edit form can change it.
     const item = libraryShortcut(rows, readAmount("2 greek yoghurt"));
-    expect(item).toMatchObject({ label: "2 × Greek yoghurt", kcal: 300, proteinG: 60 });
+    expect(item).toMatchObject({ label: "Greek yoghurt", kcal: 300, proteinG: 60, quantity: 2 });
   });
 
   it("refuses a partial match", () => {
@@ -152,5 +156,111 @@ describe("productShortcut", () => {
   it("refuses per-100g figures with no serving size and no stated amount", () => {
     const bare = product({ name: "Beef mince", per100g: { kcal: 254, protein: 17, carbs: 0, fat: 20 } });
     expect(productShortcut([bare], readAmount("beef mince"))).toBeNull();
+  });
+});
+
+/**
+ * The arithmetic that makes re-logging work.
+ *
+ * A library row is a total for some amount, and until it carried that amount
+ * it could only ever hand back the last plate of food again. Two rashers of
+ * bacon became a listing called "2 rashers of bacon", one rasher became a
+ * second listing, and four rashers came back as four two-rasher servings.
+ *
+ * Everything below is one question asked several ways: does the row divide
+ * down to ONE of the food before it multiplies back up.
+ */
+describe("libraryShortcut, on a food that comes in units", () => {
+  // 180 kcal of bacon, logged as two rashers. So one rasher is 90.
+  const bacon = [libraryRow({
+    label: "Bacon", kcal: 180, proteinG: 12, carbsG: 0, fatG: 14,
+    quantity: 2, unitLabel: "rasher", count: 5,
+  })];
+
+  it("gives one of it when one was asked for", () => {
+    const item = libraryShortcut(bacon, readAmount("1 rasher of bacon"));
+    expect(item).toMatchObject({ label: "Bacon", kcal: 90, proteinG: 6, quantity: 1, unitLabel: "rasher" });
+  });
+
+  it("multiplies the unit, not the last plate", () => {
+    // The bug this fixes: four rashers used to come back as 4 × 180.
+    expect(libraryShortcut(bacon, readAmount("4 rashers of bacon"))?.kcal).toBe(360);
+  });
+
+  it("hands back exactly what was approved when the amount is unchanged", () => {
+    // Dividing to a per-unit figure and multiplying back must not walk the
+    // number: re-logging the same two rashers is still 180, not 179 or 181.
+    const item = libraryShortcut(bacon, readAmount("2 rashers of bacon"));
+    expect(item).toMatchObject({ kcal: 180, proteinG: 12, fatG: 14, quantity: 2 });
+  });
+
+  it("defaults to the amount last logged when no count was stated", () => {
+    const item = libraryShortcut(bacon, readAmount("bacon"));
+    expect(item).toMatchObject({ kcal: 180, quantity: 2, unitLabel: "rasher" });
+  });
+
+  it("takes a bare count as a count of units", () => {
+    // "3 bacon" is three rashers, because rashers are what bacon is counted in.
+    expect(libraryShortcut(bacon, readAmount("3 bacon"))?.kcal).toBe(270);
+  });
+
+  it("treats a vague unit word as agreeing with the real one", () => {
+    // "A piece of bacon" and "a rasher of bacon" are the same sentence. Only
+    // one of them uses the word the row happens to store.
+    expect(libraryShortcut(bacon, readAmount("1 piece of bacon"))?.kcal).toBe(90);
+    expect(libraryShortcut(bacon, readAmount("2 pieces of bacon"))?.kcal).toBe(180);
+  });
+
+  it("refuses a unit it would have to convert", () => {
+    // Nothing here knows how many rashers are in 2 slices, and guessing is
+    // how a wrong figure gets logged without anybody noticing.
+    expect(libraryShortcut(bacon, readAmount("2 slices of bacon"))).toBeNull();
+  });
+});
+
+describe("libraryShortcut, on a food with no unit to count", () => {
+  // The case the user named: some things are just a serving.
+  const stew = [libraryRow({ label: "Beef stew", kcal: 520, count: 3 })];
+  // 300 g of chicken at 495 kcal. Measured, not counted.
+  const chicken = [libraryRow({ label: "Chicken breast", kcal: 495, quantity: 300, unitLabel: "g", count: 4 })];
+
+  it("leaves an unmeasured plate exactly as it always behaved", () => {
+    expect(libraryShortcut(stew, readAmount("beef stew"))).toMatchObject({ kcal: 520, quantity: 1 });
+    expect(libraryShortcut(stew, readAmount("2 beef stew"))).toMatchObject({ kcal: 1040, quantity: 2 });
+  });
+
+  it("reads a bare count against a weighed row as that many of what you had", () => {
+    // NOT two grams of chicken, which is what counting units would give and
+    // would log 3 kcal where 990 belonged.
+    expect(libraryShortcut(chicken, readAmount("2 chicken breast"))).toMatchObject({
+      kcal: 990, quantity: 600, unitLabel: "g",
+    });
+  });
+
+  it("still refuses a stated weight, which needs a per-100g it hasn't got", () => {
+    expect(libraryShortcut(chicken, readAmount("200g chicken breast"))).toBeNull();
+  });
+});
+
+describe("readAmount, on a count that names its unit", () => {
+  it("reads the count, the unit and the food", () => {
+    expect(readAmount("2 rashers of bacon")).toEqual({ phrase: "bacon", count: 2, unit: "rashers", grams: null });
+    expect(readAmount("1 piece of bacon")).toEqual({ phrase: "bacon", count: 1, unit: "piece", grams: null });
+  });
+
+  it("drops a serving the way everything else does, but keeps the count", () => {
+    // "2 servings of lasagne" states an amount — twice the usual — even
+    // though "serving" itself names no unit.
+    expect(readAmount("2 servings of lasagne")).toEqual({ phrase: "lasagne", count: 2, unit: null, grams: null });
+  });
+
+  it("leaves a food whose name merely contains a unit word alone", () => {
+    // Without the "of", picking the unit out of the name is guesswork: this
+    // stays a bare count of a food called "chicken breasts", as it always was.
+    expect(readAmount("2 chicken breasts")).toEqual({ phrase: "chicken breasts", count: 2, unit: null, grams: null });
+  });
+
+  it("still reads a weight as a weight, not as a unit", () => {
+    expect(readAmount("200 g of chicken")).toMatchObject({ count: null, grams: 200 });
   });
 });

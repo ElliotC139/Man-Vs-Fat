@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { describeAmount, formatQuantity, normalizeUnit, suggestUnits } from "../src/servingUnit";
+import {
+  describeAmount,
+  formatQuantity,
+  isMeasuredByWeight,
+  normalizeUnit,
+  sameUnit,
+  suggestUnits,
+} from "../src/servingUnit";
 
 describe("cleaning a unit off a food database", () => {
   it("lowercases and trims what the source said", () => {
@@ -131,5 +138,56 @@ describe("which units to offer for a food", () => {
     for (const label of [null, undefined, "", " ", "x"]) {
       expect(suggestUnits(label)).toEqual(["g", "ml", "serving", "portion"]);
     }
+  });
+});
+
+describe("telling two unit words apart", () => {
+  it("matches a plural to its own singular, however awkward the ending", () => {
+    // Each of these is one word a food database might store and another a
+    // person might type for the same unit.
+    expect(sameUnit("slices", "slice")).toBe(true);
+    expect(sameUnit("rashers", "rasher")).toBe(true);
+    expect(sameUnit("glasses", "glass")).toBe(true);
+    expect(sameUnit("patties", "patty")).toBe(true);
+    expect(sameUnit("biscuit", "biscuits")).toBe(true);
+  });
+
+  it("ignores case and surrounding space, as everything else here does", () => {
+    expect(sameUnit(" Rashers ", "rasher")).toBe(true);
+  });
+
+  it("keeps genuinely different units apart", () => {
+    expect(sameUnit("slice", "rasher")).toBe(false);
+    expect(sameUnit("g", "ml")).toBe(false);
+    expect(sameUnit("bar", "pack")).toBe(false);
+  });
+
+  it("never matches on nothing", () => {
+    // Two units nobody named are not the same unit, they are no units.
+    expect(sameUnit(null, null)).toBe(false);
+    expect(sameUnit("serving", "serving")).toBe(false);
+    expect(sameUnit("", "")).toBe(false);
+  });
+});
+
+describe("whether a unit is weighed or counted", () => {
+  it("knows the ones you put on a scale", () => {
+    for (const unit of ["g", "kg", "ml", "l", "oz", "fl oz", " G "]) {
+      expect(isMeasuredByWeight(unit)).toBe(true);
+    }
+  });
+
+  it("knows the ones you count", () => {
+    // This is the distinction that decides what "2 bacon" means. Counted, it
+    // is two rashers; weighed, two grams — and one of those answers logs 3
+    // kcal where 180 belonged.
+    for (const unit of ["rasher", "slice", "biscuit", "glass", "pack"]) {
+      expect(isMeasuredByWeight(unit)).toBe(false);
+    }
+  });
+
+  it("treats no unit as nothing to weigh", () => {
+    expect(isMeasuredByWeight(null)).toBe(false);
+    expect(isMeasuredByWeight("serving")).toBe(false);
   });
 });

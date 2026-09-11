@@ -4782,7 +4782,11 @@ function renderFoodRow(food) {
   const isToday = lastDate.toDateString() === new Date().toDateString();
   const countLabel = food.count === 1 ? "Logged once" : `Logged ${food.count}×`;
   const lastLabel = isToday ? "today" : dateFmt.format(lastDate);
-  const kcalLabel = food.kcal !== null ? ` · ${food.kcal} kcal` : "";
+  // What the figure is FOR, not just what it is. A row reading "180 kcal" is
+  // only half an answer when the last logging of it was two rashers, and it
+  // is the half that decides whether re-logging it is right.
+  const amount = describeAmount(food.quantity ?? 1, food.unitLabel);
+  const kcalLabel = food.kcal === null ? "" : ` · ${amount ? `${amount}, ` : ""}${food.kcal} kcal`;
   metaEl.textContent = `${countLabel} · last ${lastLabel}${kcalLabel}`;
 
   const tagsEl = document.createElement("div");
@@ -4920,7 +4924,15 @@ function openFoodEditor(row, food) {
 
   const note = document.createElement("p");
   note.className = "muted food-editor-note";
-  note.textContent = "Applies from now on. Entries already in your diary stay as they are.";
+  // Which amount these figures are for, where the food has one. Without it the
+  // kcal box is a number with no denominator: correcting bacon to 90 means one
+  // thing if the row is a rasher and quite another if it is a pack of eight,
+  // and the form gave no way to tell which it was asking about.
+  const editedAmount = describeAmount(food.quantity ?? 1, food.unitLabel);
+  note.textContent = [
+    editedAmount ? `These figures are for ${editedAmount}, the amount you last logged.` : "",
+    "Applies from now on. Entries already in your diary stay as they are.",
+  ].filter(Boolean).join(" ");
   editor.appendChild(note);
 
   const errorEl = document.createElement("p");

@@ -18,7 +18,7 @@ export async function loadLibrary(userId: number): Promise<LibraryRow[]> {
     prisma.entry.findMany({
       where: { matchWeek: { userId } },
       orderBy: { timestamp: "desc" },
-      select: { label: true, kcal: true, proteinG: true, carbsG: true, fatG: true },
+      select: { label: true, kcal: true, proteinG: true, carbsG: true, fatG: true, quantity: true, unitLabel: true },
     }),
     prisma.foodOverride.findMany({ where: { userId } }),
   ]);
@@ -41,6 +41,12 @@ export async function loadLibrary(userId: number): Promise<LibraryRow[]> {
       proteinG: entry.proteinG,
       carbsG: entry.carbsG,
       fatG: entry.fatG,
+      // The amount those figures are for. Entries are newest-first, so this is
+      // the most recent logging of the food — the amount someone last actually
+      // ate, which is both the sensible default to re-log and the divisor that
+      // turns the row into a per-unit figure.
+      quantity: entry.quantity,
+      unitLabel: entry.unitLabel,
       count: 1,
     });
   }
