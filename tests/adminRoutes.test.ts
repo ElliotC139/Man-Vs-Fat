@@ -12,6 +12,7 @@ const state = vi.hoisted(() => ({
   users: [] as any[],
   usage: [] as any[],
   settings: new Map<string, string>(),
+  planOverrides: new Map<string, any>(),
   nextId: 1,
 }));
 
@@ -58,6 +59,21 @@ vi.mock("../src/db", () => {
       }),
     },
     matchWeek: { updateMany: vi.fn(async () => ({ count: 0 })) },
+    planOverride: {
+      findMany: vi.fn(async () => [...state.planOverrides.values()]),
+      findUnique: vi.fn(async ({ where }: any) => state.planOverrides.get(where.id) ?? null),
+      upsert: vi.fn(async ({ where, create, update }: any) => {
+        const row = state.planOverrides.has(where.id)
+          ? { ...state.planOverrides.get(where.id), ...update }
+          : { ...create };
+        state.planOverrides.set(where.id, row);
+        return row;
+      }),
+      deleteMany: vi.fn(async ({ where }: any) => {
+        const had = state.planOverrides.delete(where.id);
+        return { count: had ? 1 : 0 };
+      }),
+    },
     aiUsage: {
       count: vi.fn(async () => state.usage.length),
       aggregate: vi.fn(async () => ({
@@ -81,7 +97,8 @@ vi.mock("../src/db", () => {
 
 import { authRouter } from "../src/routes/auth";
 import { adminRouter, forgetSignupsSetting } from "../src/routes/admin";
-import { planFor } from "../src/plans";
+import { basePlanFor, clearPlanLens, planFor, PLAN_IDS } from "../src/plans";
+import { installPlanOverrides } from "../src/planOverrides";
 
 let server: http.Server;
 let baseUrl: string;
@@ -90,7 +107,12 @@ beforeEach(async () => {
   state.users.length = 0;
   state.usage.length = 0;
   state.settings.clear();
+  state.planOverrides.clear();
   state.nextId = 1;
+  // The tier grid is served through an in-memory cache of the override table,
+  // so a fresh table needs the cache reading again — and the lens installing,
+  // since nothing installs it in a test by default.
+  await installPlanOverrides();
   // The setting is cached for half a minute in front of every sign-up; a
   // fresh table needs a fresh answer.
   forgetSignupsSetting();
@@ -106,7 +128,12 @@ beforeEach(async () => {
   const address = server.address();
   baseUrl = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
 });
-afterEach(async () => { await new Promise((resolve) => server.close(resolve)); });
+afterEach(async () => {
+  await new Promise((resolve) => server.close(resolve));
+  // Put planFor back to the plans as written, so a test that never touched
+  // the tier grid isn't reading one this file left behind.
+  clearPlanLens();
+});
 
 async function signUp(username: string): Promise<string> {
   const res = await fetch(`${baseUrl}/api/auth/signup`, {
@@ -235,5 +262,131 @@ describe("the figures", () => {
     const bob = body.users.find((u: any) => u.id === 2);
     expect(bob.atCap).toBe(true);
     expect(bob.monthCost).toBe("£1.00");
+  });
+});
+
+/**
+ * The tier editor.
+ *
+ * What is being protected here is not really the settings — it is the promise
+ * underneath them. The monthly ceiling on what an account's AI calls may cost
+ * is what makes "no plan costs more to serve than it brings in" true, and it
+ * is deliberately not something this screen can move. Nor is the price, which
+ * belongs to Stripe. So the last two tests below are the important ones:
+ * whatever gets ticked, those two stay where the code put them.
+ */
+describe("editing what each tier includes", () => {
+  async function asAdmin() {
+    return signUp("operator");
+  }
+
+  const grid = async (cookie: string): Promise<any> => (await get("/plans", cookie)).json();
+  const flag = (cookie: string, body: unknown) => send("/plans/flag", cookie, body, "PUT");
+
+  it("is closed to everyone but an admin", async () => {
+    const admin = await asAdmin();
+    const other = await signUp("bob");
+
+    expect((await get("/plans", other)).status).toBe(404);
+    expect((await flag(other, { flag: "keto", plan: "free", enabled: true })).status).toBe(404);
+    expect((await get("/plans", admin)).status).toBe(200);
+  });
+
+  it("shows every plan against every feature, and what the code says", async () => {
+    const data: any = await grid(await asAdmin());
+
+    expect(data.plans.map((p: any) => p.id)).toEqual([...PLAN_IDS]);
+    for (const plan of data.plans) {
+      const base = basePlanFor(plan.id);
+      expect(plan.dailyEstimates).toBe(base.dailyEstimates);
+      expect(plan.flags.keto).toEqual({ on: base.keto, default: base.keto });
+      // Nothing has been changed yet, so nothing is marked as changed.
+      expect(plan.edited).toBe(false);
+    }
+  });
+
+  it("ticks every tier above the one tapped", async () => {
+    const cookie = await asAdmin();
+    const data: any = await (await flag(cookie, { flag: "recipeScan", plan: "free", enabled: true })).json();
+
+    for (const plan of data.plans) expect(plan.flags.recipeScan.on).toBe(true);
+  });
+
+  it("unticks every tier below the one tapped", async () => {
+    const cookie = await asAdmin();
+    const data: any = await (await flag(cookie, { flag: "keto", plan: "pro", enabled: false })).json();
+
+    for (const plan of data.plans) expect(plan.flags.keto.on).toBe(false);
+  });
+
+  it("changes what the app actually serves, not just what the screen shows", async () => {
+    const cookie = await asAdmin();
+    expect(planFor("free").keto).toBe(false);
+
+    await flag(cookie, { flag: "keto", plan: "free", enabled: true });
+
+    // planFor is what every gate in the app asks. If this didn't move, the
+    // screen would be a set of switches wired to nothing.
+    expect(planFor("free").keto).toBe(true);
+  });
+
+  it("marks what has been changed, so it can be changed back", async () => {
+    const cookie = await asAdmin();
+    await flag(cookie, { flag: "keto", plan: "free", enabled: true });
+
+    const data: any = await grid(cookie);
+    const free = data.plans.find((p: any) => p.id === "free");
+    expect(free.edited).toBe(true);
+    expect(free.flags.keto).toEqual({ on: true, default: false });
+
+    const reset: any = await (await send("/plans/reset", cookie, {}, "POST")).json();
+    expect(reset.plans.every((p: any) => !p.edited)).toBe(true);
+    expect(planFor("free").keto).toBe(false);
+  });
+
+  it("moves an allowance and keeps the tiers climbing", async () => {
+    const cookie = await asAdmin();
+    const data: any = await (await send("/plans/estimates", cookie, { plan: "free", dailyEstimates: 25 }, "PUT")).json();
+
+    const daily = data.plans.map((p: any) => p.dailyEstimates);
+    expect(daily[0]).toBe(25);
+    expect(daily.every((n: number, i: number) => i === 0 || n >= daily[i - 1])).toBe(true);
+    expect(planFor("free").dailyEstimates).toBe(25);
+  });
+
+  it("refuses an allowance nobody meant to type", async () => {
+    const cookie = await asAdmin();
+    for (const dailyEstimates of [-1, 5001, 2.5, "lots"]) {
+      expect((await send("/plans/estimates", cookie, { plan: "free", dailyEstimates }, "PUT")).status).toBe(400);
+    }
+    expect(planFor("free").dailyEstimates).toBe(basePlanFor("free").dailyEstimates);
+  });
+
+  it("refuses to touch anything that isn't a feature on the grid", async () => {
+    const cookie = await asAdmin();
+    // Named fields of a Plan, and the ones that matter most. Neither is on the
+    // editable list, so neither is reachable however the request is shaped.
+    for (const name of ["pricePence", "monthlyCostCapMicros", "model", "id", "__proto__"]) {
+      expect((await flag(cookie, { flag: name, plan: "free", enabled: true })).status).toBe(400);
+    }
+  });
+
+  it("leaves the price and the spending ceiling exactly where the code put them", async () => {
+    const cookie = await asAdmin();
+    const before = PLAN_IDS.map((id) => planFor(id));
+
+    // Switch everything on for everyone — the most careless thing this screen
+    // can do — and then check the two numbers that keep the app solvent.
+    for (const feature of (await grid(cookie)).features) {
+      await flag(cookie, { flag: feature.key, plan: "free", enabled: true });
+    }
+    await send("/plans/estimates", cookie, { plan: "free", dailyEstimates: 500 }, "PUT");
+
+    PLAN_IDS.forEach((id, index) => {
+      expect(planFor(id).pricePence).toBe(before[index]!.pricePence);
+      // The ceiling is the guarantee. A free account can now scan recipes; it
+      // still cannot spend more than 20p a month doing it.
+      expect(planFor(id).monthlyCostCapMicros).toBe(before[index]!.monthlyCostCapMicros);
+    });
   });
 });

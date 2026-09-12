@@ -350,9 +350,49 @@ export function isPlanId(value: unknown): value is PlanId {
  * value should ration someone, never hand them an unlimited account.
  */
 export function planFor(stored: string | null | undefined): Plan {
+  return lens(basePlanFor(stored));
+}
+
+/**
+ * The plan exactly as written in this file, with nothing laid over it.
+ *
+ * The admin screen needs both: what a plan currently does, and what it would
+ * do if every edit were undone. Without the second there is no way to show
+ * which settings someone has changed, and no way to change one back.
+ */
+export function basePlanFor(stored: string | null | undefined): Plan {
   return isPlanId(stored) ? PLANS[stored] : FREE;
 }
 
 export function allPlans(): Plan[] {
-  return PLAN_IDS.map((id) => PLANS[id]);
+  return PLAN_IDS.map((id) => planFor(id));
+}
+
+/**
+ * How a stored plan becomes the plan the app actually serves.
+ *
+ * This file is deliberately a pure data module: no database, no environment
+ * beyond the config it already reads, nothing to mock in a test. But the
+ * operator can now change what a tier includes without a deployment, and that
+ * lives in a table.
+ *
+ * So rather than this file learning to read a database — which would drag
+ * Prisma into every test that wants to know what Plus costs — the override
+ * layer installs itself here at boot (see src/planOverrides.ts, called from
+ * src/server.ts). Nothing installs it in a test, so a test sees these plans as
+ * written, which is the right default: a test about pricing should be testing
+ * the pricing that was reviewed, not whatever a fixture happened to leave in a
+ * table.
+ */
+type PlanLens = (plan: Plan) => Plan;
+
+let lens: PlanLens = (plan) => plan;
+
+export function setPlanLens(next: PlanLens): void {
+  lens = next;
+}
+
+/** Puts it back to "the plans as written". Tests use it; the app doesn't. */
+export function clearPlanLens(): void {
+  lens = (plan) => plan;
 }

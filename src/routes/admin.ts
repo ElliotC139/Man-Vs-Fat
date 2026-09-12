@@ -19,7 +19,17 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
 import { requireAuth } from "../auth";
-import { planFor, PLAN_IDS, isPlanId } from "../plans";
+import { planFor, basePlanFor, PLAN_IDS, isPlanId, type PlanId } from "../plans";
+import {
+  EDITABLE_FLAGS,
+  MAX_DAILY_ESTIMATES,
+  cascadeAllowance,
+  cascadeFlag,
+  isEditableFlag,
+  overrideFor,
+  savePlanOverride,
+  type EditableFlag,
+} from "../planOverrides";
 import { formatMicros } from "../modelPricing";
 import { config } from "../config";
 import { adminListConfigured, isAdminUser } from "../adminAccess";
@@ -230,6 +240,163 @@ adminRouter.patch("/users/:id", async (req, res) => {
     select: { id: true, username: true, plan: true, isAdmin: true },
   });
   res.json(user);
+});
+
+/**
+ * ── What each tier includes ────────────────────────────────────────────────
+ *
+ * The plans are written in src/plans.ts and reviewed there. This lets the
+ * operator change which tier gets what without a deployment — the tick grid
+ * from the feature review, made live.
+ *
+ * Two things are pointedly absent, and the absence is the design. Prices are
+ * not here because Stripe holds them, and a second copy would eventually
+ * disagree with what customers are actually charged. The monthly cost ceiling
+ * is not here because it is the mechanism behind "no plan costs more to serve
+ * than it brings in" — every AI call is metered against it, and it stops the
+ * month when it is reached. Leave it in code and that promise survives any
+ * configuration this screen can produce, including a careless one: tick recipe
+ * scanning on to Free and free accounts can scan recipes, but they still
+ * cannot spend more than 20p a month doing it.
+ *
+ * That is the whole safety argument for handing these levers over, and it is
+ * why the levers stop where they do.
+ */
+
+/**
+ * What each switch is, in the words the person deciding would use.
+ *
+ * `metered` marks the ones that spend money at Anthropic every time somebody
+ * uses them. The rest cost nothing to serve and are tier levers purely because
+ * they are worth paying for — a distinction worth showing on the screen,
+ * because it is the difference between a decision about margin and a decision
+ * about positioning.
+ */
+const FEATURE_COPY: Record<EditableFlag, { name: string; note: string; metered: boolean }> = {
+  ads: { name: "Show ads", note: "How the free tier pays for itself.", metered: false },
+  photo: { name: "Log by photo", note: "About 1.7x what a typed estimate costs.", metered: true },
+  recipeScan: { name: "Scan a recipe or label", note: "The dearest call the app makes — about six typed estimates.", metered: true },
+  health: { name: "WHOOP and Apple Health", note: "Measured burn instead of a formula. Free to serve.", metered: false },
+  weeklyReport: { name: "Weekly PDF report", note: "And filing it to Google Drive. Free to serve.", metered: false },
+  weeklyReview: { name: "In-app weekly review", note: "Free to serve.", metered: false },
+  eatingWindow: { name: "Eating-window card", note: "Free to serve.", metered: false },
+  fasting: { name: "Fasting timer", note: "Free to serve.", metered: false },
+  keto: { name: "Keto mode", note: "Net carbs, and Today leading with them.", metered: false },
+  measurements: { name: "Body measurements", note: "Recording new ones. Reading old ones never needs a plan.", metered: false },
+  progressPhotos: { name: "Progress photos", note: "Recording new ones. Reading old ones never needs a plan.", metered: false },
+};
+
+/** The grid, as the screen draws it: every feature against every plan. */
+function planGrid() {
+  return {
+    features: EDITABLE_FLAGS.map((key) => ({ key, ...FEATURE_COPY[key] })),
+    plans: PLAN_IDS.map((id) => {
+      const plan = planFor(id);
+      const base = basePlanFor(id);
+      const patch = overrideFor(id);
+      return {
+        id,
+        name: plan.name,
+        pricePence: plan.pricePence,
+        // Shown, not editable. The screen says so, and so does the API: there
+        // is no request body that changes either of these.
+        monthlyCostCap: formatMicros(plan.monthlyCostCapMicros),
+        model: plan.model,
+        dailyEstimates: plan.dailyEstimates,
+        dailyEstimatesDefault: base.dailyEstimates,
+        flags: Object.fromEntries(
+          EDITABLE_FLAGS.map((key) => [key, { on: plan[key], default: base[key] }]),
+        ),
+        // Whether anything at all has been changed from the code, so the
+        // screen can offer to put one plan back without touching the others.
+        edited: Object.values(patch).some((value) => value !== null && value !== undefined),
+      };
+    }),
+  };
+}
+
+adminRouter.get("/plans", (_req, res) => {
+  res.json(planGrid());
+});
+
+/**
+ * Writes a change to every plan the ladder reaches, not just the one tapped.
+ *
+ * One save per plan rather than one transaction, because savePlanOverride has
+ * to read each row to work out what still differs from the code. Three small
+ * writes on a table with three rows, behind an admin-only route — the
+ * simplicity is worth more here than the atomicity.
+ */
+async function writeLadder(next: Record<PlanId, boolean | number>, key: EditableFlag | "dailyEstimates") {
+  for (const id of PLAN_IDS) {
+    await savePlanOverride(id, basePlanFor(id), { [key]: next[id] });
+  }
+}
+
+const flagSchema = z.object({
+  flag: z.string().refine(isEditableFlag, "Not a feature this screen can change."),
+  plan: z.enum(PLAN_IDS),
+  enabled: z.boolean(),
+});
+
+adminRouter.put("/plans/flag", async (req, res) => {
+  const parsed = flagSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: "Send a feature, a plan and whether it's on." });
+    return;
+  }
+  const { flag, plan, enabled } = parsed.data;
+
+  const current = Object.fromEntries(
+    PLAN_IDS.map((id) => [id, planFor(id)[flag as EditableFlag]]),
+  ) as Record<PlanId, boolean>;
+
+  await writeLadder(cascadeFlag(current, plan, enabled), flag as EditableFlag);
+  res.json(planGrid());
+});
+
+const allowanceSchema = z.object({
+  plan: z.enum(PLAN_IDS),
+  dailyEstimates: z.number().int().min(0).max(MAX_DAILY_ESTIMATES),
+});
+
+adminRouter.put("/plans/estimates", async (req, res) => {
+  const parsed = allowanceSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: `Send a plan and a whole number from 0 to ${MAX_DAILY_ESTIMATES}.` });
+    return;
+  }
+  const { plan, dailyEstimates } = parsed.data;
+
+  const current = Object.fromEntries(
+    PLAN_IDS.map((id) => [id, planFor(id).dailyEstimates]),
+  ) as Record<PlanId, number>;
+
+  await writeLadder(cascadeAllowance(current, plan, dailyEstimates), "dailyEstimates");
+  res.json(planGrid());
+});
+
+/**
+ * Puts a plan — or all of them — back to what the code says.
+ *
+ * Worth having as its own button rather than leaving someone to untick their
+ * way back: after a few edits nobody remembers what the defaults were, and
+ * "undo everything I did here" is the question actually being asked.
+ */
+adminRouter.post("/plans/reset", async (req, res) => {
+  const requested = req.body?.plan;
+  if (requested !== undefined && !isPlanId(requested)) {
+    res.status(400).json({ error: "Send a plan to reset, or nothing to reset them all." });
+    return;
+  }
+  const targets = requested ? [requested] : [...PLAN_IDS];
+  const cleared = Object.fromEntries(
+    [...EDITABLE_FLAGS, "dailyEstimates"].map((key) => [key, null]),
+  );
+  for (const id of targets) {
+    await savePlanOverride(id, basePlanFor(id), cleared);
+  }
+  res.json(planGrid());
 });
 
 /** Whether a stored plan string is one the app knows. Re-exported for tests. */

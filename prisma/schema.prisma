@@ -800,6 +800,47 @@ model Setting {
   value String
 }
 
+// What the operator has changed about a plan, and only that.
+//
+// The plans themselves live in src/plans.ts, where they are readable, reviewed
+// and version-controlled. This table is a thin layer of exceptions over them:
+// one row per plan, every column nullable, and null means "whatever the code
+// says". A plan nobody has edited has no row here at all, and the app behaves
+// exactly as if this table did not exist.
+//
+// Storing only the differences rather than a full copy of each plan is what
+// makes that true. A full copy would go stale the moment a plan changed in
+// code — the deployment would ship a new default and the database would
+// quietly keep serving the old one — and there would be no way to tell an
+// edit anyone made from a value that merely happened to be sitting there.
+//
+// What is NOT here is as deliberate as what is. Prices are absent because
+// Stripe holds them and a second copy would drift out of agreement with what
+// customers are actually charged. The monthly cost ceiling is absent because
+// it is the mechanism that makes "no plan costs more to serve than it brings
+// in" structurally true rather than merely intended — a ceiling that can be
+// raised from a web form is not a guarantee, it is a suggestion. So whatever
+// is switched on here, the spend behind it is still capped by src/plans.ts.
+model PlanOverride {
+  // The plan id — "free", "plus" or "pro". The id IS the key: there is at
+  // most one set of overrides per plan, and an autoincrement column would
+  // have allowed two rows to disagree about the same plan.
+  id             String   @id
+  dailyEstimates Int?
+  ads            Boolean?
+  photo          Boolean?
+  recipeScan     Boolean?
+  health         Boolean?
+  weeklyReport   Boolean?
+  weeklyReview   Boolean?
+  eatingWindow   Boolean?
+  fasting        Boolean?
+  keto           Boolean?
+  measurements   Boolean?
+  progressPhotos Boolean?
+  updatedAt      DateTime @updatedAt
+}
+
 // One model call, and what it cost.
 //
 // The whole pricing structure rests on this table: a plan can only be promised

@@ -2212,6 +2212,232 @@ suggestSendBtn.addEventListener("click", async () => {
   }
 });
 
+// ── What each tier includes ─────────────────────────────────────────────────
+//
+// The tick grid from the feature review, made live. Changing a tier used to
+// mean editing src/plans.ts and waiting for a deploy, which is a long way
+// round for a decision that is really just "should Plus get this".
+//
+// Two things on this screen are shown but not editable, and that is on
+// purpose. The price is Stripe's, and a second copy of it here would end up
+// disagreeing with what customers are actually charged. The monthly ceiling is
+// what makes "no plan costs more to serve than it brings in" structurally
+// true — every AI call is metered against it — so it stays in code where it
+// gets reviewed. Whatever gets ticked here, the spend behind it is still
+// capped, which is the entire reason these levers are safe to hand over.
+
+const adminPlansEl = document.getElementById("admin-plans");
+const adminPlansToggle = document.getElementById("admin-plans-toggle");
+
+adminPlansToggle.addEventListener("click", async () => {
+  const showing = !adminPlansEl.hidden;
+  adminPlansEl.hidden = showing;
+  adminPlansToggle.textContent = showing ? "Show" : "Hide";
+  if (!showing) await loadPlanGrid();
+});
+
+async function loadPlanGrid() {
+  try {
+    const res = await fetch("/api/admin/plans");
+    if (!res.ok) throw new Error();
+    renderPlanGrid(await res.json());
+  } catch {
+    adminPlansEl.innerHTML = '<p class="muted">Couldn\'t load the tiers.</p>';
+  }
+}
+
+/**
+ * Sends a change and redraws from whatever comes back.
+ *
+ * The server returns the whole grid, not an acknowledgement, because one tick
+ * moves up to three cells — the ladder below — and redrawing from the server's
+ * answer is how the screen and the database stay in agreement without this
+ * file having to work the cascade out a second time.
+ */
+async function savePlanChange(path, body) {
+  adminPlansEl.classList.add("admin-plans--saving");
+  try {
+    const res = await fetch(`/api/admin/plans${path}`, {
+      method: path === "/reset" ? "POST" : "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error();
+    renderPlanGrid(await res.json());
+  } catch {
+    // Put the screen back to what the server actually holds, rather than
+    // leaving a tick showing a change that never landed.
+    await loadPlanGrid();
+  } finally {
+    adminPlansEl.classList.remove("admin-plans--saving");
+  }
+}
+
+/**
+ * The ladder, applied here as well as on the server.
+ *
+ * Not duplicated logic for its own sake — the two enforcements answer two
+ * different questions. The server's is the guarantee: no account can ever be
+ * worse off for paying more, whatever a request body says. This one is so the
+ * tick moves under your finger instead of a third of a second later, and so
+ * the screen never shows an impossible half-state while the save is in flight.
+ * The server's answer overwrites this the moment it arrives.
+ */
+function cascadeInGrid(data, key, planId, enabled) {
+  const at = PLAN_ORDER.indexOf(planId);
+  for (const [index, id] of PLAN_ORDER.entries()) {
+    if (enabled ? index >= at : index <= at) {
+      const plan = data.plans.find((p) => p.id === id);
+      if (plan?.flags[key]) plan.flags[key].on = enabled;
+    }
+  }
+}
+
+function renderPlanGrid(data) {
+  adminPlansEl.innerHTML = "";
+
+  const table = document.createElement("table");
+  table.className = "admin-plan-grid";
+
+  const head = document.createElement("tr");
+  head.appendChild(document.createElement("th"));
+  for (const plan of data.plans) {
+    const cell = document.createElement("th");
+    const name = document.createElement("span");
+    name.className = "admin-plan-name";
+    name.textContent = plan.name;
+    const price = document.createElement("span");
+    price.className = "admin-plan-price";
+    price.textContent = plan.pricePence === 0 ? "free" : `£${(plan.pricePence / 100).toFixed(2)}`;
+    cell.append(name, price);
+    head.appendChild(cell);
+  }
+  const thead = document.createElement("thead");
+  thead.appendChild(head);
+  table.appendChild(thead);
+
+  const body = document.createElement("tbody");
+
+  // The allowance first, because it is the one number on this screen that
+  // costs money, and the one most likely to be the reason anybody opened it.
+  const allowanceRow = document.createElement("tr");
+  allowanceRow.className = "admin-plan-row admin-plan-row--allowance";
+  allowanceRow.appendChild(rowLabel("AI estimates a day", "What the plan promises. The monthly ceiling below is what keeps the promise affordable."));
+  for (const plan of data.plans) {
+    const cell = document.createElement("td");
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = "0";
+    input.max = "500";
+    input.step = "1";
+    input.inputMode = "numeric";
+    input.className = "admin-plan-number";
+    input.value = plan.dailyEstimates;
+    if (plan.dailyEstimates !== plan.dailyEstimatesDefault) input.classList.add("admin-plan-number--edited");
+    input.addEventListener("change", () => {
+      const value = Number(input.value);
+      if (!Number.isInteger(value) || value < 0 || value > 500) {
+        input.value = plan.dailyEstimates;
+        return;
+      }
+      savePlanChange("/estimates", { plan: plan.id, dailyEstimates: value });
+    });
+    cell.appendChild(input);
+    allowanceRow.appendChild(cell);
+  }
+  body.appendChild(allowanceRow);
+
+  for (const feature of data.features) {
+    const row = document.createElement("tr");
+    row.className = "admin-plan-row";
+    row.appendChild(rowLabel(feature.name, feature.note, feature.metered));
+    for (const plan of data.plans) {
+      const cell = document.createElement("td");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.className = "admin-plan-tick";
+      box.checked = plan.flags[feature.key].on;
+      box.setAttribute("aria-label", `${feature.name} on ${plan.name}`);
+      if (plan.flags[feature.key].on !== plan.flags[feature.key].default) {
+        box.classList.add("admin-plan-tick--edited");
+      }
+      box.addEventListener("change", () => {
+        cascadeInGrid(data, feature.key, plan.id, box.checked);
+        renderPlanGrid(data);
+        savePlanChange("/flag", { flag: feature.key, plan: plan.id, enabled: box.checked });
+      });
+      cell.appendChild(box);
+      row.appendChild(cell);
+    }
+    body.appendChild(row);
+  }
+
+  // Set in code, shown here so the numbers above can be read against
+  // something. There is no request that changes either of these.
+  body.appendChild(factRow("Monthly AI ceiling", data.plans.map((p) => p.monthlyCostCap)));
+  body.appendChild(factRow("Model", data.plans.map((p) => p.model.replace(/^claude-/, "").replace(/-\d{8}$/, ""))));
+
+  table.appendChild(body);
+  adminPlansEl.appendChild(table);
+
+  const note = document.createElement("p");
+  note.className = "muted admin-plan-note";
+  note.textContent =
+    "Ticking a tier ticks every tier above it, and unticking one unticks every tier below — "
+    + "so nobody is ever worse off for paying more. Prices and the monthly ceiling are set in "
+    + "code: whatever's ticked, an account still can't spend past its ceiling.";
+  adminPlansEl.appendChild(note);
+
+  const edited = data.plans.some((plan) => plan.edited);
+  const reset = document.createElement("button");
+  reset.type = "button";
+  reset.className = "ghost-sm admin-plan-reset";
+  reset.textContent = "Put every tier back to the defaults";
+  reset.hidden = !edited;
+  reset.addEventListener("click", () => {
+    if (!window.confirm("Undo every tier change and go back to what the app ships with?")) return;
+    savePlanChange("/reset", {});
+  });
+  adminPlansEl.appendChild(reset);
+}
+
+function rowLabel(name, note, metered = false) {
+  const cell = document.createElement("th");
+  cell.scope = "row";
+  const title = document.createElement("span");
+  title.className = "admin-plan-feature";
+  title.textContent = name;
+  if (metered) {
+    const tag = document.createElement("span");
+    tag.className = "admin-plan-metered";
+    // Which switches spend money every time somebody uses them, as against
+    // the ones that are tier levers purely because they're worth paying for.
+    tag.textContent = "costs per use";
+    title.appendChild(tag);
+  }
+  const sub = document.createElement("small");
+  sub.className = "admin-plan-note-sm";
+  sub.textContent = note;
+  cell.append(title, sub);
+  return cell;
+}
+
+function factRow(name, values) {
+  const row = document.createElement("tr");
+  row.className = "admin-plan-row admin-plan-row--fact";
+  const label = document.createElement("th");
+  label.scope = "row";
+  label.className = "admin-plan-feature";
+  label.textContent = name;
+  row.appendChild(label);
+  for (const value of values) {
+    const cell = document.createElement("td");
+    cell.textContent = value;
+    row.appendChild(cell);
+  }
+  return row;
+}
+
 // ── The pile, for whoever acts on them ──────────────────────────────────────
 const adminSuggestionsEl = document.getElementById("admin-suggestions");
 const adminSuggestionsToggle = document.getElementById("admin-suggestions-toggle");
