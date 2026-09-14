@@ -2704,6 +2704,30 @@ tr.has-tooltip:active {
 }
 
 /* ── Suggestions, in the admin card ───────────────────────────────────────*/
+/* Admin is a screen now, not a card inside Settings. */
+#admin-screen .admin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.admin-refresh {
+  margin-left: auto;
+}
+/* What an account IS, at a glance — paying, given it, or lapsed. Semantic
+   colour rather than the brand accent: these are states, not emphasis. */
+.admin-pill--paying {
+  background: color-mix(in srgb, var(--pitch) 18%, transparent);
+  color: var(--pitch-dark);
+}
+.admin-pill--comped {
+  background: color-mix(in srgb, var(--amber) 18%, transparent);
+  color: var(--amber);
+}
+.admin-pill--lapsed {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  color: var(--danger);
+}
+
 /* ── Where people fall out ─────────────────────────────────────────────────
    Reuses the tier grid's table styling — same shape, same widths, one set of
    rules to keep in step — with its own scroller so a twelve-week table can
@@ -4390,9 +4414,13 @@ tr.has-tooltip:active {
   bottom: 0;
   z-index: 40;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  /* Auto columns rather than repeat(5): the Admin tab only exists for an
+     admin, so the bar is five wide for most people and six for the operator.
+     Hard-coding five wrapped that sixth button onto a second row. */
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   gap: 2px;
-  padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
   background: var(--pitch-deep);
   box-shadow: 0 -6px 20px rgba(11, 58, 34, 0.22);
 }

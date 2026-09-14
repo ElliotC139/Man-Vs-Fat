@@ -237,7 +237,13 @@ describe("the figures", () => {
   it("reports the month's spend against what the plans bring in", async () => {
     const cookie = await signUp("alice");
     await signUp("bob");
-    state.users[1]!.plan = "pro";
+    // A real customer: a plan AND a subscription behind it.
+    Object.assign(state.users[1]!, {
+      plan: "pro",
+      stripeSubscriptionId: "sub_real",
+      subscriptionStatus: "active",
+      subscriptionInterval: "month",
+    });
     state.usage.push({ userId: 2, costMicros: 1_000_000 }, { userId: 2, costMicros: 500_000 });
 
     // Against the catalogue rather than a number typed in here: this test is
@@ -251,6 +257,41 @@ describe("the figures", () => {
     expect(body.month.revenuePence).toBe(proPence);
     expect(body.month.marginPence).toBe(proPence - 150);
     expect(body.plans.find((p: any) => p.id === "pro").users).toBe(1);
+    expect(body.plans.find((p: any) => p.id === "pro").paying).toBe(1);
+  });
+
+  it("counts a comped account as a cost, never as revenue", async () => {
+    // This is what the figure used to get wrong, and it got it wrong in the
+    // flattering direction: setting somebody's plan from the admin screen
+    // creates no subscription, so nobody pays, but the old sum added the
+    // plan's price anyway. The operator's own Pro account did it too.
+    const cookie = await signUp("alice");
+    await signUp("bob");
+    await send("/users/2", cookie, { plan: "pro" }, "PATCH");
+
+    const body = (await (await get("/overview", cookie)).json()) as any;
+    expect(body.month.revenuePence).toBe(0);
+    // Still visible as an account on Pro — comping is a normal thing to do,
+    // it just isn't income.
+    expect(body.plans.find((p: any) => p.id === "pro")).toMatchObject({ users: 1, paying: 0, comped: 1 });
+    expect(body.accounts).toMatchObject({ comped: 1 });
+  });
+
+  it("prices a yearly subscriber at what they are worth per month", async () => {
+    const cookie = await signUp("alice");
+    await signUp("bob");
+    Object.assign(state.users[1]!, {
+      plan: "pro",
+      stripeSubscriptionId: "sub_year",
+      subscriptionStatus: "active",
+      subscriptionInterval: "year",
+    });
+
+    const body = (await (await get("/overview", cookie)).json()) as any;
+    // A year costs nine months, so counting them at the monthly headline
+    // overstated every annual customer by a third.
+    expect(body.month.revenuePence).toBe(Math.round(planFor("pro").yearlyPence! / 12));
+    expect(body.month.revenuePence).toBeLessThan(planFor("pro").pricePence);
   });
 
   it("flags an account sitting on its ceiling", async () => {

@@ -232,7 +232,16 @@ app.use((err: unknown, _req: express.Request, res: express.Response, next: expre
   res.status(500).json({ error: "Something went wrong." });
 });
 
-Promise.all([tuneDatabase(), ensureSessionSecret(), ensureVapidKeys(), installPlanOverrides()])
+// tuneDatabase FIRST and alone, not inside the Promise.all below.
+//
+// Switching journal mode takes an exclusive lock on the database, and it
+// cannot get one while anything else is mid-write. Run concurrently with the
+// three bootstraps underneath — each of which writes — it loses the race and
+// fails with SQLITE_BUSY, the catch swallows it, and the app serves happily on
+// the default journal having logged one line nobody reads. Which is exactly
+// what it did until somebody started the server and looked at the log.
+tuneDatabase()
+  .then(() => Promise.all([ensureSessionSecret(), ensureVapidKeys(), installPlanOverrides()]))
   .then(() => {
     app.listen(config.PORT, () => {
       console.log(`QuicKcals listening on :${config.PORT} (timezone ${config.TIMEZONE})`);

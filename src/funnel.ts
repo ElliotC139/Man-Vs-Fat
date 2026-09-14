@@ -44,6 +44,7 @@
  */
 
 import { prisma } from "./db";
+import { classifyAccount } from "./accounting";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -101,13 +102,16 @@ function weekKey(date: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** A subscription Stripe is unhappy about, whatever the plan column says. */
-const LAPSING = new Set(["canceled", "cancelled", "past_due", "unpaid", "incomplete_expired"]);
-
 export async function buildFunnel(now = new Date()): Promise<FunnelReport> {
   const [users, matchWeeks, weekActivity] = await Promise.all([
     prisma.user.findMany({
-      select: { id: true, createdAt: true, plan: true, subscriptionStatus: true },
+      select: {
+        id: true, createdAt: true, plan: true, subscriptionStatus: true,
+        // Needed to tell a customer from a comp. Counting everyone on a paid
+        // plan as "paying" would have this screen contradicting the revenue
+        // figure directly above it.
+        stripeSubscriptionId: true, subscriptionInterval: true,
+      },
     }),
     prisma.matchWeek.findMany({ select: { id: true, userId: true } }),
     // One row per match week rather than per entry: the entries table is the
@@ -162,7 +166,10 @@ export async function buildFunnel(now = new Date()): Promise<FunnelReport> {
 
     const first = firstSeen.get(user.id);
     const last = lastSeen.get(user.id);
-    const paid = user.plan !== "free";
+    // classifyAccount, not `plan !== "free"` — a comped account is on a paid
+    // plan and is not a conversion. See src/accounting.ts.
+    const kind = classifyAccount(user);
+    const paid = kind === "paying";
 
     if (first) {
       totals.activated += 1;
@@ -186,8 +193,8 @@ export async function buildFunnel(now = new Date()): Promise<FunnelReport> {
     if (paid) {
       totals.paying += 1;
       row.paying += 1;
-      if (user.subscriptionStatus && LAPSING.has(user.subscriptionStatus)) totals.lapsing += 1;
     }
+    if (kind === "lapsed") totals.lapsing += 1;
 
     byWeek.set(week, row);
   }

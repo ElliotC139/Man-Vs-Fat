@@ -775,40 +775,6 @@
             <div id="referral-stats" class="referral-stats"></div>
           </section>
 
-          <!-- Only rendered for an admin. The server 404s the API for anyone
-               else, so this is a convenience rather than the protection. -->
-          <section id="admin-card" class="admin-card" hidden>
-            <div class="admin-head">
-              <h2 class="admin-title">Admin</h2>
-              <button type="button" id="admin-refresh" class="ghost-sm">Refresh</button>
-            </div>
-            <div id="admin-summary" class="admin-summary"></div>
-            <div class="admin-row">
-              <span class="admin-row-label">New sign-ups</span>
-              <div class="meal-kind-btns admin-signups">
-                <button type="button" id="admin-signups-open" class="meal-kind-btn">Open</button>
-                <button type="button" id="admin-signups-closed" class="meal-kind-btn">Closed</button>
-              </div>
-            </div>
-            <div id="admin-users" class="admin-users"></div>
-            <div class="admin-row">
-              <span class="admin-row-label">Where people fall out</span>
-              <button type="button" id="admin-funnel-toggle" class="ghost-sm">Show</button>
-            </div>
-            <div id="admin-funnel" class="admin-funnel" hidden></div>
-            <div class="admin-row">
-              <span class="admin-row-label">What each tier includes</span>
-              <button type="button" id="admin-plans-toggle" class="ghost-sm">Show</button>
-            </div>
-            <div id="admin-plans" class="admin-plans" hidden></div>
-            <div class="admin-row">
-              <span class="admin-row-label">Suggestions</span>
-              <button type="button" id="admin-suggestions-toggle" class="ghost-sm">Show</button>
-            </div>
-            <div id="admin-suggestions" class="admin-suggestions" hidden></div>
-            <p id="admin-error" class="error" hidden></p>
-          </section>
-
           <section class="settings-section" data-settings-section>
             <button type="button" class="settings-section-head" aria-expanded="false">
               <span class="settings-section-title">Suggest an update</span>
@@ -1636,6 +1602,50 @@
       </main>
     </div>
 
+    <!-- The operator's own screen. The server 404s every /api/admin route for
+         anyone who isn't an admin, so hiding the tab is a convenience rather
+         than the protection. -->
+    <div id="admin-screen" hidden>
+      <header class="banner">
+        <button id="admin-back" type="button" class="library-back" aria-label="Back">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <h1>Admin</h1>
+        <button type="button" id="admin-refresh" class="ghost-sm admin-refresh">Refresh</button>
+      </header>
+      <main>
+        <section id="admin-card" class="card admin-card">
+
+            <div id="admin-summary" class="admin-summary"></div>
+            <div class="admin-row">
+              <span class="admin-row-label">New sign-ups</span>
+              <div class="meal-kind-btns admin-signups">
+                <button type="button" id="admin-signups-open" class="meal-kind-btn">Open</button>
+                <button type="button" id="admin-signups-closed" class="meal-kind-btn">Closed</button>
+              </div>
+            </div>
+            <div id="admin-users" class="admin-users"></div>
+            <div class="admin-row">
+              <span class="admin-row-label">Where people fall out</span>
+              <button type="button" id="admin-funnel-toggle" class="ghost-sm">Show</button>
+            </div>
+            <div id="admin-funnel" class="admin-funnel" hidden></div>
+            <div class="admin-row">
+              <span class="admin-row-label">What each tier includes</span>
+              <button type="button" id="admin-plans-toggle" class="ghost-sm">Show</button>
+            </div>
+            <div id="admin-plans" class="admin-plans" hidden></div>
+            <div class="admin-row">
+              <span class="admin-row-label">Suggestions</span>
+              <button type="button" id="admin-suggestions-toggle" class="ghost-sm">Show</button>
+            </div>
+            <div id="admin-suggestions" class="admin-suggestions" hidden></div>
+            <p id="admin-error" class="error" hidden></p>
+          
+        </section>
+      </main>
+    </div>
+
     <div id="stats-screen" hidden>
       <header class="banner">
         <button id="stats-back" type="button" class="library-back" aria-label="Back">
@@ -2072,6 +2082,10 @@
       <button type="button" class="tab-btn" data-nav="stats">
         <svg class="icon" viewBox="0 0 24 24"><path d="M23 6 13.5 15.5 8.5 10.5 1 18"/><path d="M17 6h6v6"/></svg>
         <span>Stats</span>
+      </button>
+      <button type="button" class="tab-btn tab-btn--admin" data-nav="admin" hidden>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 4-6"/></svg>
+        <span>Admin</span>
       </button>
       <button type="button" class="tab-btn" data-nav="settings">
         <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>

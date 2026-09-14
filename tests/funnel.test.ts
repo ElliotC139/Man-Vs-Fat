@@ -10,6 +10,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * activity — rather than about the happy path.
  */
 
+vi.mock("../src/config", () => ({
+  adminUsernames: [],
+  config: {
+    GBP_PER_USD: 0.8,
+    ANTHROPIC_MODEL: "claude-sonnet-5",
+    ANTHROPIC_MODEL_FREE: "claude-haiku-4-5",
+  },
+}));
+
 const state = vi.hoisted(() => ({
   users: [] as any[],
   matchWeeks: [] as any[],
@@ -49,14 +58,28 @@ const daysAgo = (n: number) => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000)
 let nextId = 1;
 let nextWeek = 1;
 
-/** An account, with whatever activity it is supposed to have had. */
-function account(opts: { createdAt: Date; plan?: string; subscriptionStatus?: string; logged?: Date[] }) {
+/**
+ * An account, with whatever activity it is supposed to have had.
+ *
+ * `subscription` is what makes somebody a customer rather than a comp: a plan
+ * on its own is what the admin screen hands out by hand. The funnel uses
+ * classifyAccount for exactly that reason, so the test has to build both.
+ */
+function account(opts: {
+  createdAt: Date;
+  plan?: string;
+  subscription?: string | null;
+  subscriptionStatus?: string;
+  logged?: Date[];
+}) {
   const id = nextId++;
   state.users.push({
     id,
     createdAt: opts.createdAt,
     plan: opts.plan ?? "free",
+    stripeSubscriptionId: opts.subscription ?? null,
     subscriptionStatus: opts.subscriptionStatus ?? null,
+    subscriptionInterval: "month",
   });
   if (opts.logged?.length) {
     const matchWeekId = nextWeek++;
@@ -172,7 +195,7 @@ describe("cohorts by the week people signed up", () => {
   });
 
   it("carries activation and payment into the row, not just the signup", async () => {
-    account({ createdAt: daysAgo(3), plan: "plus", logged: [daysAgo(3), daysAgo(1)] });
+    account({ createdAt: daysAgo(3), plan: "plus", subscription: "sub_1", subscriptionStatus: "active", logged: [daysAgo(3), daysAgo(1)] });
     account({ createdAt: daysAgo(3) });
 
     const { cohorts } = await buildFunnel(NOW);
@@ -181,14 +204,27 @@ describe("cohorts by the week people signed up", () => {
 });
 
 describe("subscriptions in trouble", () => {
-  it("counts a paid plan Stripe is unhappy about", async () => {
-    account({ createdAt: daysAgo(30), plan: "plus", subscriptionStatus: "past_due" });
-    account({ createdAt: daysAgo(30), plan: "pro", subscriptionStatus: "canceled" });
-    account({ createdAt: daysAgo(30), plan: "plus", subscriptionStatus: "active" });
+  it("still counts a bounced card as paying, and a cancellation as lapsed", async () => {
+    // past_due is deliberately a paying customer: Stripe retries for days, and
+    // a bank's fraud check is not a cancellation. That judgement lives once,
+    // in billing.ts, and both this screen and the revenue figure follow it.
+    account({ createdAt: daysAgo(30), plan: "plus", subscription: "s1", subscriptionStatus: "past_due" });
+    account({ createdAt: daysAgo(30), plan: "pro", subscription: "s2", subscriptionStatus: "canceled" });
+    account({ createdAt: daysAgo(30), plan: "plus", subscription: "s3", subscriptionStatus: "active" });
 
     const { totals } = await buildFunnel(NOW);
-    expect(totals.paying).toBe(3);
-    expect(totals.lapsing).toBe(2);
+    expect(totals.paying).toBe(2);
+    expect(totals.lapsing).toBe(1);
+  });
+
+  it("does not count a comped account as a conversion", async () => {
+    // The operator's own Pro account. On a paid plan, nobody paying for it —
+    // and this screen sits directly above a revenue figure that agrees.
+    account({ createdAt: daysAgo(30), plan: "pro" });
+
+    const { totals } = await buildFunnel(NOW);
+    expect(totals.paying).toBe(0);
+    expect(totals.lapsing).toBe(0);
   });
 
   it("never counts a free account as lapsing", async () => {
