@@ -185,17 +185,31 @@ function yearlyFor(monthlyPence: number): number {
  * Free — funded by ads, so it has to cost less than ads bring in.
  *
  * Display advertising on an app like this brings in roughly 20–40p per active
- * user per month, and that is the number the ceiling has to sit under. Four
- * estimates a day on Haiku is at most 31 × 4 × 0.31p ≈ 38p, and the ceiling
- * stays at 20p — well below the allowance's own worst case, on purpose,
- * because the ceiling is the promise and the allowance is only the headline.
+ * user per month, and that is the number the ceiling has to sit under.
  *
- * Worth stating plainly, because the gap widened when the allowance went from
- * three a day to four: 20p buys about 2.1 estimates a day averaged over a
- * month, so somebody who really does use four every day runs out of budget
- * before the month does. That costs nothing — the ceiling is what makes this
- * tier safe — but the headline promises more than the ceiling funds, and the
- * fix for that is raising the ceiling rather than trimming the headline.
+ * ── The allowance should bind before the ceiling does ─────────────────────
+ *
+ * These are two different limits and they fail in two different ways. The
+ * allowance is a promise a person can hold in their head: three a day, every
+ * day, and when you have used them you know why. The ceiling is a budget, and
+ * hitting it looks like the app breaking halfway through a month for no reason
+ * anybody can see.
+ *
+ * So the allowance has to be the one that runs out first. Free logs by text
+ * only — photo is a Pro feature — and a text estimate on Haiku costs about
+ * 0.18p, so the most three a day can cost is 31 × 3 × 0.18p ≈ 17p against a
+ * 25p ceiling. Somebody who genuinely uses all three every single day of a
+ * month still never meets the budget, which is the whole point.
+ *
+ * This used to be the other way round. At four a day the worst case was ≈ 22p
+ * against a 20p ceiling, so the heaviest users hit a wall the pricing page had
+ * not warned them about.
+ *
+ * The headroom is deliberately larger than the arithmetic needs, because the
+ * 0.18p is an estimate and the ceiling is not: it is checked against measured
+ * spend. 25p leaves the promise intact even if a longer prompt or a dearer
+ * model makes each call half again as expensive, and it still sits at or below
+ * what the ads bring in.
  *
  * What the free tier keeps is the diary itself, all of it: every chart, the
  * adaptive burn engine, unlimited barcode scanning, meals and recipes. What
@@ -207,8 +221,8 @@ const FREE: Plan = {
   name: "Free",
   pricePence: 0,
   yearlyPence: null,
-  dailyEstimates: 4,
-  monthlyCostCapMicros: 0.2 * POUND,
+  dailyEstimates: 3,
+  monthlyCostCapMicros: 0.25 * POUND,
   model: config.ANTHROPIC_MODEL_FREE,
   ads: true,
   photo: false,
@@ -227,7 +241,7 @@ const FREE: Plan = {
     "Unlimited saved meals, recipes and re-logs",
     "Every chart, trend and target",
     "Weigh-ins, goal weight and the burn engine",
-    "4 AI estimates a day",
+    "3 AI estimates a day",
     "Shows ads",
   ],
 };
