@@ -2212,6 +2212,145 @@ suggestSendBtn.addEventListener("click", async () => {
   }
 });
 
+// ── Where people fall out ───────────────────────────────────────────────────
+//
+// The other admin sections answer what the app costs and earns. This one
+// answers why, which is a different question and the one that matters while
+// you are still finding out whether any of this works.
+//
+// Read it as three questions in order, because they have three different
+// fixes and only one of them is a marketing problem:
+//
+//   Are people arriving?      signups per week
+//   Do they start?            activated — logged anything at all
+//   Do they stay?             still logging — logged in the last week
+//   Do they pay?              paying
+//
+// A week with signups but no activation is an onboarding problem, and pouring
+// more traffic in makes it worse rather than better.
+
+const adminFunnelEl = document.getElementById("admin-funnel");
+const adminFunnelToggle = document.getElementById("admin-funnel-toggle");
+
+adminFunnelToggle.addEventListener("click", async () => {
+  const showing = !adminFunnelEl.hidden;
+  adminFunnelEl.hidden = showing;
+  adminFunnelToggle.textContent = showing ? "Show" : "Hide";
+  if (!showing) await loadFunnel();
+});
+
+async function loadFunnel() {
+  try {
+    const res = await fetch("/api/admin/funnel");
+    if (!res.ok) throw new Error();
+    renderFunnel(await res.json());
+  } catch {
+    adminFunnelEl.innerHTML = '<p class="muted">Couldn\'t load that.</p>';
+  }
+}
+
+/** n out of total, as a percentage, with no division by zero. */
+function share(n, total) {
+  if (!total) return "—";
+  return `${Math.round((n / total) * 100)}%`;
+}
+
+function renderFunnel(data) {
+  adminFunnelEl.innerHTML = "";
+  const { totals, activation, cohorts } = data;
+
+  if (totals.users === 0) {
+    adminFunnelEl.innerHTML = '<p class="muted">Nobody has signed up yet.</p>';
+    return;
+  }
+
+  // The four numbers in the order the questions get asked.
+  const summary = document.createElement("div");
+  summary.className = "admin-summary";
+  summary.append(
+    statTile(String(totals.users), "signed up"),
+    statTile(share(totals.activated, totals.users), "logged anything"),
+    statTile(share(totals.activeLast7, totals.users), "still logging"),
+    statTile(share(totals.paying, totals.users), "paying"),
+  );
+  adminFunnelEl.appendChild(summary);
+
+  // The single most useful line on the screen: people who signed up and never
+  // logged a thing. Nothing downstream can be fixed while that number is big.
+  const lede = document.createElement("p");
+  lede.className = "muted admin-funnel-lede";
+  const never = totals.neverLogged;
+  lede.textContent = never === 0
+    ? "Everyone who signed up has logged something."
+    : `${never} ${never === 1 ? "account" : "accounts"} signed up and never logged anything `
+      + `(${share(never, totals.users)}). Of those who did start, `
+      + `${share(activation.sameDay, totals.activated)} started the same day.`;
+  adminFunnelEl.appendChild(lede);
+
+  if (totals.lapsing > 0) {
+    const warn = document.createElement("p");
+    warn.className = "error admin-funnel-lapsing";
+    warn.hidden = false;
+    warn.textContent = `${totals.lapsing} paid ${totals.lapsing === 1 ? "account is" : "accounts are"} `
+      + "cancelling or unpaid.";
+    adminFunnelEl.appendChild(warn);
+  }
+
+  const table = document.createElement("table");
+  table.className = "admin-plan-grid admin-funnel-table";
+  const head = document.createElement("tr");
+  for (const label of ["Signed up", "Joined", "Started", "Still here", "Paying"]) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    head.appendChild(th);
+  }
+  const thead = document.createElement("thead");
+  thead.appendChild(head);
+  table.appendChild(thead);
+
+  const body = document.createElement("tbody");
+  for (const row of cohorts) {
+    const tr = document.createElement("tr");
+    tr.className = "admin-plan-row";
+    const week = document.createElement("th");
+    week.scope = "row";
+    week.className = "admin-plan-feature";
+    // The Monday the cohort signed up in, not a range: short enough to read
+    // in a narrow column and unambiguous once you know it's a week.
+    week.textContent = new Date(`${row.week}T00:00:00Z`).toLocaleDateString(undefined, {
+      day: "numeric", month: "short",
+    });
+    tr.appendChild(week);
+    // Counts, not percentages, for a single week — a cohort of three reading
+    // "33%" says far less than it appears to.
+    for (const value of [
+      row.signups,
+      `${row.activated} · ${share(row.activated, row.signups)}`,
+      `${row.stillLogging} · ${share(row.stillLogging, row.signups)}`,
+      row.paying,
+    ]) {
+      const td = document.createElement("td");
+      td.textContent = String(value);
+      tr.appendChild(td);
+    }
+    body.appendChild(tr);
+  }
+  table.appendChild(body);
+
+  const scroller = document.createElement("div");
+  scroller.className = "admin-funnel-scroll";
+  scroller.appendChild(table);
+  adminFunnelEl.appendChild(scroller);
+
+  const note = document.createElement("p");
+  note.className = "muted admin-plan-note";
+  note.textContent =
+    "Each row is the week people signed up in, followed for as long as they've been around — "
+    + "so the newest row has had the least time to do anything. \"Still here\" means they logged "
+    + "something in the last seven days.";
+  adminFunnelEl.appendChild(note);
+}
+
 // ── What each tier includes ─────────────────────────────────────────────────
 //
 // The tick grid from the feature review, made live. Changing a tier used to

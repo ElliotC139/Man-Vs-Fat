@@ -33,6 +33,7 @@ import {
 import { formatMicros } from "../modelPricing";
 import { config } from "../config";
 import { adminListConfigured, isAdminUser } from "../adminAccess";
+import { buildFunnel } from "../funnel";
 import { getLocalParts, zonedTimeToUtc } from "../matchWeek";
 
 export const adminRouter = Router();
@@ -276,7 +277,7 @@ const FEATURE_COPY: Record<EditableFlag, { name: string; note: string; metered: 
   ads: { name: "Show ads", note: "How the free tier pays for itself.", metered: false },
   photo: { name: "Log by photo", note: "About 1.7x what a typed estimate costs.", metered: true },
   recipeScan: { name: "Scan a recipe or label", note: "The dearest call the app makes — about six typed estimates.", metered: true },
-  health: { name: "WHOOP and Apple Health", note: "Measured burn instead of a formula. Free to serve.", metered: false },
+  health: { name: "Connect a WHOOP", note: "Measured burn instead of a formula. Free to serve.", metered: false },
   weeklyReport: { name: "Weekly PDF report", note: "And filing it to Google Drive. Free to serve.", metered: false },
   weeklyReview: { name: "In-app weekly review", note: "Free to serve.", metered: false },
   eatingWindow: { name: "Eating-window card", note: "Free to serve.", metered: false },
@@ -314,6 +315,18 @@ function planGrid() {
     }),
   };
 }
+
+/**
+ * Where people fall out.
+ *
+ * Separate from /overview on purpose: that one answers what the app costs and
+ * earns, this one answers why. They are read at different moments — the first
+ * when you want to know if it is working, the second when you want to know
+ * what to do about it.
+ */
+adminRouter.get("/funnel", async (_req, res) => {
+  res.json(await buildFunnel());
+});
 
 adminRouter.get("/plans", (_req, res) => {
   res.json(planGrid());

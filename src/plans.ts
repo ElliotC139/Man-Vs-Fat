@@ -95,9 +95,11 @@
  *   - Recipe and label scanning, which is the one call that really is
  *     expensive — an image in and up to 2,000 tokens back, about six typed
  *     estimates.
- *   - WHOOP and Apple Health, which turn a formula's guess at what you burned
- *     into a measurement. Costs nothing to serve; it is a power-user feature
- *     and reads as one.
+ *   - WHOOP, which turns a formula's guess at what you burned into a
+ *     measurement. Costs nothing to serve; it is a power-user feature and
+ *     reads as one. (Apple Health and Health Connect are NOT this: neither
+ *     can be read from a web app, so what the app offers there is a weight
+ *     import from an export file, and that is free on every plan.)
  *   - The weekly PDF report and its Drive filing, same again.
  *
  * The charts, trends, targets and adaptive TDEE stay free. They are what the
@@ -139,7 +141,7 @@ export interface Plan {
    * typed estimates. It earns its place at the top tier on cost alone.
    */
   recipeScan: boolean;
-  /** WHOOP and Apple Health sync — measured burn instead of a formula. */
+  /** WHOOP sync — measured burn instead of a formula. */
   health: boolean;
   /** The weekly PDF report, and filing it to Google Drive. */
   weeklyReport: boolean;
@@ -359,7 +361,7 @@ const PRO: Plan = {
     "Everything in Plus",
     "40 AI estimates a day",
     "Scan a recipe or a label into a full breakdown",
-    "WHOOP and Apple Health — burn measured, not guessed",
+    "WHOOP — burn measured, not guessed",
     "The weekly report, filed to your Drive",
   ],
 };

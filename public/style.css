@@ -2704,6 +2704,41 @@ tr.has-tooltip:active {
 }
 
 /* ── Suggestions, in the admin card ───────────────────────────────────────*/
+/* ── Where people fall out ─────────────────────────────────────────────────
+   Reuses the tier grid's table styling — same shape, same widths, one set of
+   rules to keep in step — with its own scroller so a twelve-week table can
+   run wide on a phone without dragging the page sideways with it. */
+.admin-funnel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+.admin-funnel-lede {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.admin-funnel-lapsing {
+  margin: 0;
+  font-size: 0.78rem;
+}
+.admin-funnel-scroll {
+  overflow-x: auto;
+}
+/* Five columns of numbers rather than three of ticks, so the week label gives
+   up the width the tier grid hands it. */
+.admin-funnel-table tbody th {
+  width: 1%;
+  white-space: nowrap;
+}
+.admin-funnel-table thead th:not(:first-child),
+.admin-funnel-table tbody td {
+  width: auto;
+  min-width: 58px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── The tier grid ─────────────────────────────────────────────────────────
    A table because it is one: features down, tiers across, and the whole point
    is reading along a row to see where a feature starts. Scrolls sideways
