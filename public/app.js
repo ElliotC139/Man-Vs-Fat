@@ -2297,6 +2297,120 @@ async function loadFunnel() {
   }
 }
 
+
+// ── What people asked for ───────────────────────────────────────────────────
+//
+// The tally behind the landing page's "what's next" section. Shown here rather
+// than on the page itself because a count is social proof once it is large and
+// an argument against yourself while it is small — and because this is the only
+// audience it is a decision for.
+const adminRoadmapEl = document.getElementById("admin-roadmap");
+const adminRoadmapToggle = document.getElementById("admin-roadmap-toggle");
+
+adminRoadmapToggle.addEventListener("click", async () => {
+  const showing = !adminRoadmapEl.hidden;
+  adminRoadmapEl.hidden = showing;
+  adminRoadmapToggle.textContent = showing ? "Show" : "Hide";
+  if (!showing) await loadRoadmapVotes();
+});
+
+async function loadRoadmapVotes() {
+  try {
+    const res = await fetch("/api/admin/roadmap");
+    if (!res.ok) throw new Error();
+    renderRoadmapVotes(await res.json());
+  } catch {
+    adminRoadmapEl.innerHTML = '<p class="muted">Couldn\'t load that.</p>';
+  }
+}
+
+function renderRoadmapVotes(data) {
+  adminRoadmapEl.innerHTML = "";
+  const items = data.items ?? [];
+  if (!items.length) {
+    adminRoadmapEl.innerHTML = '<p class="muted">Nothing on the roadmap yet.</p>';
+    return;
+  }
+
+  const total = data.totalVotes ?? 0;
+  const summary = document.createElement("p");
+  summary.className = "muted admin-roadmap-total";
+  summary.textContent = `${total} vote${total === 1 ? "" : "s"} so far.`;
+  adminRoadmapEl.appendChild(summary);
+
+  // The biggest count sets the bar width, so bars compare items against each
+  // other rather than against a total that means nothing on its own.
+  const top = Math.max(1, ...items.map((i) => i.votes));
+
+  for (const group of [
+    { key: "connect", label: "Things to connect" },
+    { key: "feature", label: "Things to build" },
+  ]) {
+    const rows = items.filter((i) => i.group === group.key);
+    if (!rows.length) continue;
+
+    const heading = document.createElement("h4");
+    heading.className = "admin-roadmap-group";
+    heading.textContent = group.label;
+    adminRoadmapEl.appendChild(heading);
+
+    for (const item of rows) {
+      const row = document.createElement("div");
+      row.className = "admin-roadmap-row";
+
+      const name = document.createElement("span");
+      name.className = "admin-roadmap-name";
+      name.textContent = item.title;
+
+      const bar = document.createElement("span");
+      bar.className = "admin-roadmap-bar";
+      const fill = document.createElement("span");
+      fill.style.width = `${Math.round((item.votes / top) * 100)}%`;
+      bar.appendChild(fill);
+
+      const count = document.createElement("span");
+      count.className = "admin-roadmap-count";
+      count.textContent = String(item.votes);
+
+      row.append(name, bar, count);
+      adminRoadmapEl.appendChild(row);
+    }
+  }
+
+  const emails = data.emails ?? [];
+  const asked = document.createElement("h4");
+  asked.className = "admin-roadmap-group";
+  asked.textContent = `Asked to be told (${emails.length})`;
+  adminRoadmapEl.appendChild(asked);
+
+  if (!emails.length) {
+    const none = document.createElement("p");
+    none.className = "muted";
+    none.textContent = "Nobody yet.";
+    adminRoadmapEl.appendChild(none);
+    return;
+  }
+
+  for (const person of emails) {
+    const row = document.createElement("div");
+    row.className = "admin-roadmap-email";
+
+    // textContent throughout, because every value below arrives from an
+    // endpoint that takes no login. An address is validated on the way in, but
+    // the place to be careful about somebody else's text is where it is put on
+    // a screen — and this screen belongs to the one account worth attacking.
+    const who = document.createElement("span");
+    who.textContent = person.email;
+
+    const wanted = document.createElement("span");
+    wanted.className = "muted";
+    wanted.textContent = (person.items ?? []).join(", ");
+
+    row.append(who, wanted);
+    adminRoadmapEl.appendChild(row);
+  }
+}
+
 /** n out of total, as a percentage, with no division by zero. */
 function share(n, total) {
   if (!total) return "—";
@@ -7879,6 +7993,34 @@ let foodSearchMode = "all";
 let menuBrand = null;
 
 /**
+ * Whether a menu database is configured, remembered across opens.
+ *
+ * This used to be read only off a search response, which meant the "Eating
+ * out" tab did not exist until you had already typed a query and got results
+ * back — you had to do the thing the tab replaces before the tab appeared.
+ * Unsurprisingly, nobody found it.
+ *
+ * null means not yet asked. The search route answers a query shorter than two
+ * characters with the capability flags and an empty result list, so asking
+ * costs one cheap request that hits no food database at all.
+ */
+let menusAvailable = null;
+
+async function ensureFoodCapabilities() {
+  if (menusAvailable !== null) return;
+  try {
+    const res = await fetch("/api/food-search?q=", { headers: { Accept: "application/json" } });
+    const data = await res.json();
+    menusAvailable = Boolean(data?.sources?.menus);
+  } catch {
+    // Offline, most likely. Left as null so the next open asks again rather
+    // than the tab staying gone for the rest of the session.
+    return;
+  }
+  foodSearchModes.hidden = !menusAvailable;
+}
+
+/**
  * Somewhere to start. These are prefilled searches, not data — tapping one
  * types its name into the box — because an empty search field under a tab
  * called "Eating out" is a dead end, and nobody's first instinct is to guess
@@ -8032,6 +8174,10 @@ function openSearchFor(query) {
   foodMenuBack.hidden = true;
   menuBrand = null;
   renderMenuSuggestions();
+  // Before anything is typed, so "Eating out" is on screen at the moment
+  // somebody is deciding how to log the meal they just ate.
+  if (menusAvailable !== null) foodSearchModes.hidden = !menusAvailable;
+  ensureFoodCapabilities();
   // The class is what the CSS keys the backdrop off; the panel itself goes
   // fixed as soon as it stops being hidden.
   document.body.classList.add("search-open");
@@ -8108,7 +8254,10 @@ async function runFoodSearch(query) {
     if (seq !== foodSearchSeq) return;
     // The provider layer says whether a menu database is configured at all.
     // Without one the tab would be a promise the server can't keep.
-    foodSearchModes.hidden = !data.sources?.menus;
+    if (data.sources) {
+      menusAvailable = Boolean(data.sources.menus);
+      foodSearchModes.hidden = !menusAvailable;
+    }
     renderFoodResults(data.results, query);
   } catch {
     if (seq !== foodSearchSeq) return;
