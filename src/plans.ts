@@ -69,13 +69,26 @@
  *
  * Because a photo costs 1.7x a typed estimate, not ten times it. At Plus's
  * ten a day, an account that photographed every single meal would cost about
- * £1.88 a month against £3.89 kept — comfortably profitable, and the ceiling
+ * £1.92 a month against £3.89 kept — comfortably profitable, and the ceiling
  * catches it even if that arithmetic is wrong. There is no cost argument for
  * holding it back.
  *
+ * And that worst case describes nobody. A person logs perhaps six things a
+ * day, but most of them never reach the model at all: barcode scans, food
+ * search, saved meals, recipes and re-logs are all answered from the app's own
+ * databases (see estimateShortcut.ts). Only a genuinely new description costs
+ * anything, which is two or three a day in practice — call it 50-60p a month.
+ * The ten is a headline nobody spends.
+ *
+ * This moved to Pro once and moved back. The round trip is worth recording:
+ * there was never a cost argument, only a ladder one, and the ladder argument
+ * loses to the funnel. The £0 to £4.99 step is where nearly all the money is,
+ * because that is where the funnel narrows hardest — so the most persuasive
+ * feature belongs at the bottom of the paid ladder, not the top.
+ *
  * There is a *ladder* argument, and it is the right instinct pointed at the
  * wrong feature. Photographing your dinner is the single most persuasive
- * reason a free user pays anything at all; putting it at £7.99 doesn't move
+ * reason a free user pays anything at all; putting it at £9.99 doesn't move
  * those people up to Pro, it leaves most of them on free. So Pro earns its
  * price on capability that genuinely belongs at the top instead:
  *
@@ -278,7 +291,7 @@ const PLUS: Plan = {
   monthlyCostCapMicros: 2 * POUND,
   model: config.ANTHROPIC_MODEL,
   ads: false,
-  photo: false,
+  photo: true,
   recipeScan: false,
   health: false,
   weeklyReport: false,
@@ -288,9 +301,10 @@ const PLUS: Plan = {
   keto: true,
   measurements: true,
   progressPhotos: true,
-  tagline: "No ads, ten estimates a day, and the tools that keep you honest.",
+  tagline: "No ads, log by photo, and the tools that keep you honest.",
   highlights: [
     "Everything in Free, with no ads",
+    "Log a meal by photographing it",
     "10 AI estimates a day",
     "Fasting timer and keto mode",
     "Body measurements and progress photos",
@@ -340,11 +354,10 @@ const PRO: Plan = {
   keto: true,
   measurements: true,
   progressPhotos: true,
-  tagline: "Everything the app can do, connected to what you wear.",
+  tagline: "For people who measure. Your watch, your recipes, your report.",
   highlights: [
     "Everything in Plus",
     "40 AI estimates a day",
-    "Log by photo",
     "Scan a recipe or a label into a full breakdown",
     "WHOOP and Apple Health — burn measured, not guessed",
     "The weekly report, filed to your Drive",

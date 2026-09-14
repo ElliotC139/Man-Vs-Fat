@@ -80,7 +80,7 @@ export type PlanFeature =
 // Each names the plan it belongs to rather than saying "upgrade", because the
 // useful half of a refusal is which plan answers it.
 const FEATURE_COPY: Record<PlanFeature, string> = {
-  photo: "Logging by photo is part of Pro.",
+  photo: "Logging by photo is part of Plus.",
   recipeScan: "Scanning a recipe is part of Pro.",
   health: "Connecting WHOOP or Apple Health is part of Pro.",
   weeklyReport: "The weekly report is part of Pro.",

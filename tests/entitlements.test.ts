@@ -148,19 +148,28 @@ describe("what a plan includes", () => {
     }
   });
 
-  it("allows a photo on Pro, and refuses one below it", async () => {
-    // Photo is the second most expensive call the app makes, so it sits with
-    // the most expensive one rather than on the cheaper paid tier.
+  it("allows a photo on any paid plan, and refuses one on free", async () => {
+    // Photo sits at the BOTTOM of the paid ladder, not the top, and the reason
+    // is the funnel rather than the bill. A photo costs 1.7x a typed estimate,
+    // not ten times it, so there was never a cost case for holding it back —
+    // and photographing your dinner is the most persuasive reason anyone pays
+    // anything at all. Put it at £9.99 and most of those people stay on free.
     expect((await checkEntitlement(account("pro"), "photo", NOW)).allowed).toBe(true);
-    expect((await checkEntitlement(account("plus"), "photo", NOW)).allowed).toBe(false);
+    expect((await checkEntitlement(account("plus"), "photo", NOW)).allowed).toBe(true);
     expect((await checkEntitlement(account("free"), "photo", NOW)).allowed).toBe(false);
   });
 
-  it("names the plan that answers a refusal, not just the refusal", async () => {
-    // "You can't" is a fault; "that's part of Pro" is a choice.
+
+  it("names the CHEAPEST plan that answers a refusal, not just the refusal", async () => {
+    // "You can't" is a fault; "that's part of Plus" is a choice. And it has to
+    // be the cheapest plan that would actually answer it — naming Pro here
+    // would send someone to £9.99 for something £4.99 buys.
     const verdict = await checkEntitlement(account("free"), "photo", NOW);
     expect(verdict.allowed).toBe(false);
-    if (!verdict.allowed) expect(verdict.message).toMatch(/part of Pro/i);
+    // Narrowed by throwing rather than by an if, so a verdict that starts
+    // allowing this fails the test instead of quietly skipping the assertion.
+    if (verdict.allowed) throw new Error("expected free to be refused a photo");
+    expect(verdict.message).toMatch(/part of Plus/i);
   });
 
   it("reads an unrecognised plan as free rather than as unlimited", async () => {
