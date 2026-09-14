@@ -6988,3 +6988,71 @@ body.hide-entry-times .entry-time {
     background: rgba(8, 14, 11, 0.45);
   }
 }
+
+/* ── Admin: what people asked for ────────────────────────────────────────── */
+.admin-roadmap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+.admin-roadmap-total { margin: 0 0 4px; font-size: 0.78rem; }
+.admin-roadmap-group {
+  margin: 10px 0 2px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.admin-roadmap-group:first-of-type { margin-top: 2px; }
+.admin-roadmap-row {
+  display: grid;
+  /* Name, then a bar that takes whatever is left, then the count. The count
+     column is fixed so the numbers line up rather than drifting with the bar. */
+  grid-template-columns: minmax(0, 1fr) 84px 28px;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+.admin-roadmap-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-roadmap-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--hairline);
+  overflow: hidden;
+}
+.admin-roadmap-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--pitch);
+  border-radius: inherit;
+}
+.admin-roadmap-count {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.admin-roadmap-email {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.78rem;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.admin-roadmap-email span:last-child {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 400px) {
+  /* The bar is the first thing worth losing when the name needs the room. */
+  .admin-roadmap-row { grid-template-columns: minmax(0, 1fr) 48px 26px; }
+}
