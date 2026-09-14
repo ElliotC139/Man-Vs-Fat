@@ -52,6 +52,28 @@ roadmapRouter.get("/", (_req, res) => {
   res.json({ items: ROADMAP });
 });
 
+/**
+ * What this person has already voted for, on any device.
+ *
+ * The landing page can lean on localStorage, because a stranger has no other
+ * identity to go on. Inside the app that would be wrong: somebody who voted on
+ * their phone should see it ticked on their laptop, and a browser's storage
+ * knows nothing about that. Signed out it answers with an empty list rather
+ * than a 401, so one renderer can serve both places.
+ */
+roadmapRouter.get("/mine", async (req, res) => {
+  const userId = await sessionUserId(req);
+  if (userId === null) {
+    res.json({ voted: [] });
+    return;
+  }
+  const rows = await prisma.roadmapVote.findMany({
+    where: { userId },
+    select: { itemId: true },
+  });
+  res.json({ voted: rows.map((row) => row.itemId) });
+});
+
 roadmapRouter.post("/vote", async (req, res) => {
   const verdict = consume(`roadmap:${req.ip ?? "unknown"}`, VOTE_BURST);
   if (!verdict.allowed) {
@@ -82,6 +104,21 @@ roadmapRouter.post("/vote", async (req, res) => {
   try {
     await prisma.roadmapVote.create({ data: { itemId, email, userId, browserKey } });
   } catch (error) {
+    // The journey this exists for: somebody reads the landing page signed out,
+    // votes, then signs up and finds the same board in Settings. Their second
+    // vote collides on (itemId, browserKey) — correctly, it is the same person
+    // — but the row we already have is anonymous, and throwing the second one
+    // away would lose the one thing that changed, which is that we now know
+    // who they are.
+    //
+    // Scoped to rows that have no owner yet, so this can only ever fill in a
+    // blank and never move a vote from one account to another. Zero rows
+    // updated means it was a genuine repeat, which is fine.
+    if ((error as { code?: string })?.code === "P2002" && userId !== null && browserKey !== null) {
+      await prisma.roadmapVote
+        .updateMany({ where: { itemId, browserKey, userId: null }, data: { userId } })
+        .catch(() => undefined);
+    }
     // P2002 is a unique-index collision, and both of this table's unique
     // indexes mean the same thing: we already have this person's opinion on
     // this item. Saying "noted" to a second tap is honest — it *is* noted —

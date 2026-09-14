@@ -7056,3 +7056,66 @@ body.hide-entry-times .entry-time {
   /* The bar is the first thing worth losing when the name needs the room. */
   .admin-roadmap-row { grid-template-columns: minmax(0, 1fr) 48px 26px; }
 }
+
+/* ── What we build next, in Settings ─────────────────────────────────────── */
+.roadmap-board {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.roadmap-group {
+  margin: 12px 0 2px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.roadmap-group:first-child { margin-top: 0; }
+.roadmap-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+.roadmap-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.roadmap-item-title { font-weight: 600; font-size: 0.92rem; }
+.roadmap-item-blurb { font-size: 0.8rem; color: var(--muted); line-height: 1.4; }
+.roadmap-vote {
+  /* style.css sets a global `button { width: 100% }`; without overriding it
+     here the pill swallows the row and pushes the text out of sight. */
+  width: auto;
+  flex: 0 0 auto;
+  min-height: 38px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--pitch-dark);
+  background: transparent;
+  border: 1px solid var(--pitch);
+  border-radius: 999px;
+  padding: 6px 13px;
+}
+/* Filled states use --pitch-dark against --bg rather than white on --pitch:
+   that pair inverts with the theme on its own and clears 7:1 in both, where
+   white on --pitch measures 3.5:1 light and 2.5:1 dark. */
+.roadmap-item--voted .roadmap-vote {
+  background: var(--pitch-dark);
+  border-color: var(--pitch-dark);
+  color: var(--bg);
+  opacity: 1;
+}
+.roadmap-vote:disabled { cursor: default; }
+@media (max-width: 380px) {
+  /* Below this the pill and the blurb fight; stacking keeps both readable. */
+  .roadmap-item { flex-direction: column; align-items: stretch; gap: 8px; }
+  .roadmap-vote { align-self: flex-start; }
+}

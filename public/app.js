@@ -8897,8 +8897,138 @@ function initSettingsSections() {
       head.setAttribute("aria-expanded", String(open));
       section.classList.toggle("settings-section--open", open);
       if (open) haptic();
+      // Fetched the first time somebody opens it, not on every app start:
+      // most sessions never look at this, and the board is two requests.
+      if (open && section.contains(roadmapBoard)) loadRoadmapBoard();
     });
   }
+}
+
+
+// ── What we build next ──────────────────────────────────────────────────────
+//
+// The same board the landing page carries, for people who already signed up.
+// They are the ones worth hearing from most — somebody using the diary daily
+// knows which missing connector actually bothers them — and they would never
+// see it otherwise, because a signed-in visitor is served the app rather than
+// the marketing page.
+//
+// Two differences from the landing page version. The items are fetched instead
+// of being written into the HTML, because nothing crawls this shell and one
+// list is better than two. And there is no email field: we have the account,
+// so asking for an address would be asking for something we already hold.
+
+const roadmapBoard = document.getElementById("roadmap-board");
+const roadmapError = document.getElementById("roadmap-error");
+
+/** Loaded once per session — the list doesn't change while somebody reads it. */
+let roadmapLoaded = false;
+
+const ROADMAP_GROUPS = [
+  { key: "connect", label: "Things to connect" },
+  { key: "feature", label: "Things to build" },
+];
+
+async function loadRoadmapBoard() {
+  if (roadmapLoaded) return;
+  try {
+    // Their existing votes come from the server rather than this browser's
+    // storage, so something voted for on a phone shows as voted on a laptop.
+    const [itemsRes, mineRes] = await Promise.all([
+      fetch("/api/roadmap"),
+      fetch("/api/roadmap/mine"),
+    ]);
+    if (!itemsRes.ok || !mineRes.ok) throw new Error();
+    const { items } = await itemsRes.json();
+    const { voted } = await mineRes.json();
+    renderRoadmapBoard(items ?? [], new Set(voted ?? []));
+    roadmapLoaded = true;
+  } catch {
+    roadmapError.textContent = "Couldn't load that just now.";
+    roadmapError.hidden = false;
+  }
+}
+
+function renderRoadmapBoard(items, voted) {
+  roadmapBoard.innerHTML = "";
+  roadmapError.hidden = true;
+
+  for (const group of ROADMAP_GROUPS) {
+    const rows = items.filter((item) => item.group === group.key);
+    if (!rows.length) continue;
+
+    const heading = document.createElement("h4");
+    heading.className = "roadmap-group";
+    heading.textContent = group.label;
+    roadmapBoard.appendChild(heading);
+
+    for (const item of rows) {
+      roadmapBoard.appendChild(roadmapRow(item, voted.has(item.id)));
+    }
+  }
+}
+
+function roadmapRow(item, alreadyVoted) {
+  const row = document.createElement("div");
+  row.className = "roadmap-item";
+  row.dataset.roadmapId = item.id;
+
+  const text = document.createElement("div");
+  text.className = "roadmap-item-text";
+
+  const title = document.createElement("span");
+  title.className = "roadmap-item-title";
+  // textContent throughout — the same care as everywhere else, even though
+  // this particular list comes from our own code.
+  title.textContent = item.title;
+
+  const blurb = document.createElement("span");
+  blurb.className = "roadmap-item-blurb";
+  blurb.textContent = item.blurb;
+
+  text.append(title, blurb);
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "roadmap-vote";
+
+  function markVoted() {
+    row.classList.add("roadmap-item--voted");
+    button.textContent = "Noted \u2713";
+    button.disabled = true;
+    button.setAttribute("aria-label", `${item.title}: noted`);
+  }
+
+  if (alreadyVoted) {
+    markVoted();
+  } else {
+    button.textContent = "I'd use this";
+    button.setAttribute("aria-label", `I'd use ${item.title}`);
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      try {
+        // No browser key from in here. Signed in, the account is the identity
+        // that matters, and sending a key that already voted anonymously would
+        // have this bounce as a duplicate instead of being recorded as theirs.
+        const res = await fetch("/api/roadmap/vote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ itemId: item.id }),
+        });
+        if (!res.ok) throw new Error();
+      } catch {
+        // Said plainly rather than shown a tick for something never recorded.
+        button.textContent = "Didn't save — tap again";
+        button.disabled = false;
+        return;
+      }
+      markVoted();
+      haptic();
+    });
+  }
+
+  row.append(text, button);
+  return row;
 }
 
 // ── The estimate buffer ─────────────────────────────────────────────────────

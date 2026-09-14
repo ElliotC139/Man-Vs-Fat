@@ -935,4 +935,9 @@ model RoadmapVote {
   // And one per address, so asking twice updates nothing instead of
   // double-counting a keen person.
   @@unique([itemId, email])
+  // One per account, because the question is how many *people* want a thing.
+  // Without this, somebody who voted on their phone and again on a laptop
+  // would count twice — and a signed-in vote is the one case where we know
+  // for certain it is the same person.
+  @@unique([itemId, userId])
 }

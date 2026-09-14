@@ -137,3 +137,29 @@ describe("the privacy policy covers what this collects", () => {
     expect(privacy.toLowerCase()).toMatch(/random id/);
   });
 });
+
+describe("the board inside the app", () => {
+  const shell = readFileSync(path.join(process.cwd(), "public", "index.html"), "utf8");
+
+  it("has somewhere to render into", () => {
+    expect(shell).toContain('id="roadmap-board"');
+  });
+
+  it("keeps no second copy of the list to fall out of step", () => {
+    // The landing page has to write the items into its HTML because a crawler
+    // reads it. This shell is noindex and script-driven, so it fetches them —
+    // and the failure this guards against is somebody "helpfully" pasting the
+    // list in here, where nothing would ever check it again.
+    for (const item of ROADMAP) {
+      expect(shell, `${item.id}'s blurb is hardcoded in the app shell`).not.toContain(item.blurb);
+    }
+  });
+
+  it("is reachable without being an admin", () => {
+    // It sits in Settings, which every account has, rather than behind the
+    // admin tab where only one person would ever see it.
+    const section = shell.split('id="roadmap-board"')[0] ?? "";
+    expect(section).toContain("What we build next");
+    expect(section).not.toMatch(/admin-screen[\s\S]{0,400}roadmap-board/);
+  });
+});

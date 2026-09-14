@@ -791,6 +791,29 @@
             <div id="referral-stats" class="referral-stats"></div>
           </section>
 
+          <!--
+            The same board the landing page shows, for people who are already
+            here. Rendered from /api/roadmap rather than written out in this
+            file: the landing page needs its copy in the HTML because a crawler
+            reads it, but this shell is noindex and script-driven anyway, so
+            there is no reason to keep a second list in sync by hand.
+          -->
+          <section class="settings-section" data-settings-section>
+            <button type="button" class="settings-section-head" aria-expanded="false">
+              <span class="settings-section-title">What we build next</span>
+              <span class="settings-section-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="settings-section-body" hidden>
+              <p class="muted">
+                All of it is real work we know how to do — the question is the order. Tap the ones
+                you'd actually use. No dates, because a date on a roadmap is a promise nobody
+                should make.
+              </p>
+              <div id="roadmap-board" class="roadmap-board"></div>
+              <p id="roadmap-error" class="error" hidden></p>
+            </div>
+          </section>
+
           <section class="settings-section" data-settings-section>
             <button type="button" class="settings-section-head" aria-expanded="false">
               <span class="settings-section-title">Suggest an update</span>

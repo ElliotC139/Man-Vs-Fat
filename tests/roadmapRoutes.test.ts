@@ -32,7 +32,8 @@ vi.mock("../src/db", () => ({
           (v) =>
             v.itemId === data.itemId &&
             ((data.browserKey != null && v.browserKey === data.browserKey) ||
-              (data.email != null && v.email === data.email)),
+              (data.email != null && v.email === data.email) ||
+              (data.userId != null && v.userId === data.userId)),
         );
         if (clash) {
           const error: any = new Error("Unique constraint failed");
@@ -43,12 +44,26 @@ vi.mock("../src/db", () => ({
         state.votes.push(row);
         return row;
       }),
+      updateMany: vi.fn(async ({ where, data }: any) => {
+        const rows = state.votes.filter(
+          (v) =>
+            v.itemId === where.itemId &&
+            v.browserKey === where.browserKey &&
+            v.userId === where.userId,
+        );
+        for (const row of rows) Object.assign(row, data);
+        return { count: rows.length };
+      }),
+      findMany: vi.fn(async ({ where }: any) =>
+        state.votes.filter((v) => v.userId === where.userId)),
     },
   },
 }));
 
-// No session in any of these, which is the situation the route is built for.
-vi.mock("../src/auth", () => ({ sessionUserId: vi.fn(async () => null) }));
+// Signed out by default — the situation the route is built for — but some of
+// these are about the signed-in half, so it has to be steerable.
+const session = vi.hoisted(() => ({ userId: null as number | null }));
+vi.mock("../src/auth", () => ({ sessionUserId: vi.fn(async () => session.userId) }));
 
 import { roadmapRouter } from "../src/routes/roadmap";
 import { ROADMAP } from "../src/roadmap";
@@ -60,6 +75,7 @@ let baseUrl: string;
 beforeEach(async () => {
   state.votes.length = 0;
   state.nextId = 1;
+  session.userId = null;
   resetAll();
 
   const app = express();
@@ -176,5 +192,98 @@ describe("when the database is the problem", () => {
     const res = await vote({ itemId: "alcohol" });
     expect(res.status).toBe(500);
     expect((await res.json()) as any).not.toMatchObject({ recorded: true });
+  });
+});
+
+describe("voting while signed in", () => {
+  it("records who cast it", async () => {
+    session.userId = 42;
+    await vote({ itemId: "apple-watch" });
+    expect(state.votes[0]).toMatchObject({ itemId: "apple-watch", userId: 42 });
+  });
+
+  it("counts one person once, however many devices they use", async () => {
+    // The question this table answers is how many *people* want a thing.
+    session.userId = 42;
+    await vote({ itemId: "fitbit" });
+    const fromTheLaptop = await vote({ itemId: "fitbit" });
+
+    expect(await fromTheLaptop.json()).toMatchObject({ duplicate: true });
+    expect(state.votes).toHaveLength(1);
+  });
+
+  it("still lets one person vote for several things", async () => {
+    session.userId = 42;
+    await vote({ itemId: "fitbit" });
+    await vote({ itemId: "garmin" });
+    expect(state.votes).toHaveLength(2);
+  });
+
+  it("does not merge two accounts' votes", async () => {
+    session.userId = 1;
+    await vote({ itemId: "oura" });
+    session.userId = 2;
+    await vote({ itemId: "oura" });
+    expect(state.votes).toHaveLength(2);
+  });
+});
+
+describe("the visitor who signs up afterwards", () => {
+  it("attaches their account to the vote they cast signed out", async () => {
+    // Read the landing page, voted, liked it, made an account, found the same
+    // board in Settings and tapped again. The second tap collides on the
+    // browser key — correctly, it is the same person — but the row we hold is
+    // anonymous, and discarding the tap would lose the one new fact.
+    const key = "browser-key-12345678";
+    await vote({ itemId: "coach-access", browserKey: key });
+    expect(state.votes[0].userId).toBeNull();
+
+    session.userId = 7;
+    const again = await vote({ itemId: "coach-access", browserKey: key });
+
+    expect(await again.json()).toMatchObject({ duplicate: true });
+    expect(state.votes).toHaveLength(1);
+    expect(state.votes[0].userId).toBe(7);
+  });
+
+  it("never moves a vote from one account to another", async () => {
+    // The upgrade above only ever fills a blank. A shared browser must not
+    // hand somebody else's vote to whoever signs in next.
+    const key = "browser-key-12345678";
+    session.userId = 7;
+    await vote({ itemId: "household", browserKey: key });
+
+    session.userId = 8;
+    await vote({ itemId: "household", browserKey: key });
+
+    expect(state.votes).toHaveLength(1);
+    expect(state.votes[0].userId).toBe(7);
+  });
+});
+
+describe("what this person already voted for", () => {
+  it("is empty for somebody signed out, rather than a 401", async () => {
+    // One renderer serves the landing page and the app, so this has to answer
+    // both without the caller checking which it is.
+    const res = await fetch(`${baseUrl}/api/roadmap/mine`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ voted: [] });
+  });
+
+  it("lists their votes from any device, not this browser's storage", async () => {
+    session.userId = 42;
+    await vote({ itemId: "apple-watch" });
+    await vote({ itemId: "plan-ahead" });
+
+    const res = await fetch(`${baseUrl}/api/roadmap/mine`);
+    expect(((await res.json()) as any).voted.sort()).toEqual(["apple-watch", "plan-ahead"]);
+  });
+
+  it("shows one person nothing of anybody else's", async () => {
+    session.userId = 1;
+    await vote({ itemId: "oura" });
+    session.userId = 2;
+
+    expect(((await (await fetch(`${baseUrl}/api/roadmap/mine`)).json()) as any).voted).toEqual([]);
   });
 });
