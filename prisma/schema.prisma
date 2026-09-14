@@ -894,3 +894,45 @@ model Suggestion {
 
   @@index([handled, createdAt])
 }
+
+// Somebody saying they would use a thing that doesn't exist yet.
+//
+// The point of the table is the decision it informs: which connector or
+// feature to build next, read off what people actually asked for rather than
+// off a hunch. See src/roadmap.ts for the list of things that can be voted
+// for, and why the counts stay on the admin screen.
+//
+// Nothing here identifies a person unless they chose to be identified. A vote
+// with no email is a tally mark; `browserKey` is a random id the browser
+// generated for itself and is only there to stop one enthusiastic visitor
+// counting ten times. There is deliberately no IP address and no fingerprint:
+// this is a suggestion box, and it should not know more about a visitor than
+// it needs to count them once.
+model RoadmapVote {
+  id         Int      @id @default(autoincrement())
+  // An id from src/roadmap.ts. Anything else is refused before it reaches here.
+  itemId     String
+  createdAt  DateTime @default(now())
+  // Given only if they asked to be told when it lands, which is also the only
+  // reason to keep it. Deleting the row is deleting the address.
+  email      String?
+  // Set when the vote came from inside the app rather than the landing page,
+  // where nobody is signed in. Kept as a plain column with no relation: a
+  // vote is about the feature, and it should survive the account being deleted
+  // without turning into an orphan row that still points somewhere.
+  userId     Int?
+  // Random, generated and stored by the browser. Not an identifier of a
+  // person — two people on one laptop share it, and clearing site data
+  // discards it — which is the right trade for something whose only job is
+  // keeping a rough count roughly honest.
+  browserKey String?
+
+  // The tally query, and the ordering the admin screen reads.
+  @@index([itemId, createdAt])
+  // One vote per browser per item, enforced where it matters rather than
+  // trusted to the client that generated the key.
+  @@unique([itemId, browserKey])
+  // And one per address, so asking twice updates nothing instead of
+  // double-counting a keen person.
+  @@unique([itemId, email])
+}

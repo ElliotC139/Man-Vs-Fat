@@ -26,6 +26,7 @@ import { whoopRouter } from "./routes/whoop";
 import { planRouter } from "./routes/plan";
 import { adminRouter } from "./routes/admin";
 import { suggestionsRouter } from "./routes/suggestions";
+import { roadmapRouter } from "./routes/roadmap";
 import { referralsRouter } from "./routes/referrals";
 import { billingRouter, billingWebhookRouter } from "./routes/billing";
 import { sharesRouter } from "./routes/shares";
@@ -177,6 +178,9 @@ app.use("/api/whoop", whoopRouter);
 app.use("/api/plan", planRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/suggestions", suggestionsRouter);
+// Unauthenticated by design — the people worth hearing from here are the ones
+// who never signed up. See src/routes/roadmap.ts.
+app.use("/api/roadmap", roadmapRouter);
 app.use("/api/referrals", referralsRouter);
 app.use("/api/billing", billingRouter);
 app.use("/api/shares", sharesRouter);
