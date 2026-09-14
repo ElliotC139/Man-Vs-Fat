@@ -18,6 +18,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
+import { ROADMAP } from "../roadmap";
 import { requireAuth } from "../auth";
 import { planFor, basePlanFor, PLAN_IDS, isPlanId, type PlanId } from "../plans";
 import {
@@ -345,6 +346,50 @@ function planGrid() {
  */
 adminRouter.get("/funnel", async (_req, res) => {
   res.json(await buildFunnel());
+});
+
+/**
+ * What people said they wanted, which is the only pre-launch demand signal
+ * this app has that doesn't require somebody to have signed up first.
+ *
+ * Returned in the roadmap's own order rather than sorted by count, so the page
+ * reads the same way every time and a quiet item is visibly quiet instead of
+ * disappearing down the list. Items with no votes are included for exactly
+ * that reason: a zero is a finding.
+ */
+adminRouter.get("/roadmap", async (_req, res) => {
+  const [tallies, emails] = await Promise.all([
+    prisma.roadmapVote.groupBy({ by: ["itemId"], _count: { _all: true } }),
+    // Distinct addresses, newest first. A person who voted for four things is
+    // one person to email, not four.
+    prisma.roadmapVote.findMany({
+      where: { email: { not: null } },
+      select: { email: true, itemId: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: 500,
+    }),
+  ]);
+
+  const counts = new Map(tallies.map((row) => [row.itemId, row._count._all]));
+  const wanted = new Map<string, { email: string; items: string[]; createdAt: Date }>();
+  for (const row of emails) {
+    if (!row.email) continue;
+    const existing = wanted.get(row.email);
+    if (existing) existing.items.push(row.itemId);
+    else wanted.set(row.email, { email: row.email, items: [row.itemId], createdAt: row.createdAt });
+  }
+
+  res.json({
+    items: ROADMAP.map((item) => ({
+      id: item.id,
+      title: item.title,
+      group: item.group,
+      status: item.status,
+      votes: counts.get(item.id) ?? 0,
+    })),
+    totalVotes: tallies.reduce((sum, row) => sum + row._count._all, 0),
+    emails: [...wanted.values()],
+  });
 });
 
 adminRouter.get("/plans", (_req, res) => {

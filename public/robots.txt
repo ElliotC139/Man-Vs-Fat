@@ -1,0 +1,70 @@
+# What crawlers may read, and what they may not.
+#
+# Three kinds of URL live on this domain and they want opposite answers:
+#
+#   The marketing pages (/, /privacy.html, /terms.html) exist to be found.
+#   The API (/api/) is JSON behind a session and is useless to a crawler.
+#   The app shell and share links (/s/) are somebody's private diary.
+#
+# That last one is the reason this file is not just "Allow: /". A share token
+# is unguessable, but an unguessable URL that has been indexed is a public one,
+# and a crawler following a link somebody pasted into a forum is exactly how
+# that happens. index.html carries a noindex tag as well — this file asks
+# politely, the meta tag is what actually binds a crawler that ignores it.
+
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /s/
+Disallow: /reset
+Disallow: /uploads/
+
+# Answer engines are welcome, deliberately.
+#
+# Blocking them is the default advice for publishers whose product IS the text,
+# because a model that answers from their words removes the reason to visit. A
+# food diary is the opposite case: the words are an advert for something you
+# have to come here to use, so being quoted in an answer about calorie trackers
+# is free distribution. These are named individually rather than left to the
+# wildcard above so the intent survives somebody tightening that rule later.
+User-agent: GPTBot
+Allow: /
+Disallow: /api/
+Disallow: /s/
+
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /api/
+Disallow: /s/
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /api/
+Disallow: /s/
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /api/
+Disallow: /s/
+
+User-agent: Claude-SearchBot
+Allow: /
+Disallow: /api/
+Disallow: /s/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /api/
+Disallow: /s/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /api/
+Disallow: /s/
+
+User-agent: Applebot-Extended
+Allow: /
+Disallow: /api/
+Disallow: /s/
+
+Sitemap: https://quickcals.com/sitemap.xml

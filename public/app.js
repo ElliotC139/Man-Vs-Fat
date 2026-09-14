@@ -2297,6 +2297,120 @@ async function loadFunnel() {
   }
 }
 
+
+// ── What people asked for ───────────────────────────────────────────────────
+//
+// The tally behind the landing page's "what's next" section. Shown here rather
+// than on the page itself because a count is social proof once it is large and
+// an argument against yourself while it is small — and because this is the only
+// audience it is a decision for.
+const adminRoadmapEl = document.getElementById("admin-roadmap");
+const adminRoadmapToggle = document.getElementById("admin-roadmap-toggle");
+
+adminRoadmapToggle.addEventListener("click", async () => {
+  const showing = !adminRoadmapEl.hidden;
+  adminRoadmapEl.hidden = showing;
+  adminRoadmapToggle.textContent = showing ? "Show" : "Hide";
+  if (!showing) await loadRoadmapVotes();
+});
+
+async function loadRoadmapVotes() {
+  try {
+    const res = await fetch("/api/admin/roadmap");
+    if (!res.ok) throw new Error();
+    renderRoadmapVotes(await res.json());
+  } catch {
+    adminRoadmapEl.innerHTML = '<p class="muted">Couldn\'t load that.</p>';
+  }
+}
+
+function renderRoadmapVotes(data) {
+  adminRoadmapEl.innerHTML = "";
+  const items = data.items ?? [];
+  if (!items.length) {
+    adminRoadmapEl.innerHTML = '<p class="muted">Nothing on the roadmap yet.</p>';
+    return;
+  }
+
+  const total = data.totalVotes ?? 0;
+  const summary = document.createElement("p");
+  summary.className = "muted admin-roadmap-total";
+  summary.textContent = `${total} vote${total === 1 ? "" : "s"} so far.`;
+  adminRoadmapEl.appendChild(summary);
+
+  // The biggest count sets the bar width, so bars compare items against each
+  // other rather than against a total that means nothing on its own.
+  const top = Math.max(1, ...items.map((i) => i.votes));
+
+  for (const group of [
+    { key: "connect", label: "Things to connect" },
+    { key: "feature", label: "Things to build" },
+  ]) {
+    const rows = items.filter((i) => i.group === group.key);
+    if (!rows.length) continue;
+
+    const heading = document.createElement("h4");
+    heading.className = "admin-roadmap-group";
+    heading.textContent = group.label;
+    adminRoadmapEl.appendChild(heading);
+
+    for (const item of rows) {
+      const row = document.createElement("div");
+      row.className = "admin-roadmap-row";
+
+      const name = document.createElement("span");
+      name.className = "admin-roadmap-name";
+      name.textContent = item.title;
+
+      const bar = document.createElement("span");
+      bar.className = "admin-roadmap-bar";
+      const fill = document.createElement("span");
+      fill.style.width = `${Math.round((item.votes / top) * 100)}%`;
+      bar.appendChild(fill);
+
+      const count = document.createElement("span");
+      count.className = "admin-roadmap-count";
+      count.textContent = String(item.votes);
+
+      row.append(name, bar, count);
+      adminRoadmapEl.appendChild(row);
+    }
+  }
+
+  const emails = data.emails ?? [];
+  const asked = document.createElement("h4");
+  asked.className = "admin-roadmap-group";
+  asked.textContent = `Asked to be told (${emails.length})`;
+  adminRoadmapEl.appendChild(asked);
+
+  if (!emails.length) {
+    const none = document.createElement("p");
+    none.className = "muted";
+    none.textContent = "Nobody yet.";
+    adminRoadmapEl.appendChild(none);
+    return;
+  }
+
+  for (const person of emails) {
+    const row = document.createElement("div");
+    row.className = "admin-roadmap-email";
+
+    // textContent throughout, because every value below arrives from an
+    // endpoint that takes no login. An address is validated on the way in, but
+    // the place to be careful about somebody else's text is where it is put on
+    // a screen — and this screen belongs to the one account worth attacking.
+    const who = document.createElement("span");
+    who.textContent = person.email;
+
+    const wanted = document.createElement("span");
+    wanted.className = "muted";
+    wanted.textContent = (person.items ?? []).join(", ");
+
+    row.append(who, wanted);
+    adminRoadmapEl.appendChild(row);
+  }
+}
+
 /** n out of total, as a percentage, with no division by zero. */
 function share(n, total) {
   if (!total) return "—";
@@ -7879,6 +7993,34 @@ let foodSearchMode = "all";
 let menuBrand = null;
 
 /**
+ * Whether a menu database is configured, remembered across opens.
+ *
+ * This used to be read only off a search response, which meant the "Eating
+ * out" tab did not exist until you had already typed a query and got results
+ * back — you had to do the thing the tab replaces before the tab appeared.
+ * Unsurprisingly, nobody found it.
+ *
+ * null means not yet asked. The search route answers a query shorter than two
+ * characters with the capability flags and an empty result list, so asking
+ * costs one cheap request that hits no food database at all.
+ */
+let menusAvailable = null;
+
+async function ensureFoodCapabilities() {
+  if (menusAvailable !== null) return;
+  try {
+    const res = await fetch("/api/food-search?q=", { headers: { Accept: "application/json" } });
+    const data = await res.json();
+    menusAvailable = Boolean(data?.sources?.menus);
+  } catch {
+    // Offline, most likely. Left as null so the next open asks again rather
+    // than the tab staying gone for the rest of the session.
+    return;
+  }
+  foodSearchModes.hidden = !menusAvailable;
+}
+
+/**
  * Somewhere to start. These are prefilled searches, not data — tapping one
  * types its name into the box — because an empty search field under a tab
  * called "Eating out" is a dead end, and nobody's first instinct is to guess
@@ -8032,6 +8174,10 @@ function openSearchFor(query) {
   foodMenuBack.hidden = true;
   menuBrand = null;
   renderMenuSuggestions();
+  // Before anything is typed, so "Eating out" is on screen at the moment
+  // somebody is deciding how to log the meal they just ate.
+  if (menusAvailable !== null) foodSearchModes.hidden = !menusAvailable;
+  ensureFoodCapabilities();
   // The class is what the CSS keys the backdrop off; the panel itself goes
   // fixed as soon as it stops being hidden.
   document.body.classList.add("search-open");
@@ -8108,7 +8254,10 @@ async function runFoodSearch(query) {
     if (seq !== foodSearchSeq) return;
     // The provider layer says whether a menu database is configured at all.
     // Without one the tab would be a promise the server can't keep.
-    foodSearchModes.hidden = !data.sources?.menus;
+    if (data.sources) {
+      menusAvailable = Boolean(data.sources.menus);
+      foodSearchModes.hidden = !menusAvailable;
+    }
     renderFoodResults(data.results, query);
   } catch {
     if (seq !== foodSearchSeq) return;
@@ -8748,8 +8897,138 @@ function initSettingsSections() {
       head.setAttribute("aria-expanded", String(open));
       section.classList.toggle("settings-section--open", open);
       if (open) haptic();
+      // Fetched the first time somebody opens it, not on every app start:
+      // most sessions never look at this, and the board is two requests.
+      if (open && section.contains(roadmapBoard)) loadRoadmapBoard();
     });
   }
+}
+
+
+// ── What we build next ──────────────────────────────────────────────────────
+//
+// The same board the landing page carries, for people who already signed up.
+// They are the ones worth hearing from most — somebody using the diary daily
+// knows which missing connector actually bothers them — and they would never
+// see it otherwise, because a signed-in visitor is served the app rather than
+// the marketing page.
+//
+// Two differences from the landing page version. The items are fetched instead
+// of being written into the HTML, because nothing crawls this shell and one
+// list is better than two. And there is no email field: we have the account,
+// so asking for an address would be asking for something we already hold.
+
+const roadmapBoard = document.getElementById("roadmap-board");
+const roadmapError = document.getElementById("roadmap-error");
+
+/** Loaded once per session — the list doesn't change while somebody reads it. */
+let roadmapLoaded = false;
+
+const ROADMAP_GROUPS = [
+  { key: "connect", label: "Things to connect" },
+  { key: "feature", label: "Things to build" },
+];
+
+async function loadRoadmapBoard() {
+  if (roadmapLoaded) return;
+  try {
+    // Their existing votes come from the server rather than this browser's
+    // storage, so something voted for on a phone shows as voted on a laptop.
+    const [itemsRes, mineRes] = await Promise.all([
+      fetch("/api/roadmap"),
+      fetch("/api/roadmap/mine"),
+    ]);
+    if (!itemsRes.ok || !mineRes.ok) throw new Error();
+    const { items } = await itemsRes.json();
+    const { voted } = await mineRes.json();
+    renderRoadmapBoard(items ?? [], new Set(voted ?? []));
+    roadmapLoaded = true;
+  } catch {
+    roadmapError.textContent = "Couldn't load that just now.";
+    roadmapError.hidden = false;
+  }
+}
+
+function renderRoadmapBoard(items, voted) {
+  roadmapBoard.innerHTML = "";
+  roadmapError.hidden = true;
+
+  for (const group of ROADMAP_GROUPS) {
+    const rows = items.filter((item) => item.group === group.key);
+    if (!rows.length) continue;
+
+    const heading = document.createElement("h4");
+    heading.className = "roadmap-group";
+    heading.textContent = group.label;
+    roadmapBoard.appendChild(heading);
+
+    for (const item of rows) {
+      roadmapBoard.appendChild(roadmapRow(item, voted.has(item.id)));
+    }
+  }
+}
+
+function roadmapRow(item, alreadyVoted) {
+  const row = document.createElement("div");
+  row.className = "roadmap-item";
+  row.dataset.roadmapId = item.id;
+
+  const text = document.createElement("div");
+  text.className = "roadmap-item-text";
+
+  const title = document.createElement("span");
+  title.className = "roadmap-item-title";
+  // textContent throughout — the same care as everywhere else, even though
+  // this particular list comes from our own code.
+  title.textContent = item.title;
+
+  const blurb = document.createElement("span");
+  blurb.className = "roadmap-item-blurb";
+  blurb.textContent = item.blurb;
+
+  text.append(title, blurb);
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "roadmap-vote";
+
+  function markVoted() {
+    row.classList.add("roadmap-item--voted");
+    button.textContent = "Noted \u2713";
+    button.disabled = true;
+    button.setAttribute("aria-label", `${item.title}: noted`);
+  }
+
+  if (alreadyVoted) {
+    markVoted();
+  } else {
+    button.textContent = "I'd use this";
+    button.setAttribute("aria-label", `I'd use ${item.title}`);
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      try {
+        // No browser key from in here. Signed in, the account is the identity
+        // that matters, and sending a key that already voted anonymously would
+        // have this bounce as a duplicate instead of being recorded as theirs.
+        const res = await fetch("/api/roadmap/vote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ itemId: item.id }),
+        });
+        if (!res.ok) throw new Error();
+      } catch {
+        // Said plainly rather than shown a tick for something never recorded.
+        button.textContent = "Didn't save — tap again";
+        button.disabled = false;
+        return;
+      }
+      markVoted();
+      haptic();
+    });
+  }
+
+  row.append(text, button);
+  return row;
 }
 
 // ── The estimate buffer ─────────────────────────────────────────────────────

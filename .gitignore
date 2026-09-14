@@ -3,6 +3,10 @@ dist/
 .env
 data/*.db
 data/*.db-journal
+# WAL keeps two sidecar files beside the database; without these a local
+# run leaves them sitting in `git status` looking like something to commit.
+data/*.db-wal
+data/*.db-shm
 data/uploads/
 data/reports/
 data/backups/
@@ -10,3 +14,5 @@ data/backups/
 .DS_Store
 prisma/*.db
 prisma/*.db-journal
+prisma/*.db-wal
+prisma/*.db-shm

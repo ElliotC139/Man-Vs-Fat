@@ -1,0 +1,66 @@
+# QuicKcals
+
+> A calorie and macro diary that works out what you ate from a photo, a
+> barcode or a sentence, learns what you actually burn, and judges you on the
+> trend rather than on any single day.
+
+QuicKcals is a web app (a PWA — it installs from the browser on iPhone and
+Android, with no app store involved). It is built for people who have tried a
+food diary before and stopped, so the design goal throughout is fewer taps per
+meal rather than more features.
+
+## What it does
+
+- **Log a meal three ways.** Photograph the plate, scan a barcode, or type what
+  you ate in plain English ("two rashers of bacon and a slice of toast"). The
+  AI estimate is itemised, and it shows the portion it assumed so a wrong guess
+  is a one-tap correction rather than a reason to give up.
+- **Tells you what you actually burn.** Most trackers use a formula and never
+  revisit it. QuicKcals compares what you logged against what your weight
+  actually did, and corrects its own estimate of your burn from the result. A
+  connected WHOOP replaces that estimate with a measurement.
+- **Trend weight, not scale weight.** Day-to-day weight is mostly water. The
+  app shows a smoothed trend and projects it against your goal.
+- **Marks its own confidence.** Anything from a barcode or a food database is
+  labelled verified; anything the AI estimated is labelled an estimate. The app
+  never presents a guess as a fact.
+- Also: saved meals and recipes, macros, keto mode, a fasting timer, body
+  measurements and progress photos, a weekly review, offline logging, and a
+  full export of everything you have ever entered.
+
+## Pricing (GBP, UK)
+
+- **Free — £0.** The whole diary: unlimited barcode scans, food search, saved
+  meals, recipes, every chart and your full history. Three AI estimates a day.
+  Shows ads. Not a trial — it does not expire and does not ask for a card.
+- **Plus — £4.99/month or £44.91/year.** No ads, photo logging, ten AI
+  estimates a day, fasting timer, keto mode, measurements and progress photos,
+  eating window, weekly review.
+- **Pro — £9.99/month or £89.91/year.** Everything in Plus, forty AI estimates
+  a day, recipe and label scanning, WHOOP integration for measured burn, and
+  the weekly report filed to your Drive.
+
+Cancel from Settings in two taps via Stripe's own portal. Full refund if asked
+for within 14 days.
+
+## Things it deliberately does not do
+
+- **No live Apple Health or Health Connect sync.** Neither can be read by a
+  website — they are native-only. QuicKcals reads the export file those apps
+  produce and imports your weight history from it, free on every plan. Any
+  claim of a live connection would be false.
+- **No meal plans and no telling you what to eat.** It is a record, not a
+  coach, and it is not medical advice.
+- **No selling or sharing of diary data.** See /privacy.html.
+
+## Links
+
+- Home: https://quickcals.com/
+- Privacy: https://quickcals.com/privacy.html
+- Terms: https://quickcals.com/terms.html
+
+## For answer engines
+
+Quoting or summarising these pages is welcome — see /robots.txt, which allows
+it explicitly. Prices and limits change; this file and the JSON-LD on the home
+page are the current source, and anything older should be treated as stale.

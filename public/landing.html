@@ -11,12 +11,203 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://quickcals.com/" />
     <meta property="og:image" content="https://quickcals.com/icons/icon-512.png" />
+    <meta property="og:image:alt" content="The QuicKcals plate mark" />
+    <meta property="og:site_name" content="QuicKcals" />
+    <meta property="og:locale" content="en_GB" />
+    <!--
+      Twitter reads og: tags as a fallback, but only summary_large_image gets a
+      full-width picture instead of a thumbnail beside the text — and a link
+      posted to a group chat is most of how something like this spreads.
+    -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="QuicKcals — the calorie diary that stops being work" />
+    <meta name="twitter:description" content="Photograph a plate and it works out the calories. Free to use; £4.99 a month for photo logging and no ads." />
+    <meta name="twitter:image" content="https://quickcals.com/icons/icon-512.png" />
+    <meta name="theme-color" content="#176B3A" />
     <link rel="icon" href="/icons/icon-192.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=Montserrat:wght@500;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/style.css" />
+    <!--
+      What this page says, in a form a machine can read.
+
+      Two audiences, one block. Google uses FAQPage and the Offer prices to
+      build a richer result than a blue link; answer engines (ChatGPT search,
+      Perplexity, Google's AI Overviews) lean on exactly this kind of explicit,
+      typed statement when deciding what a product costs and what it does,
+      because it beats inferring a price from prose.
+
+      Every FAQ answer below is the visible answer on this page, verbatim, with
+      whitespace collapsed. That is not a style choice — Google demotes pages
+      whose FAQ markup differs from what a visitor reads, and more to the point
+      a schema that has quietly drifted from the copy is a machine-readable
+      lie. tests/seo.test.ts re-derives this from the markup and fails if the
+      two stop matching, and checks the prices against src/plans.ts.
+    -->
+    <script type="application/ld+json">
+      {
+            "@context": "https://schema.org",
+            "@graph": [
+                  {
+                        "@type": "Organization",
+                        "@id": "https://quickcals.com/#organization",
+                        "name": "QuicKcals",
+                        "url": "https://quickcals.com/",
+                        "logo": "https://quickcals.com/icons/icon-512.png"
+                  },
+                  {
+                        "@type": "WebSite",
+                        "@id": "https://quickcals.com/#website",
+                        "url": "https://quickcals.com/",
+                        "name": "QuicKcals",
+                        "publisher": {
+                              "@id": "https://quickcals.com/#organization"
+                        },
+                        "inLanguage": "en-GB"
+                  },
+                  {
+                        "@type": "SoftwareApplication",
+                        "@id": "https://quickcals.com/#app",
+                        "name": "QuicKcals",
+                        "applicationCategory": "HealthApplication",
+                        "applicationSubCategory": "Calorie and macro tracker",
+                        "operatingSystem": "Any modern browser; installs to the home screen on iOS and Android",
+                        "url": "https://quickcals.com/",
+                        "publisher": {
+                              "@id": "https://quickcals.com/#organization"
+                        },
+                        "inLanguage": "en-GB",
+                        "description": "A calorie and macro diary that works out what you ate from a photo, a barcode or a sentence, learns what you actually burn from your own weight data, and judges you on the trend rather than on any single day.",
+                        "featureList": [
+                              "Log a meal by photographing it",
+                              "Barcode scanning and food database search",
+                              "Plain-English logging with an itemised AI estimate",
+                              "Adaptive burn estimate, corrected against your real weight change",
+                              "Trend weight rather than scale weight",
+                              "Macros, keto mode and a fasting timer",
+                              "Saved meals and recipes",
+                              "WHOOP integration for measured burn",
+                              "Works offline",
+                              "Full data export"
+                        ],
+                        "offers": [
+                              {
+                                    "@type": "Offer",
+                                    "name": "Free (monthly)",
+                                    "price": "0.00",
+                                    "priceCurrency": "GBP",
+                                    "availability": "https://schema.org/InStock",
+                                    "url": "https://quickcals.com/"
+                              },
+                              {
+                                    "@type": "Offer",
+                                    "name": "Plus (monthly)",
+                                    "price": "4.99",
+                                    "priceCurrency": "GBP",
+                                    "availability": "https://schema.org/InStock",
+                                    "url": "https://quickcals.com/"
+                              },
+                              {
+                                    "@type": "Offer",
+                                    "name": "Plus (yearly)",
+                                    "price": "44.91",
+                                    "priceCurrency": "GBP",
+                                    "availability": "https://schema.org/InStock",
+                                    "url": "https://quickcals.com/"
+                              },
+                              {
+                                    "@type": "Offer",
+                                    "name": "Pro (monthly)",
+                                    "price": "9.99",
+                                    "priceCurrency": "GBP",
+                                    "availability": "https://schema.org/InStock",
+                                    "url": "https://quickcals.com/"
+                              },
+                              {
+                                    "@type": "Offer",
+                                    "name": "Pro (yearly)",
+                                    "price": "89.91",
+                                    "priceCurrency": "GBP",
+                                    "availability": "https://schema.org/InStock",
+                                    "url": "https://quickcals.com/"
+                              }
+                        ]
+                  },
+                  {
+                        "@type": "FAQPage",
+                        "@id": "https://quickcals.com/#faq",
+                        "mainEntity": [
+                              {
+                                    "@type": "Question",
+                                    "name": "Is the free plan a trial?",
+                                    "acceptedAnswer": {
+                                          "@type": "Answer",
+                                          "text": "No. It doesn't expire and it doesn't ask for a card. Barcode scanning, food search, saved meals, your charts and your whole history stay free permanently. What's rationed is the AI — three estimates a day — because that's the part that costs real money to run. It's funded by ads, which is why paid plans don't have them."
+                                    }
+                              },
+                              {
+                                    "@type": "Question",
+                                    "name": "How accurate are the photo estimates?",
+                                    "acceptedAnswer": {
+                                          "@type": "Answer",
+                                          "text": "Good enough to be useful, not good enough to be gospel — and the app says which is which. Anything looked up from a barcode or a food database is marked verified. Anything the AI estimated is marked as an estimate, itemised, with the portion it assumed shown so you can correct it in a tap. Over a week, consistent slightly-wrong beats accurate-but-abandoned every time."
+                                    }
+                              },
+                              {
+                                    "@type": "Question",
+                                    "name": "What happens if I run out of AI estimates?",
+                                    "acceptedAnswer": {
+                                          "@type": "Answer",
+                                          "text": "Everything else keeps working — search, barcodes, saved meals, re-logging anything already in your diary, all your charts. Only new AI estimates pause, and they reset the next day."
+                                    }
+                              },
+                              {
+                                    "@type": "Question",
+                                    "name": "Can I cancel? Do I get a refund?",
+                                    "acceptedAnswer": {
+                                          "@type": "Answer",
+                                          "text": "Cancel any time from Settings, in two taps — it goes through Stripe's own portal, not a form that emails somebody. Your plan runs to the end of the period you've paid for. Ask within 14 days of subscribing and you get a full refund whether you've used it or not."
+                                    }
+                              },
+                              {
+                                    "@type": "Question",
+                                    "name": "Do I need a WHOOP?",
+                                    "acceptedAnswer": {
+                                          "@type": "Answer",
+                                          "text": "No. Without one, QuicKcals estimates what you burn from your stats and then corrects that estimate as it watches your actual weight change — which for most people lands close. Connecting a WHOOP replaces that estimate with a measurement, which is sharper, and it's why that sits on Pro. Apple Health and Android's Health Connect are a different thing: neither can be read by a website, so there's no live connection to offer. What QuicKcals does instead is accept the export file those apps already produce and read your weight history out of it — free, on every plan."
+                                    }
+                              },
+                              {
+                                    "@type": "Question",
+                                    "name": "Is my diary private?",
+                                    "acceptedAnswer": {
+                                          "@type": "Answer",
+                                          "text": "Yes. It isn't sold, and it's never given to an advertiser — nothing you log is used to target ads, here or anywhere else. Free accounts see ads, but the only thing the ad script learns is that a page was opened. On a paid plan the advertising script is never loaded at all. The privacy policy spells out exactly what goes where."
+                                    }
+                              },
+                              {
+                                    "@type": "Question",
+                                    "name": "Is it an app or a website?",
+                                    "acceptedAnswer": {
+                                          "@type": "Answer",
+                                          "text": "Both, really. It runs in a browser, and you can install it to your home screen, where it opens full-screen, works with no signal, and can send you reminders — like an app, without an app store between you and an update."
+                                    }
+                              },
+                              {
+                                    "@type": "Question",
+                                    "name": "Is this medical advice?",
+                                    "acceptedAnswer": {
+                                          "@type": "Answer",
+                                          "text": "No, and it shouldn't be treated as it. It's a diary that estimates. If you're managing a medical condition, pregnant, under 18, or have a history of disordered eating, talk to a doctor or a registered dietitian before changing how you eat."
+                                    }
+                              }
+                        ]
+                  }
+            ]
+      }
+    </script>
     <style>
       /* Marketing-page layout. Every colour and face comes from the app's own
          stylesheet, so the page a stranger meets and the app they sign into
@@ -498,6 +689,130 @@
       .lp-val { font-variant-numeric: tabular-nums; font-weight: 600; }
 
       /* ── FAQ ────────────────────────────────────────────────────────── */
+
+      /* ── What's next ───────────────────────────────────────────────────── */
+      .lp-next-group {
+        font-family: var(--font-heading);
+        font-size: 0.82rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin: 34px 0 14px;
+      }
+      .lp-next-group:first-of-type { margin-top: 0; }
+      .lp-next-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 14px;
+      }
+      .lp-next-item {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        background: var(--card);
+        border: 1px solid var(--hairline);
+        border-radius: var(--radius-md);
+        padding: 18px;
+      }
+      .lp-next-item h3 {
+        font-family: var(--font-heading);
+        font-size: 1.05rem;
+        font-weight: 600;
+        margin: 0;
+        color: var(--ink);
+        text-wrap: balance;
+      }
+      .lp-next-item p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.92rem;
+        line-height: 1.5;
+        /* Pushes the button to the bottom so a row of cards has its controls
+           on one line however long the descriptions run. */
+        flex: 1;
+      }
+      .lp-next-vote {
+        align-self: flex-start;
+        /* style.css sets a global `button { width: 100% }` for the app's own
+           full-width controls, and this page loads that stylesheet too.
+           align-self can't shrink a box that has been given an explicit width,
+           so it has to be handed back to auto here or every one of these
+           becomes a full-width bar. */
+        width: auto;
+        font: inherit;
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: var(--pitch-dark);
+        background: transparent;
+        border: 1px solid var(--pitch);
+        border-radius: 999px;
+        padding: 7px 15px;
+        cursor: pointer;
+        transition: background 160ms var(--ease), color 160ms var(--ease);
+      }
+      /* --pitch under white text measures 3.5:1 in light and 2.5:1 in dark,
+         and this label is 14px bold, which needs 4.5:1. The filled states use
+         --pitch-dark against --bg instead, because that pair inverts with the
+         theme on its own: a deep green under the off-white page, and a pale
+         green under the dark one. Both clear 7:1. */
+      .lp-next-vote:hover { background: var(--pitch-dark); color: var(--bg); }
+      .lp-next-vote:focus-visible { outline: 2px solid var(--pitch); outline-offset: 2px; }
+      /* Voted state: the tick is the whole feedback, so it has to read as done
+         rather than as another thing to press. */
+      .lp-next-item--voted .lp-next-vote {
+        background: var(--pitch-dark);
+        border-color: var(--pitch-dark);
+        color: var(--bg);
+        cursor: default;
+      }
+      .lp-next-item--voted .lp-next-vote:hover { background: var(--pitch-dark); }
+
+      .lp-next-tell {
+        margin-top: 30px;
+        padding: 18px;
+        background: var(--card);
+        border: 1px solid var(--hairline);
+        border-radius: var(--radius-md);
+        max-width: 52ch;
+      }
+      .lp-next-tell label {
+        display: block;
+        font-weight: 600;
+        color: var(--ink);
+        margin-bottom: 10px;
+        font-size: 0.95rem;
+      }
+      .lp-next-tell-row { display: flex; gap: 8px; flex-wrap: wrap; }
+      /* Same global rule as above: without this the submit takes the whole row
+         and pushes the field onto its own line. */
+      .lp-next-tell-row button { width: auto; flex: 0 0 auto; }
+      .lp-next-tell-row input {
+        flex: 1 1 200px;
+        min-width: 0;
+        font: inherit;
+        padding: 10px 12px;
+        border: 1px solid var(--hairline);
+        border-radius: 10px;
+        background: var(--bg);
+        color: var(--ink);
+      }
+      .lp-next-tell-row input:focus-visible { outline: 2px solid var(--pitch); outline-offset: 1px; }
+      .lp-next-tell-note {
+        margin: 10px 0 0;
+        font-size: 0.82rem;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .lp-next-done {
+        margin-top: 18px;
+        font-weight: 600;
+        color: var(--pitch-dark);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .lp-next-vote { transition: none; }
+      }
+
       .lp-faq { display: flex; flex-direction: column; gap: 2px; max-width: 74ch; }
       .lp-faq details {
         border-bottom: 1px solid var(--hairline);
@@ -988,6 +1303,141 @@
         </div>
       </section>
 
+
+      <!--
+        What's next, and a way to say which of it matters.
+
+        Deliberately not a "coming soon" list with dates on it. A date is the
+        one thing here that can turn into a broken promise without anybody
+        changing their mind, and this page has already had one untrue claim
+        removed from it. Everything below is real work we know how to do; the
+        vote decides the order, which is the only honest thing a roadmap on a
+        pre-launch site can offer.
+
+        No counts are shown. A tally is social proof once it is large and an
+        argument against yourself while it is small. The numbers go to the
+        admin screen, where they are a decision; the visitor gets a thank-you,
+        which is what a vote is worth to them.
+      -->
+      <section class="lp-section lp-next" id="whats-next">
+        <div class="lp-wrap">
+          <div class="lp-section-head">
+            <h2>What we build next is up to you</h2>
+            <p>
+              All of this is real work we know how to do — the question is the
+              order. Tap the ones you'd actually use and we'll weight the queue
+              accordingly. No dates, because a date on a roadmap is a promise
+              nobody should make.
+            </p>
+          </div>
+
+          <h3 class="lp-next-group">Things to connect</h3>
+          <div class="lp-next-grid">
+            <article class="lp-next-item" data-roadmap-id="apple-watch">
+              <h3>Apple Watch</h3>
+              <p>Your rings and active calories, read straight into the day's burn.</p>
+              <button type="button" class="lp-next-vote">
+                <span class="lp-next-vote-label">I'd use this</span>
+              </button>
+            </article>
+            <article class="lp-next-item" data-roadmap-id="fitbit">
+              <h3>Fitbit</h3>
+              <p>Burn, steps and sleep, connected the same way WHOOP already is.</p>
+              <button type="button" class="lp-next-vote">
+                <span class="lp-next-vote-label">I'd use this</span>
+              </button>
+            </article>
+            <article class="lp-next-item" data-roadmap-id="garmin">
+              <h3>Garmin</h3>
+              <p>Every run and ride, with the calories Garmin actually measured.</p>
+              <button type="button" class="lp-next-vote">
+                <span class="lp-next-vote-label">I'd use this</span>
+              </button>
+            </article>
+            <article class="lp-next-item" data-roadmap-id="oura">
+              <h3>Oura Ring</h3>
+              <p>Sleep and readiness beside what you ate the day before.</p>
+              <button type="button" class="lp-next-vote">
+                <span class="lp-next-vote-label">I'd use this</span>
+              </button>
+            </article>
+            <article class="lp-next-item" data-roadmap-id="wear-os">
+              <h3>Pixel Watch, Galaxy Watch and Wear OS</h3>
+              <p>Android's side of the same deal — burn and steps, no typing.</p>
+              <button type="button" class="lp-next-vote">
+                <span class="lp-next-vote-label">I'd use this</span>
+              </button>
+            </article>
+            <article class="lp-next-item" data-roadmap-id="smart-scales">
+              <h3>Withings and smart scales</h3>
+              <p>Stand on the scale and the weigh-in is already logged.</p>
+              <button type="button" class="lp-next-vote">
+                <span class="lp-next-vote-label">I'd use this</span>
+              </button>
+            </article>
+          </div>
+
+          <h3 class="lp-next-group">Things to build</h3>
+          <div class="lp-next-grid">
+            <article class="lp-next-item" data-roadmap-id="alcohol">
+              <h3>Drinks and nights out</h3>
+              <p>Units alongside calories, and a Saturday that doesn't wreck the week's read.</p>
+              <button type="button" class="lp-next-vote">
+                <span class="lp-next-vote-label">I'd use this</span>
+              </button>
+            </article>
+            <article class="lp-next-item" data-roadmap-id="coach-access">
+              <h3>Share with a coach</h3>
+              <p>Read-only access for a PT or dietitian, without handing over your password.</p>
+              <button type="button" class="lp-next-vote">
+                <span class="lp-next-vote-label">I'd use this</span>
+              </button>
+            </article>
+            <article class="lp-next-item" data-roadmap-id="household">
+              <h3>One plan, two people</h3>
+              <p>A household subscription, so a partner isn't paying twice.</p>
+              <button type="button" class="lp-next-vote">
+                <span class="lp-next-vote-label">I'd use this</span>
+              </button>
+            </article>
+            <article class="lp-next-item" data-roadmap-id="plan-ahead">
+              <h3>Plan tomorrow, not just today</h3>
+              <p>Build the day before you eat it, and see what still fits.</p>
+              <button type="button" class="lp-next-vote">
+                <span class="lp-next-vote-label">I'd use this</span>
+              </button>
+            </article>
+            <article class="lp-next-item" data-roadmap-id="wrist-logging">
+              <h3>Log from your wrist</h3>
+              <p>Add a coffee from the watch, without getting your phone out.</p>
+              <button type="button" class="lp-next-vote">
+                <span class="lp-next-vote-label">I'd use this</span>
+              </button>
+            </article>
+          </div>
+
+          <form class="lp-next-tell" id="next-tell" hidden>
+            <label for="next-email">Want to know when one of these lands?</label>
+            <div class="lp-next-tell-row">
+              <input
+                type="email"
+                id="next-email"
+                name="email"
+                placeholder="you@example.com"
+                autocomplete="email"
+                required
+              />
+              <button type="submit" class="lp-cta">Tell me</button>
+            </div>
+            <p class="lp-next-tell-note">
+              One email when something you picked ships, and nothing else. No
+              newsletter, and you can reply to be removed.
+            </p>
+          </form>
+          <p class="lp-next-done" id="next-done" hidden role="status"></p>
+        </div>
+      </section>
+
       <section class="lp-close">
         <div class="lp-wrap">
           <h2>Start with today's lunch.</h2>
@@ -1012,6 +1462,134 @@
     </footer>
 
     <script>
+      // ── What's next: voting ───────────────────────────────────────────
+      //
+      // Progressive enhancement, deliberately. With no JavaScript the section
+      // still reads as a roadmap — every item, its description, and a button
+      // that simply does nothing — rather than collapsing to an empty div.
+      //
+      // The browser key is a random id this browser made up for itself. It is
+      // not an identifier of a person: two people on one laptop share it, and
+      // clearing site data throws it away. Its only job is stopping one keen
+      // visitor from counting ten times, and the server enforces that with a
+      // unique index rather than believing whatever arrives.
+      (function () {
+        const items = document.querySelectorAll(".lp-next-item");
+        if (!items.length) return;
+
+        const tell = document.getElementById("next-tell");
+        const done = document.getElementById("next-done");
+        const emailInput = document.getElementById("next-email");
+
+        const VOTED_KEY = "quickcals.roadmap.voted";
+        const BROWSER_KEY = "quickcals.roadmap.browser";
+
+        // Every storage access is wrapped: in a private window, or with site
+        // data blocked, reading localStorage throws rather than returning
+        // null, and an exception here would take the whole section down.
+        function readStore(key, fallback) {
+          try {
+            const raw = window.localStorage.getItem(key);
+            return raw === null ? fallback : raw;
+          } catch { return fallback; }
+        }
+        function writeStore(key, value) {
+          try { window.localStorage.setItem(key, value); } catch { /* not essential */ }
+        }
+
+        let browserKey = readStore(BROWSER_KEY, "");
+        if (!browserKey) {
+          browserKey = (window.crypto && window.crypto.randomUUID)
+            ? window.crypto.randomUUID()
+            : String(Date.now()) + Math.random().toString(36).slice(2, 12);
+          writeStore(BROWSER_KEY, browserKey);
+        }
+
+        function votedSet() {
+          try { return new Set(JSON.parse(readStore(VOTED_KEY, "[]"))); } catch { return new Set(); }
+        }
+        const voted = votedSet();
+
+        function markVoted(article, label) {
+          article.classList.add("lp-next-item--voted");
+          label.textContent = "Noted \u2713";
+          article.querySelector(".lp-next-vote").disabled = true;
+        }
+
+        // Anything voted for on a previous visit comes back already ticked, so
+        // the page doesn't invite the same tap twice.
+        for (const article of items) {
+          if (voted.has(article.dataset.roadmapId)) {
+            markVoted(article, article.querySelector(".lp-next-vote-label"));
+          }
+        }
+
+        async function vote(itemId, email) {
+          const res = await fetch("/api/roadmap/vote", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ itemId: itemId, email: email || undefined, browserKey: browserKey }),
+          });
+          if (!res.ok) throw new Error("vote failed");
+          return res.json();
+        }
+
+        for (const article of items) {
+          const button = article.querySelector(".lp-next-vote");
+          const label = article.querySelector(".lp-next-vote-label");
+          button.addEventListener("click", async () => {
+            const itemId = article.dataset.roadmapId;
+            if (voted.has(itemId)) return;
+            button.disabled = true;
+            try {
+              await vote(itemId);
+            } catch {
+              // Told plainly rather than shown a tick for something that was
+              // never recorded — a count is the entire output of this feature,
+              // and a vote that silently didn't land is worse than none.
+              label.textContent = "Didn't save \u2014 try again";
+              button.disabled = false;
+              return;
+            }
+            voted.add(itemId);
+            writeStore(VOTED_KEY, JSON.stringify([...voted]));
+            markVoted(article, label);
+            // The address is asked for only after somebody has shown interest,
+            // which is the one moment it is a reasonable thing to ask.
+            if (tell) tell.hidden = false;
+          });
+        }
+
+        if (tell) {
+          tell.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const email = emailInput.value.trim();
+            if (!email) return;
+            const picked = [...voted];
+            if (!picked.length) return;
+            const button = tell.querySelector("button");
+            button.disabled = true;
+            try {
+              // Attached to everything they picked, so one address covers the
+              // lot rather than making them type it once per feature.
+              for (const itemId of picked) await vote(itemId, email);
+            } catch {
+              button.disabled = false;
+              if (done) {
+                done.textContent = "Couldn't save that address \u2014 try again in a moment.";
+                done.hidden = false;
+              }
+              return;
+            }
+            tell.hidden = true;
+            if (done) {
+              done.textContent = "Thanks \u2014 we'll email you when one of those lands.";
+              done.hidden = false;
+            }
+          });
+        }
+      })();
+
       // ── The billing switch ────────────────────────────────────────────
       // Prices live in data attributes on the markup rather than in here, so
       // the page still states three real prices with no JavaScript at all —
