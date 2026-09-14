@@ -53,6 +53,18 @@ function worstEstimateMicros(model: string): number {
   return costMicros({ model, inputTokens: 2800, outputTokens: 200 });
 }
 
+/**
+ * A typed estimate, which is the only kind some plans can make.
+ *
+ * The figure above is a PHOTO estimate — an image is about 1,600 tokens on its
+ * own, so it costs roughly 1.7x a description. Using it for a plan whose
+ * `photo` flag is false overstates that plan's cost by most of a factor of
+ * two, and the free tier's whole arithmetic turns on the difference.
+ */
+function textEstimateMicros(model: string): number {
+  return costMicros({ model, inputTokens: 1450, outputTokens: 150 });
+}
+
 const LONGEST_MONTH = 31;
 
 describe("every paid plan makes money at its ceiling", () => {
@@ -70,20 +82,54 @@ describe("every paid plan makes money at its ceiling", () => {
   }
 });
 
-describe("the ceiling is what makes the promise, not the allowance", () => {
-  it("free's ceiling sits under what ads plausibly bring in", () => {
-    // Display advertising on an app like this is roughly 20-40p per active
-    // user per month. The ceiling has to sit under the bottom of that.
-    expect(planFor("free").monthlyCostCapMicros).toBeLessThanOrEqual(0.2 * 1_000_000);
+/** The bottom of the 20-40p a month display ads plausibly bring in. */
+const PESSIMISTIC_AD_REVENUE_MICROS = 0.2 * 1_000_000;
+
+describe("the free tier costs less than its ads bring in", () => {
+  /**
+   * Free logs by text only, and that is load-bearing rather than incidental.
+   *
+   * Every figure below prices a typed estimate. Turning photo on for the free
+   * tier would make each call about 1.7x dearer and invalidate the lot, so the
+   * assumption is asserted rather than assumed — including at runtime, where
+   * the admin tier editor can now flip this flag without a deployment.
+   */
+  it("logs by text only, which is what the arithmetic below assumes", () => {
+    expect(planFor("free").photo).toBe(false);
   });
 
-  it("free's allowance alone would already cost more than its ceiling", () => {
-    // Which is the point: the allowance is the headline, the ceiling is the
-    // promise, and the ceiling is deliberately the tighter of the two.
+  it("can't cost more than ads bring in, even used to the limit every day", () => {
+    // The real guarantee, and it is the ALLOWANCE that delivers it: three a
+    // day for the longest month, at the rate a free account can actually
+    // incur, against the pessimistic end of what ads pay.
     const plan = planFor("free");
-    const allowanceWorstCase = LONGEST_MONTH * plan.dailyEstimates * worstEstimateMicros(plan.model);
-    expect(allowanceWorstCase).toBeGreaterThan(plan.monthlyCostCapMicros);
+    const allowanceWorstCase = LONGEST_MONTH * plan.dailyEstimates * textEstimateMicros(plan.model);
+    expect(allowanceWorstCase).toBeLessThanOrEqual(PESSIMISTIC_AD_REVENUE_MICROS);
   });
+
+  it("runs out of allowance before it runs out of budget", () => {
+    // Deliberately this way round, and it used to be the other.
+    //
+    // These two limits fail differently. Meeting the allowance is legible —
+    // three a day, you have had three. Meeting the ceiling is the app going
+    // quiet mid-month for a reason no screen explains. At four a day the
+    // ceiling was the tighter of the two, so the heaviest users hit the one
+    // nobody had told them about.
+    const plan = planFor("free");
+    const allowanceWorstCase = LONGEST_MONTH * plan.dailyEstimates * textEstimateMicros(plan.model);
+    expect(allowanceWorstCase).toBeLessThan(plan.monthlyCostCapMicros);
+  });
+
+  it("still keeps a ceiling tight enough to bound a costing mistake", () => {
+    // The ceiling stops being the profitability guarantee and becomes the
+    // backstop for the estimate above being wrong — a longer prompt, a dearer
+    // model. It only earns that job by staying inside what ads can pay for at
+    // all, so it is bounded by the TOP of the range rather than the bottom.
+    expect(planFor("free").monthlyCostCapMicros).toBeLessThanOrEqual(0.4 * 1_000_000);
+  });
+});
+
+describe("the ceiling is what makes the promise, not the allowance", () => {
 
   it("keeps a guaranteed floor under Pro that the allowance alone doesn't", () => {
     // Why a count is not a cost, stated as the thing that stays true when the

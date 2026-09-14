@@ -33,6 +33,8 @@ import {
 import { formatMicros } from "../modelPricing";
 import { config } from "../config";
 import { adminListConfigured, isAdminUser } from "../adminAccess";
+import { buildFunnel } from "../funnel";
+import { classifyAccount, monthlyPence, summariseRevenue } from "../accounting";
 import { getLocalParts, zonedTimeToUtc } from "../matchWeek";
 
 export const adminRouter = Router();
@@ -121,6 +123,7 @@ adminRouter.get("/overview", async (_req, res) => {
       select: {
         id: true, username: true, email: true, plan: true, isAdmin: true,
         createdAt: true, subscriptionStatus: true, subscriptionEndsAt: true,
+        stripeSubscriptionId: true, subscriptionInterval: true,
       },
     }),
     signupsOpen(),
@@ -137,10 +140,13 @@ adminRouter.get("/overview", async (_req, res) => {
   const byUser = new Map(spendByUser.map((row) => [row.userId, row]));
   const totalMicros = spendThisMonth._sum.costMicros ?? 0;
 
-  // What the paid accounts bring in, so the month's spend has something to be
-  // read against. Gross — Stripe's fee is not modelled here, so this reads a
-  // little high on purpose rather than a little low.
-  const revenuePence = users.reduce((sum, user) => sum + planFor(user.plan).pricePence, 0);
+  // What the paid accounts actually bring in, so the month's spend has
+  // something honest to be read against. Gross — VAT and Stripe's fee come off
+  // after this — but only from accounts somebody is genuinely paying for, and
+  // a yearly subscriber counted at their real monthly share. See
+  // src/accounting.ts for why summing plan prices was wrong twice over.
+  const revenue = summariseRevenue(users);
+  const revenuePence = revenue.monthlyPence;
 
   res.json({
     signupsOpen: open,
@@ -152,11 +158,21 @@ adminRouter.get("/overview", async (_req, res) => {
       // The number the whole pricing structure exists to keep positive.
       marginPence: Math.round(revenuePence - totalMicros / 10_000),
     },
-    plans: PLAN_IDS.map((id) => ({
-      id,
-      name: planFor(id).name,
-      users: users.filter((user) => planFor(user.plan).id === id).length,
-    })),
+    plans: PLAN_IDS.map((id) => {
+      const row = revenue.byPlan[id];
+      return {
+        id,
+        name: planFor(id).name,
+        users: users.filter((user) => planFor(user.plan).id === id).length,
+        // Split out, because "8 on Pro" and "8 paying for Pro" are different
+        // facts and only one of them is income.
+        paying: row?.paying ?? 0,
+        comped: row?.comped ?? 0,
+        lapsed: row?.lapsed ?? 0,
+        monthlyPence: row?.monthlyPence ?? 0,
+      };
+    }),
+    accounts: revenue.counts,
     users: users.map((user) => {
       const usage = byUser.get(user.id);
       const spent = usage?._sum.costMicros ?? 0;
@@ -166,6 +182,10 @@ adminRouter.get("/overview", async (_req, res) => {
         username: user.username,
         email: user.email,
         plan: plan.id,
+        // free / paying / comped / lapsed — see src/accounting.ts.
+        kind: classifyAccount(user),
+        monthlyPence: monthlyPence(user),
+        interval: user.subscriptionInterval,
         isAdmin: user.isAdmin,
         createdAt: user.createdAt,
         subscriptionStatus: user.subscriptionStatus,
@@ -276,7 +296,7 @@ const FEATURE_COPY: Record<EditableFlag, { name: string; note: string; metered: 
   ads: { name: "Show ads", note: "How the free tier pays for itself.", metered: false },
   photo: { name: "Log by photo", note: "About 1.7x what a typed estimate costs.", metered: true },
   recipeScan: { name: "Scan a recipe or label", note: "The dearest call the app makes — about six typed estimates.", metered: true },
-  health: { name: "WHOOP and Apple Health", note: "Measured burn instead of a formula. Free to serve.", metered: false },
+  health: { name: "Connect a WHOOP", note: "Measured burn instead of a formula. Free to serve.", metered: false },
   weeklyReport: { name: "Weekly PDF report", note: "And filing it to Google Drive. Free to serve.", metered: false },
   weeklyReview: { name: "In-app weekly review", note: "Free to serve.", metered: false },
   eatingWindow: { name: "Eating-window card", note: "Free to serve.", metered: false },
@@ -314,6 +334,18 @@ function planGrid() {
     }),
   };
 }
+
+/**
+ * Where people fall out.
+ *
+ * Separate from /overview on purpose: that one answers what the app costs and
+ * earns, this one answers why. They are read at different moments — the first
+ * when you want to know if it is working, the second when you want to know
+ * what to do about it.
+ */
+adminRouter.get("/funnel", async (_req, res) => {
+  res.json(await buildFunnel());
+});
 
 adminRouter.get("/plans", (_req, res) => {
   res.json(planGrid());

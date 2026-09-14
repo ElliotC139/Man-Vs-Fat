@@ -1999,6 +1999,8 @@ referralShareBtn?.addEventListener("click", async () => {
 // what an account costs to serve is the operator's business, and the person
 // using the app should never be shown a running total of themselves.
 
+const adminScreen = document.getElementById("admin-screen");
+const adminTabBtn = document.querySelector('.tab-btn[data-nav="admin"]');
 const adminCardEl = document.getElementById("admin-card");
 const adminSummaryEl = document.getElementById("admin-summary");
 const adminUsersEl = document.getElementById("admin-users");
@@ -2009,18 +2011,28 @@ const adminSignupsClosedBtn = document.getElementById("admin-signups-closed");
 
 const PLAN_ORDER = ["free", "plus", "pro"];
 
+/**
+ * Shows or hides the Admin tab for whoever is signed in.
+ *
+ * Called on sign-in rather than on navigation: the tab has to be there before
+ * anybody can tap it, and an account that is not an admin should never see it
+ * at all. The server 404s every /api/admin route regardless, so this is about
+ * not showing somebody a door they can't open.
+ */
+function syncAdminTab() {
+  if (adminTabBtn) adminTabBtn.hidden = !currentUser?.isAdmin;
+}
+
 async function loadAdmin() {
-  if (!currentUser?.isAdmin) {
-    adminCardEl.hidden = true;
-    return;
-  }
+  if (!currentUser?.isAdmin) return;
   try {
     const res = await fetch("/api/admin/overview");
     if (!res.ok) throw new Error();
     renderAdmin(await res.json());
-    adminCardEl.hidden = false;
+    adminErrorEl.hidden = true;
   } catch {
-    adminCardEl.hidden = true;
+    adminErrorEl.textContent = "Couldn't load that.";
+    adminErrorEl.hidden = false;
   }
 }
 
@@ -2044,7 +2056,9 @@ function renderAdmin(data) {
   const margin = data.month.marginPence;
   adminSummaryEl.append(
     statTile(data.month.cost, "AI this month"),
-    statTile(`£${(data.month.revenuePence / 100).toFixed(2)}`, "plans"),
+    // "Subscriptions", not "plans": the figure is money that arrives, and
+    // plenty of accounts are on a plan without any money arriving.
+    statTile(`£${(data.month.revenuePence / 100).toFixed(2)}`, "subscriptions"),
     statTile(`${margin < 0 ? "-" : ""}£${Math.abs(margin / 100).toFixed(2)}`, "margin"),
     statTile(String(data.month.calls), "calls"),
   );
@@ -2056,9 +2070,25 @@ function renderAdmin(data) {
   adminSignupsClosedBtn.classList.toggle("meal-kind-btn--active", !data.signupsOpen);
 
   adminUsersEl.innerHTML = "";
+
+  // Who is on each plan, and how many of them are paying for it. Those are
+  // different numbers and only one of them is income — the operator's own
+  // account is on Pro and has never paid a penny for it.
   const counts = document.createElement("p");
   counts.className = "muted admin-counts";
-  counts.textContent = data.plans.map((p) => `${p.users} ${p.name}`).join(" · ");
+  counts.textContent = data.plans
+    .map((p) => {
+      if (p.users === 0) return null;
+      const extras = [
+        p.paying ? `${p.paying} paying` : null,
+        p.comped ? `${p.comped} comped` : null,
+        p.lapsed ? `${p.lapsed} lapsed` : null,
+      ].filter(Boolean);
+      // Free has no paying/comped split to make, so it just gets a count.
+      return extras.length ? `${p.users} ${p.name} (${extras.join(", ")})` : `${p.users} ${p.name}`;
+    })
+    .filter(Boolean)
+    .join(" · ");
   adminUsersEl.appendChild(counts);
 
   for (const user of data.users) adminUsersEl.appendChild(adminUserRow(user));
@@ -2078,12 +2108,25 @@ function adminUserRow(user) {
     name.appendChild(pill);
   }
 
+  // A word for what this account IS, rather than a raw Stripe status that
+  // means nothing at a glance. Only on paid plans: "free" as a badge next to
+  // a Free plan dropdown says the same thing twice.
+  if (user.kind && user.kind !== "free") {
+    const kind = document.createElement("span");
+    kind.className = `admin-pill admin-pill--${user.kind}`;
+    kind.textContent = { paying: "Paying", comped: "Comped", lapsed: "Lapsed" }[user.kind] ?? user.kind;
+    name.appendChild(kind);
+  }
+
   const meta = document.createElement("div");
   meta.className = "admin-user-meta";
+  const worth = user.monthlyPence
+    ? `£${(user.monthlyPence / 100).toFixed(2)}/mo${user.interval === "year" ? " (yearly)" : ""}`
+    : null;
   meta.textContent = [
     `${user.monthCalls} calls`,
     user.monthCost,
-    user.subscriptionStatus,
+    worth,
     user.atCap ? "at cap" : null,
   ].filter(Boolean).join(" · ");
 
@@ -2140,6 +2183,11 @@ async function setSignups(open) {
 adminSignupsOpenBtn.addEventListener("click", () => setSignups(true));
 adminSignupsClosedBtn.addEventListener("click", () => setSignups(false));
 adminRefreshBtn.addEventListener("click", loadAdmin);
+
+// Back goes to Settings rather than Today: Admin is where you end up from
+// there, and dumping somebody on the diary is a jarring way to leave a screen
+// they opened deliberately.
+document.getElementById("admin-back")?.addEventListener("click", () => navTo("settings"));
 
 // ── Suggest an update ───────────────────────────────────────────────────────
 //
@@ -2211,6 +2259,150 @@ suggestSendBtn.addEventListener("click", async () => {
     suggestSendBtn.textContent = "Send it";
   }
 });
+
+// ── Where people fall out ───────────────────────────────────────────────────
+//
+// The other admin sections answer what the app costs and earns. This one
+// answers why, which is a different question and the one that matters while
+// you are still finding out whether any of this works.
+//
+// Read it as three questions in order, because they have three different
+// fixes and only one of them is a marketing problem:
+//
+//   Are people arriving?      signups per week
+//   Do they start?            activated — logged anything at all
+//   Do they stay?             still logging — logged in the last week
+//   Do they pay?              paying
+//
+// A week with signups but no activation is an onboarding problem, and pouring
+// more traffic in makes it worse rather than better.
+
+const adminFunnelEl = document.getElementById("admin-funnel");
+const adminFunnelToggle = document.getElementById("admin-funnel-toggle");
+
+adminFunnelToggle.addEventListener("click", async () => {
+  const showing = !adminFunnelEl.hidden;
+  adminFunnelEl.hidden = showing;
+  adminFunnelToggle.textContent = showing ? "Show" : "Hide";
+  if (!showing) await loadFunnel();
+});
+
+async function loadFunnel() {
+  try {
+    const res = await fetch("/api/admin/funnel");
+    if (!res.ok) throw new Error();
+    renderFunnel(await res.json());
+  } catch {
+    adminFunnelEl.innerHTML = '<p class="muted">Couldn\'t load that.</p>';
+  }
+}
+
+/** n out of total, as a percentage, with no division by zero. */
+function share(n, total) {
+  if (!total) return "—";
+  return `${Math.round((n / total) * 100)}%`;
+}
+
+function renderFunnel(data) {
+  adminFunnelEl.innerHTML = "";
+  const { totals, activation, cohorts } = data;
+
+  if (totals.users === 0) {
+    adminFunnelEl.innerHTML = '<p class="muted">Nobody has signed up yet.</p>';
+    return;
+  }
+
+  // The four numbers in the order the questions get asked.
+  const summary = document.createElement("div");
+  summary.className = "admin-summary";
+  summary.append(
+    statTile(String(totals.users), "signed up"),
+    statTile(share(totals.activated, totals.users), "logged anything"),
+    statTile(share(totals.activeLast7, totals.users), "still logging"),
+    statTile(share(totals.paying, totals.users), "paying"),
+  );
+  adminFunnelEl.appendChild(summary);
+
+  // The single most useful line on the screen: people who signed up and never
+  // logged a thing. Nothing downstream can be fixed while that number is big.
+  const lede = document.createElement("p");
+  lede.className = "muted admin-funnel-lede";
+  const never = totals.neverLogged;
+  // Two separate sentences, because the second one has nothing to say when
+  // nobody has started yet — and "— started the same day" is what it said.
+  const missing = never === 0
+    ? "Everyone who signed up has logged something."
+    : `${never} ${never === 1 ? "account" : "accounts"} signed up and never logged anything `
+      + `(${share(never, totals.users)}).`;
+  const started = totals.activated > 0
+    ? ` Of those who did start, ${share(activation.sameDay, totals.activated)} started the same day.`
+    : "";
+  lede.textContent = missing + started;
+  adminFunnelEl.appendChild(lede);
+
+  if (totals.lapsing > 0) {
+    const warn = document.createElement("p");
+    warn.className = "error admin-funnel-lapsing";
+    warn.hidden = false;
+    warn.textContent = `${totals.lapsing} paid ${totals.lapsing === 1 ? "account is" : "accounts are"} `
+      + "cancelling or unpaid.";
+    adminFunnelEl.appendChild(warn);
+  }
+
+  const table = document.createElement("table");
+  table.className = "admin-plan-grid admin-funnel-table";
+  const head = document.createElement("tr");
+  for (const label of ["Signed up", "Joined", "Started", "Still here", "Paying"]) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    head.appendChild(th);
+  }
+  const thead = document.createElement("thead");
+  thead.appendChild(head);
+  table.appendChild(thead);
+
+  const body = document.createElement("tbody");
+  for (const row of cohorts) {
+    const tr = document.createElement("tr");
+    tr.className = "admin-plan-row";
+    const week = document.createElement("th");
+    week.scope = "row";
+    week.className = "admin-plan-feature";
+    // The Monday the cohort signed up in, not a range: short enough to read
+    // in a narrow column and unambiguous once you know it's a week.
+    week.textContent = new Date(`${row.week}T00:00:00Z`).toLocaleDateString(undefined, {
+      day: "numeric", month: "short",
+    });
+    tr.appendChild(week);
+    // Counts, not percentages, for a single week — a cohort of three reading
+    // "33%" says far less than it appears to.
+    for (const value of [
+      row.signups,
+      `${row.activated} · ${share(row.activated, row.signups)}`,
+      `${row.stillLogging} · ${share(row.stillLogging, row.signups)}`,
+      row.paying,
+    ]) {
+      const td = document.createElement("td");
+      td.textContent = String(value);
+      tr.appendChild(td);
+    }
+    body.appendChild(tr);
+  }
+  table.appendChild(body);
+
+  const scroller = document.createElement("div");
+  scroller.className = "admin-funnel-scroll";
+  scroller.appendChild(table);
+  adminFunnelEl.appendChild(scroller);
+
+  const note = document.createElement("p");
+  note.className = "muted admin-plan-note";
+  note.textContent =
+    "Each row is the week people signed up in, followed for as long as they've been around — "
+    + "so the newest row has had the least time to do anything. \"Still here\" means they logged "
+    + "something in the last seven days.";
+  adminFunnelEl.appendChild(note);
+}
 
 // ── What each tier includes ─────────────────────────────────────────────────
 //
@@ -3388,7 +3580,9 @@ async function showApp(user, { firstRun = false } = {}) {
   loadWater();
   loadPlan();
   loadReferrals();
-  loadAdmin();
+  // The tab appears at sign-in; the figures behind it load when it is opened,
+  // rather than on every boot for a screen most sessions never visit.
+  syncAdminTab();
   handleBillingRedirect();
   // Last, and only once there is a diary to add to: someone who followed a
   // shared link straight into a sign-up lands on the sheet rather than losing
@@ -6906,6 +7100,10 @@ const TAB_SCREENS = {
   "food-library": () => foodLibraryScreen,
   stats: () => statsScreen,
   settings: () => settingsScreen,
+  // The operator's own screen, and a tab only they can see. It used to be a
+  // card buried in a Settings pane, which is the wrong shape for the thing you
+  // open to find out how the business is doing.
+  admin: () => adminScreen,
 };
 
 let currentTab = "today";
@@ -6954,6 +7152,7 @@ function navTo(target) {
   else if (target === "food-library") loadFoodLibraryScreen();
   else if (target === "stats") loadStatsScreen();
   else if (target === "settings") loadSettingsScreen();
+  else if (target === "admin") loadAdmin();
 
   // A tab arrived at halfway down reads as a broken page.
   window.scrollTo({ top: 0, behavior: "auto" });

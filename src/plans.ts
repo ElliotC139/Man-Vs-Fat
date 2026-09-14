@@ -69,22 +69,37 @@
  *
  * Because a photo costs 1.7x a typed estimate, not ten times it. At Plus's
  * ten a day, an account that photographed every single meal would cost about
- * £1.88 a month against £3.89 kept — comfortably profitable, and the ceiling
+ * £1.92 a month against £3.89 kept — comfortably profitable, and the ceiling
  * catches it even if that arithmetic is wrong. There is no cost argument for
  * holding it back.
  *
+ * And that worst case describes nobody. A person logs perhaps six things a
+ * day, but most of them never reach the model at all: barcode scans, food
+ * search, saved meals, recipes and re-logs are all answered from the app's own
+ * databases (see estimateShortcut.ts). Only a genuinely new description costs
+ * anything, which is two or three a day in practice — call it 50-60p a month.
+ * The ten is a headline nobody spends.
+ *
+ * This moved to Pro once and moved back. The round trip is worth recording:
+ * there was never a cost argument, only a ladder one, and the ladder argument
+ * loses to the funnel. The £0 to £4.99 step is where nearly all the money is,
+ * because that is where the funnel narrows hardest — so the most persuasive
+ * feature belongs at the bottom of the paid ladder, not the top.
+ *
  * There is a *ladder* argument, and it is the right instinct pointed at the
  * wrong feature. Photographing your dinner is the single most persuasive
- * reason a free user pays anything at all; putting it at £7.99 doesn't move
+ * reason a free user pays anything at all; putting it at £9.99 doesn't move
  * those people up to Pro, it leaves most of them on free. So Pro earns its
  * price on capability that genuinely belongs at the top instead:
  *
  *   - Recipe and label scanning, which is the one call that really is
  *     expensive — an image in and up to 2,000 tokens back, about six typed
  *     estimates.
- *   - WHOOP and Apple Health, which turn a formula's guess at what you burned
- *     into a measurement. Costs nothing to serve; it is a power-user feature
- *     and reads as one.
+ *   - WHOOP, which turns a formula's guess at what you burned into a
+ *     measurement. Costs nothing to serve; it is a power-user feature and
+ *     reads as one. (Apple Health and Health Connect are NOT this: neither
+ *     can be read from a web app, so what the app offers there is a weight
+ *     import from an export file, and that is free on every plan.)
  *   - The weekly PDF report and its Drive filing, same again.
  *
  * The charts, trends, targets and adaptive TDEE stay free. They are what the
@@ -126,7 +141,7 @@ export interface Plan {
    * typed estimates. It earns its place at the top tier on cost alone.
    */
   recipeScan: boolean;
-  /** WHOOP and Apple Health sync — measured burn instead of a formula. */
+  /** WHOOP sync — measured burn instead of a formula. */
   health: boolean;
   /** The weekly PDF report, and filing it to Google Drive. */
   weeklyReport: boolean;
@@ -185,17 +200,31 @@ function yearlyFor(monthlyPence: number): number {
  * Free — funded by ads, so it has to cost less than ads bring in.
  *
  * Display advertising on an app like this brings in roughly 20–40p per active
- * user per month, and that is the number the ceiling has to sit under. Four
- * estimates a day on Haiku is at most 31 × 4 × 0.31p ≈ 38p, and the ceiling
- * stays at 20p — well below the allowance's own worst case, on purpose,
- * because the ceiling is the promise and the allowance is only the headline.
+ * user per month, and that is the number the ceiling has to sit under.
  *
- * Worth stating plainly, because the gap widened when the allowance went from
- * three a day to four: 20p buys about 2.1 estimates a day averaged over a
- * month, so somebody who really does use four every day runs out of budget
- * before the month does. That costs nothing — the ceiling is what makes this
- * tier safe — but the headline promises more than the ceiling funds, and the
- * fix for that is raising the ceiling rather than trimming the headline.
+ * ── The allowance should bind before the ceiling does ─────────────────────
+ *
+ * These are two different limits and they fail in two different ways. The
+ * allowance is a promise a person can hold in their head: three a day, every
+ * day, and when you have used them you know why. The ceiling is a budget, and
+ * hitting it looks like the app breaking halfway through a month for no reason
+ * anybody can see.
+ *
+ * So the allowance has to be the one that runs out first. Free logs by text
+ * only — photo is a Pro feature — and a text estimate on Haiku costs about
+ * 0.18p, so the most three a day can cost is 31 × 3 × 0.18p ≈ 17p against a
+ * 25p ceiling. Somebody who genuinely uses all three every single day of a
+ * month still never meets the budget, which is the whole point.
+ *
+ * This used to be the other way round. At four a day the worst case was ≈ 22p
+ * against a 20p ceiling, so the heaviest users hit a wall the pricing page had
+ * not warned them about.
+ *
+ * The headroom is deliberately larger than the arithmetic needs, because the
+ * 0.18p is an estimate and the ceiling is not: it is checked against measured
+ * spend. 25p leaves the promise intact even if a longer prompt or a dearer
+ * model makes each call half again as expensive, and it still sits at or below
+ * what the ads bring in.
  *
  * What the free tier keeps is the diary itself, all of it: every chart, the
  * adaptive burn engine, unlimited barcode scanning, meals and recipes. What
@@ -207,8 +236,8 @@ const FREE: Plan = {
   name: "Free",
   pricePence: 0,
   yearlyPence: null,
-  dailyEstimates: 4,
-  monthlyCostCapMicros: 0.2 * POUND,
+  dailyEstimates: 3,
+  monthlyCostCapMicros: 0.25 * POUND,
   model: config.ANTHROPIC_MODEL_FREE,
   ads: true,
   photo: false,
@@ -227,7 +256,7 @@ const FREE: Plan = {
     "Unlimited saved meals, recipes and re-logs",
     "Every chart, trend and target",
     "Weigh-ins, goal weight and the burn engine",
-    "4 AI estimates a day",
+    "3 AI estimates a day",
     "Shows ads",
   ],
 };
@@ -264,7 +293,7 @@ const PLUS: Plan = {
   monthlyCostCapMicros: 2 * POUND,
   model: config.ANTHROPIC_MODEL,
   ads: false,
-  photo: false,
+  photo: true,
   recipeScan: false,
   health: false,
   weeklyReport: false,
@@ -274,9 +303,10 @@ const PLUS: Plan = {
   keto: true,
   measurements: true,
   progressPhotos: true,
-  tagline: "No ads, ten estimates a day, and the tools that keep you honest.",
+  tagline: "No ads, log by photo, and the tools that keep you honest.",
   highlights: [
     "Everything in Free, with no ads",
+    "Log a meal by photographing it",
     "10 AI estimates a day",
     "Fasting timer and keto mode",
     "Body measurements and progress photos",
@@ -326,13 +356,12 @@ const PRO: Plan = {
   keto: true,
   measurements: true,
   progressPhotos: true,
-  tagline: "Everything the app can do, connected to what you wear.",
+  tagline: "For people who measure. Your watch, your recipes, your report.",
   highlights: [
     "Everything in Plus",
     "40 AI estimates a day",
-    "Log by photo",
     "Scan a recipe or a label into a full breakdown",
-    "WHOOP and Apple Health — burn measured, not guessed",
+    "WHOOP — burn measured, not guessed",
     "The weekly report, filed to your Drive",
   ],
 };
