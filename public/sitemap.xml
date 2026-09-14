@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Every URL on this site that is meant to be found.
+
+  It is a short list, and that is correct rather than an oversight: the app
+  itself is one authenticated shell behind a login, so there are exactly three
+  pages a stranger can usefully land on. A sitemap listing app routes would be
+  listing pages that serve a sign-in form to everybody who followed the link.
+
+  No <lastmod>. It would have to say "today" on every deploy, because a build
+  rewrites every file's timestamp whether or not a word changed, and a lastmod
+  that cries wolf is worse than none — crawlers learn to ignore the field and
+  then ignore it on the day it was true. <changefreq> and <priority> are left
+  out for the same reason: Google has said publicly it does not use them.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://quickcals.com/</loc>
+  </url>
+  <url>
+    <loc>https://quickcals.com/privacy.html</loc>
+  </url>
+  <url>
+    <loc>https://quickcals.com/terms.html</loc>
+  </url>
+</urlset>

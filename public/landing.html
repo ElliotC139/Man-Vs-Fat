@@ -11,12 +11,203 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://quickcals.com/" />
     <meta property="og:image" content="https://quickcals.com/icons/icon-512.png" />
+    <meta property="og:image:alt" content="The QuicKcals plate mark" />
+    <meta property="og:site_name" content="QuicKcals" />
+    <meta property="og:locale" content="en_GB" />
+    <!--
+      Twitter reads og: tags as a fallback, but only summary_large_image gets a
+      full-width picture instead of a thumbnail beside the text — and a link
+      posted to a group chat is most of how something like this spreads.
+    -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="QuicKcals — the calorie diary that stops being work" />
+    <meta name="twitter:description" content="Photograph a plate and it works out the calories. Free to use; £4.99 a month for photo logging and no ads." />
+    <meta name="twitter:image" content="https://quickcals.com/icons/icon-512.png" />
+    <meta name="theme-color" content="#176B3A" />
     <link rel="icon" href="/icons/icon-192.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=Montserrat:wght@500;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/style.css" />
+    <!--
+      What this page says, in a form a machine can read.
+
+      Two audiences, one block. Google uses FAQPage and the Offer prices to
+      build a richer result than a blue link; answer engines (ChatGPT search,
+      Perplexity, Google's AI Overviews) lean on exactly this kind of explicit,
+      typed statement when deciding what a product costs and what it does,
+      because it beats inferring a price from prose.
+
+      Every FAQ answer below is the visible answer on this page, verbatim, with
+      whitespace collapsed. That is not a style choice — Google demotes pages
+      whose FAQ markup differs from what a visitor reads, and more to the point
+      a schema that has quietly drifted from the copy is a machine-readable
+      lie. tests/seo.test.ts re-derives this from the markup and fails if the
+      two stop matching, and checks the prices against src/plans.ts.
+    -->
+    <script type="application/ld+json">
+      {
+            "@context": "https://schema.org",
+            "@graph": [
+                  {
+                        "@type": "Organization",
+                        "@id": "https://quickcals.com/#organization",
+                        "name": "QuicKcals",
+                        "url": "https://quickcals.com/",
+                        "logo": "https://quickcals.com/icons/icon-512.png"
+                  },
+                  {
+                        "@type": "WebSite",
+                        "@id": "https://quickcals.com/#website",
+                        "url": "https://quickcals.com/",
+                        "name": "QuicKcals",
+                        "publisher": {
+                              "@id": "https://quickcals.com/#organization"
+                        },
+                        "inLanguage": "en-GB"
+                  },
+                  {
+                        "@type": "SoftwareApplication",
+                        "@id": "https://quickcals.com/#app",
+                        "name": "QuicKcals",
+                        "applicationCategory": "HealthApplication",
+                        "applicationSubCategory": "Calorie and macro tracker",
+                        "operatingSystem": "Any modern browser; installs to the home screen on iOS and Android",
+                        "url": "https://quickcals.com/",
+                        "publisher": {
+                              "@id": "https://quickcals.com/#organization"
+                        },
+                        "inLanguage": "en-GB",
+                        "description": "A calorie and macro diary that works out what you ate from a photo, a barcode or a sentence, learns what you actually burn from your own weight data, and judges you on the trend rather than on any single day.",
+                        "featureList": [
+                              "Log a meal by photographing it",
+                              "Barcode scanning and food database search",
+                              "Plain-English logging with an itemised AI estimate",
+                              "Adaptive burn estimate, corrected against your real weight change",
+                              "Trend weight rather than scale weight",
+                              "Macros, keto mode and a fasting timer",
+                              "Saved meals and recipes",
+                              "WHOOP integration for measured burn",
+                              "Works offline",
+                              "Full data export"
+                        ],
+                        "offers": [
+                              {
+                                    "@type": "Offer",
+                                    "name": "Free (monthly)",
+                                    "price": "0.00",
+                                    "priceCurrency": "GBP",
+                                    "availability": "https://schema.org/InStock",
+                                    "url": "https://quickcals.com/"
+                              },
+                              {
+                                    "@type": "Offer",
+                                    "name": "Plus (monthly)",
+                                    "price": "4.99",
+                                    "priceCurrency": "GBP",
+                                    "availability": "https://schema.org/InStock",
+                                    "url": "https://quickcals.com/"
+                              },
+                              {
+                                    "@type": "Offer",
+                                    "name": "Plus (yearly)",
+                                    "price": "44.91",
+                                    "priceCurrency": "GBP",
+                                    "availability": "https://schema.org/InStock",
+                                    "url": "https://quickcals.com/"
+                              },
+                              {
+                                    "@type": "Offer",
+                                    "name": "Pro (monthly)",
+                                    "price": "9.99",
+                                    "priceCurrency": "GBP",
+                                    "availability": "https://schema.org/InStock",
+                                    "url": "https://quickcals.com/"
+                              },
+                              {
+                                    "@type": "Offer",
+                                    "name": "Pro (yearly)",
+                                    "price": "89.91",
+                                    "priceCurrency": "GBP",
+                                    "availability": "https://schema.org/InStock",
+                                    "url": "https://quickcals.com/"
+                              }
+                        ]
+                  },
+                  {
+                        "@type": "FAQPage",
+                        "@id": "https://quickcals.com/#faq",
+                        "mainEntity": [
+                              {
+                                    "@type": "Question",
+                                    "name": "Is the free plan a trial?",
+                                    "acceptedAnswer": {
+                                          "@type": "Answer",
+                                          "text": "No. It doesn't expire and it doesn't ask for a card. Barcode scanning, food search, saved meals, your charts and your whole history stay free permanently. What's rationed is the AI — three estimates a day — because that's the part that costs real money to run. It's funded by ads, which is why paid plans don't have them."
+                                    }
+                              },
+                              {
+                                    "@type": "Question",
+                                    "name": "How accurate are the photo estimates?",
+                                    "acceptedAnswer": {
+                                          "@type": "Answer",
+                                          "text": "Good enough to be useful, not good enough to be gospel — and the app says which is which. Anything looked up from a barcode or a food database is marked verified. Anything the AI estimated is marked as an estimate, itemised, with the portion it assumed shown so you can correct it in a tap. Over a week, consistent slightly-wrong beats accurate-but-abandoned every time."
+                                    }
+                              },
+                              {
+                                    "@type": "Question",
+                                    "name": "What happens if I run out of AI estimates?",
+                                    "acceptedAnswer": {
+                                          "@type": "Answer",
+                                          "text": "Everything else keeps working — search, barcodes, saved meals, re-logging anything already in your diary, all your charts. Only new AI estimates pause, and they reset the next day."
+                                    }
+                              },
+                              {
+                                    "@type": "Question",
+                                    "name": "Can I cancel? Do I get a refund?",
+                                    "acceptedAnswer": {
+                                          "@type": "Answer",
+                                          "text": "Cancel any time from Settings, in two taps — it goes through Stripe's own portal, not a form that emails somebody. Your plan runs to the end of the period you've paid for. Ask within 14 days of subscribing and you get a full refund whether you've used it or not."
+                                    }
+                              },
+                              {
+                                    "@type": "Question",
+                                    "name": "Do I need a WHOOP?",
+                                    "acceptedAnswer": {
+                                          "@type": "Answer",
+                                          "text": "No. Without one, QuicKcals estimates what you burn from your stats and then corrects that estimate as it watches your actual weight change — which for most people lands close. Connecting a WHOOP replaces that estimate with a measurement, which is sharper, and it's why that sits on Pro. Apple Health and Android's Health Connect are a different thing: neither can be read by a website, so there's no live connection to offer. What QuicKcals does instead is accept the export file those apps already produce and read your weight history out of it — free, on every plan."
+                                    }
+                              },
+                              {
+                                    "@type": "Question",
+                                    "name": "Is my diary private?",
+                                    "acceptedAnswer": {
+                                          "@type": "Answer",
+                                          "text": "Yes. It isn't sold, and it's never given to an advertiser — nothing you log is used to target ads, here or anywhere else. Free accounts see ads, but the only thing the ad script learns is that a page was opened. On a paid plan the advertising script is never loaded at all. The privacy policy spells out exactly what goes where."
+                                    }
+                              },
+                              {
+                                    "@type": "Question",
+                                    "name": "Is it an app or a website?",
+                                    "acceptedAnswer": {
+                                          "@type": "Answer",
+                                          "text": "Both, really. It runs in a browser, and you can install it to your home screen, where it opens full-screen, works with no signal, and can send you reminders — like an app, without an app store between you and an update."
+                                    }
+                              },
+                              {
+                                    "@type": "Question",
+                                    "name": "Is this medical advice?",
+                                    "acceptedAnswer": {
+                                          "@type": "Answer",
+                                          "text": "No, and it shouldn't be treated as it. It's a diary that estimates. If you're managing a medical condition, pregnant, under 18, or have a history of disordered eating, talk to a doctor or a registered dietitian before changing how you eat."
+                                    }
+                              }
+                        ]
+                  }
+            ]
+      }
+    </script>
     <style>
       /* Marketing-page layout. Every colour and face comes from the app's own
          stylesheet, so the page a stranger meets and the app they sign into

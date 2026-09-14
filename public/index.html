@@ -6,6 +6,22 @@
          reports as the version somebody was on. -->
     <meta name="app-version" content="v44" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!--
+      Never index this file.
+
+      Two URLs serve it. "/" serves it to somebody already signed in (a crawler
+      is never signed in, so it gets landing.html instead), and "/s/:token"
+      serves it for a shared meal. That second one is the reason this tag
+      exists: a share token is unguessable, but an unguessable URL that has
+      been crawled and indexed is a public one, and all it takes is somebody
+      pasting the link somewhere a bot reads. robots.txt asks for the same
+      thing; this is what binds a crawler that ignores it.
+
+      Nothing is lost by it. This file is an empty shell that fills itself from
+      the API, so there is no content here to rank — the page that markets the
+      app is landing.html, and that one is indexed.
+    -->
+    <meta name="robots" content="noindex, nofollow" />
     <meta name="description" content="QuicKcals — a fast, honest food diary. Learns what you actually burn, tells you what still fits in the day, and never tells you what to eat." />
     <title>QuicKcals</title>
     <link rel="icon" href="/icons/mark.svg" type="image/svg+xml" />
@@ -23,7 +39,7 @@
     <meta name="theme-color" content="#176B3A" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Food Diary" />
+    <meta name="apple-mobile-web-app-title" content="QuicKcals" />
   </head>
   <body>
     <div id="auth-screen" class="auth-screen" hidden>
