@@ -190,6 +190,10 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
+  // Unconditional, because a test that pins the clock and then fails an
+  // assertion never reaches its own cleanup, and the next test inherits a
+  // frozen Date — which would look like a bug anywhere but here.
+  vi.useRealTimers();
 });
 
 async function signUp(username: string): Promise<{ cookie: string; userId: number }> {
@@ -280,6 +284,23 @@ describe("GET /api/teams/:id/table", () => {
   }
 
   it("ranks the members of the team", async () => {
+    // Pinned to a Wednesday, and it has to be.
+    //
+    // A team week starts Sunday at 17:00 by default, and this test places a
+    // weigh-in "two days ago" to have something to measure a loss against.
+    // Run on a Monday, two days ago is Saturday — the week before last's —
+    // so the route correctly drops it, both members are left with a single
+    // in-week weigh-in and no loss at all, and the ranking this is asserting
+    // collapses into a tie broken by name. The test failed two days in seven
+    // and passed the other five, which is the worst way for a test to be
+    // wrong: it looks like a real regression on exactly the days nobody
+    // changed anything.
+    //
+    // Only Date is faked. The server under test is a real one on a real
+    // socket, and faking its timers would hang the request.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-16T12:00:00Z"));
+
     const { alice, bob, team } = await teamOfTwo();
     const today = new Date();
     const key = (d: Date) => d.toISOString().slice(0, 10);
