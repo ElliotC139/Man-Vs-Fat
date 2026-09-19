@@ -2298,6 +2298,94 @@ async function loadFunnel() {
 }
 
 
+
+// ── Where they came from ────────────────────────────────────────────────────
+//
+// The report that says which of the things you did actually worked. The funnel
+// says how many arrived and how many stayed; this says what to do more of.
+const adminSourcesEl = document.getElementById("admin-sources");
+const adminSourcesToggle = document.getElementById("admin-sources-toggle");
+
+adminSourcesToggle.addEventListener("click", async () => {
+  const showing = !adminSourcesEl.hidden;
+  adminSourcesEl.hidden = showing;
+  adminSourcesToggle.textContent = showing ? "Show" : "Hide";
+  if (!showing) await loadSources();
+});
+
+async function loadSources() {
+  try {
+    const res = await fetch("/api/admin/sources");
+    if (!res.ok) throw new Error();
+    renderSources(await res.json());
+  } catch {
+    adminSourcesEl.innerHTML = '<p class="muted">Couldn\'t load that.</p>';
+  }
+}
+
+function renderSources(data) {
+  adminSourcesEl.innerHTML = "";
+  const sources = data.sources ?? [];
+
+  if (!sources.length) {
+    const none = document.createElement("p");
+    none.className = "muted";
+    none.textContent = data.unattributed
+      ? `No sources recorded yet — ${data.unattributed} account${data.unattributed === 1 ? "" : "s"} predate the tracking.`
+      : "No signups yet.";
+    adminSourcesEl.appendChild(none);
+    return;
+  }
+
+  const top = Math.max(1, ...sources.map((s) => s.signups));
+
+  for (const row of sources) {
+    const block = document.createElement("div");
+    block.className = "admin-source";
+
+    const head = document.createElement("div");
+    head.className = "admin-source-head";
+
+    const name = document.createElement("span");
+    name.className = "admin-source-name";
+    // textContent: a source can be a bare hostname taken from a referrer,
+    // which is somebody else's string.
+    name.textContent = row.source;
+
+    const bar = document.createElement("span");
+    bar.className = "admin-source-bar";
+    const fill = document.createElement("span");
+    fill.style.width = `${Math.round((row.signups / top) * 100)}%`;
+    bar.appendChild(fill);
+
+    const count = document.createElement("span");
+    count.className = "admin-source-count";
+    // Paying beside signups, because a channel that sends a hundred people who
+    // never pay is not the same finding as one that sends ten who do.
+    count.textContent = row.paying ? `${row.signups} · ${row.paying} paying` : String(row.signups);
+
+    head.append(name, bar, count);
+    block.appendChild(head);
+
+    for (const [label, items] of [["landed on", row.landings], ["campaign", row.campaigns]]) {
+      if (!items?.length) continue;
+      const line = document.createElement("p");
+      line.className = "admin-source-detail";
+      line.textContent = `${label}: ${items.map((i) => `${i.name} (${i.count})`).join(", ")}`;
+      block.appendChild(line);
+    }
+
+    adminSourcesEl.appendChild(block);
+  }
+
+  if (data.unattributed) {
+    const note = document.createElement("p");
+    note.className = "muted admin-source-detail";
+    note.textContent = `${data.unattributed} account${data.unattributed === 1 ? "" : "s"} predate the tracking and have no source.`;
+    adminSourcesEl.appendChild(note);
+  }
+}
+
 // ── What people asked for ───────────────────────────────────────────────────
 //
 // The tally behind the landing page's "what's next" section. Shown here rather
@@ -3236,7 +3324,15 @@ authForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({
         username,
         password,
-        ...(authMode === "signup" ? { ref: storedReferral() ?? undefined } : {}),
+        ...(authMode === "signup"
+          ? {
+              ref: storedReferral() ?? undefined,
+              // Same rule as the referral code: sign-up only. Attaching it to
+              // a login would re-attribute an existing account to whichever
+              // link they most recently followed.
+              attribution: window.quickcalsAttribution?.() ?? undefined,
+            }
+          : {}),
       }),
     });
     const body = await res.json().catch(() => ({}));
@@ -3247,7 +3343,10 @@ authForm.addEventListener("submit", async (event) => {
     const isNewAccount = res.status === 201;
     // Spent, whether or not the server could use it. Keeping it would attach
     // the same invite to the next account created on this device.
-    if (isNewAccount) clearStoredReferral();
+    if (isNewAccount) {
+      clearStoredReferral();
+      window.quickcalsClearAttribution?.();
+    }
     await showApp(body, { firstRun: isNewAccount });
   } catch (error) {
     authError.textContent = error.message;
@@ -3339,13 +3438,20 @@ async function handleGoogleCredential(response) {
       // Sent on every Google request because this one endpoint is both the
       // sign-in and the sign-up; the server only reads it when it is about to
       // create an account.
-      body: JSON.stringify({ credential: response.credential, ref: storedReferral() ?? undefined }),
+      body: JSON.stringify({
+        credential: response.credential,
+        ref: storedReferral() ?? undefined,
+        attribution: window.quickcalsAttribution?.() ?? undefined,
+      }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(typeof body.error === "string" ? body.error : "Google sign-in failed.");
     }
-    if (res.status === 201) clearStoredReferral();
+    if (res.status === 201) {
+      clearStoredReferral();
+      window.quickcalsClearAttribution?.();
+    }
     showApp(body);
   } catch (error) {
     authError.textContent = error.message;

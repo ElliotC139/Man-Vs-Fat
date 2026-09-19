@@ -137,6 +137,27 @@ describe("the link preview people actually see", () => {
     expect(html).toMatch(/property="og:image" content="https:\/\/quickcals\.com\//);
   });
 
+  it.each(INDEXABLE)("%s shares the 1200x630 card, not the app icon", (page) => {
+    // A square icon renders as a thumbnail beside the text; a 1200x630 image
+    // renders as a card. Every channel here involves somebody pasting a link
+    // into a chat, so this is the difference between being seen and not.
+    const html = read(page);
+    const og = html.match(/property="og:image" content="([^"]+)"/)?.[1];
+    expect(og, `${page} still shares a square icon`).toContain("social-card.png");
+    expect(html).toContain('property="og:image:width" content="1200"');
+    expect(html).toContain('property="og:image:height" content="630"');
+  });
+
+  it("keeps a logo in the structured data, not a banner", () => {
+    // Replacing every icon URL at once is an easy mistake, and it quietly puts
+    // a 1200x630 banner where search expects a square logo.
+    for (const page of INDEXABLE) {
+      const block = read(page).match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1];
+      if (!block) continue;
+      expect(block, `${page}'s JSON-LD logo is the social card`).not.toContain("social-card.png");
+    }
+  });
+
   it.each(INDEXABLE)("%s has an og:title and og:url", (page) => {
     const html = read(page);
     expect(html).toMatch(/property="og:title"/);

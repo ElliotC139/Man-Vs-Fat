@@ -392,6 +392,75 @@ adminRouter.get("/roadmap", async (_req, res) => {
   });
 });
 
+/**
+ * Where the accounts came from.
+ *
+ * The one report that says which of the things you did worked. Grouped by
+ * source, then by the page they first landed on, because "reddit sent 40" and
+ * "the plateau guide converted 12 of them" are different findings and the
+ * second is the one that says what to write next.
+ *
+ * Accounts created before attribution existed have no source and are counted
+ * separately rather than folded into "direct" — an unknown is not a finding,
+ * and filing it as one would quietly overstate the channel that needs no
+ * effort.
+ */
+adminRouter.get("/sources", async (_req, res) => {
+  const users = await prisma.user.findMany({
+    select: {
+      signupSource: true, signupCampaign: true, signupLanding: true,
+      createdAt: true, plan: true, stripeSubscriptionId: true,
+      subscriptionStatus: true, subscriptionInterval: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const bySource = new Map<string, { source: string; signups: number; paying: number; landings: Map<string, number>; campaigns: Map<string, number> }>();
+  let unattributed = 0;
+
+  for (const user of users) {
+    if (user.signupSource === null) {
+      unattributed += 1;
+      continue;
+    }
+    const row = bySource.get(user.signupSource) ?? {
+      source: user.signupSource, signups: 0, paying: 0,
+      landings: new Map<string, number>(), campaigns: new Map<string, number>(),
+    };
+    row.signups += 1;
+    // classifyAccount, not `plan !== "free"` — the same rule the revenue
+    // figure uses, so a comped account never reads as a channel converting.
+    if (classifyAccount(user) === "paying") row.paying += 1;
+    if (user.signupLanding) {
+      row.landings.set(user.signupLanding, (row.landings.get(user.signupLanding) ?? 0) + 1);
+    }
+    if (user.signupCampaign) {
+      row.campaigns.set(user.signupCampaign, (row.campaigns.get(user.signupCampaign) ?? 0) + 1);
+    }
+    bySource.set(user.signupSource, row);
+  }
+
+  const asList = (counts: Map<string, number>) =>
+    [...counts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+
+  res.json({
+    unattributed,
+    total: users.length,
+    sources: [...bySource.values()]
+      .sort((a, b) => b.signups - a.signups)
+      .map((row) => ({
+        source: row.source,
+        signups: row.signups,
+        paying: row.paying,
+        landings: asList(row.landings),
+        campaigns: asList(row.campaigns),
+      })),
+  });
+});
+
 adminRouter.get("/plans", (_req, res) => {
   res.json(planGrid());
 });

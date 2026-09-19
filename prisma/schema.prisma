@@ -43,6 +43,12 @@ model User {
   // whichever is picked, the caption on the card says which one it is rather
   // than calling a whole-day figure "burned so far".
   burnSource           String?
+  // Where this account came from, captured once on the way in and never
+  // revised. See src/attribution.ts for why it is first touch, and why a
+  // referrer's host is the most that is kept.
+  signupSource         String?
+  signupCampaign       String?
+  signupLanding        String?
   // Meal tags: whether the log form asks which meal an entry belongs to, and
   // what those four slots are called. Off by default — the diary has always
   // inferred a meal from the clock and most people never want to think about

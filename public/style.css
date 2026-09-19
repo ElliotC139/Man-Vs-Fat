@@ -7119,3 +7119,51 @@ body.hide-entry-times .entry-time {
   .roadmap-item { flex-direction: column; align-items: stretch; gap: 8px; }
   .roadmap-vote { align-self: flex-start; }
 }
+
+/* ── Admin: where they came from ─────────────────────────────────────────── */
+.admin-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+.admin-source-head {
+  display: grid;
+  /* Name, a bar taking what's left, then the count in a fixed column so the
+     numbers line up instead of drifting with the bar. */
+  grid-template-columns: minmax(0, 1fr) 72px auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+.admin-source-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-source-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--hairline);
+  overflow: hidden;
+}
+.admin-source-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--pitch);
+  border-radius: inherit;
+}
+.admin-source-count {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.admin-source-detail {
+  margin: 3px 0 0;
+  font-size: 0.74rem;
+  color: var(--muted);
+  line-height: 1.4;
+  /* A long list of landing pages wraps rather than pushing the panel wide. */
+  overflow-wrap: anywhere;
+}
