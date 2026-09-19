@@ -1,0 +1,322 @@
+/*
+ * The guides.
+ *
+ * Long-form reading, which the rest of the site isn't. The app is a grid of
+ * numbers and the landing page is a pitch; these are pages somebody reads top
+ * to bottom, and the typography has to do a different job — one column, a
+ * measure that doesn't tire the eye, and enough space between ideas that the
+ * page doesn't read as a wall.
+ *
+ * Colour tokens come from /style.css, which every page here already loads, so
+ * a guide follows the reader's theme exactly like the app does.
+ *
+ * The header and footer rules below are deliberately a copy of the ones inside
+ * landing.html rather than a shared import. That page keeps its CSS inline so
+ * it renders with no second request, and pulling the chrome out from under a
+ * page that is already verified is a bigger change than this is worth. The
+ * copy is small and stable; if it grows, extract it properly rather than
+ * letting the two drift.
+ */
+
+/*
+ * A darker grey for secondary text than the app uses.
+ *
+ * style.css's --muted measures 4.11:1 against the page background, which is
+ * under the 4.5:1 that normal-size text needs. In the app that grey labels a
+ * card for a second; here it sets a standfirst, a byline and every figure
+ * caption on a thousand-word page somebody is reading start to finish, and
+ * sustained reading is exactly where the difference is felt.
+ *
+ * Overridden only for these pages rather than changed in style.css, because
+ * the token is used on every screen in the app and that is a decision about
+ * the whole design system rather than about the guides. Worth taking, but not
+ * quietly, and not here.
+ *
+ * Light 5.4:1, dark 7.1:1, both measured in a browser.
+ */
+:root {
+  --guide-muted: #5c6862;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --guide-muted: #b3beb8;
+  }
+}
+:root[data-theme="dark"] {
+  --guide-muted: #b3beb8;
+}
+
+/* ── Page chrome, matching landing.html ──────────────────────────────────── */
+
+/* style.css already sets the body font and colours for every page on the
+   domain; only the reading line-height is this file's business. */
+body { line-height: 1.6; }
+
+/* The app's stylesheet pins main to a 480px column — right for a diary on a
+   phone, wrong for a page somebody reads. landing.html undoes the same rule
+   for the same reason; it is undone here rather than there so the app keeps
+   its own layout. */
+main {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lp-wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.lp-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--hairline);
+}
+.lp-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 62px;
+}
+.lp-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-brand);
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: var(--pitch-dark);
+  text-decoration: none;
+  letter-spacing: -0.02em;
+}
+.lp-brand img { width: 30px; height: 30px; }
+.lp-nav { margin-left: auto; display: flex; align-items: center; gap: 20px; }
+.lp-nav a { font-size: 0.9rem; font-weight: 600; text-decoration: none; color: var(--muted); }
+.lp-nav a:hover { color: var(--ink); }
+/* `.lp-nav a` is (0,1,1) and `.lp-cta` is (0,1,0), so the rule above wins on
+   the button and paints its label muted grey on dark green — 1.7:1, which is
+   illegible. Matched at equal-or-higher specificity here rather than reordered,
+   because source order would not have saved it. */
+.lp-nav a.lp-cta { color: var(--bg); }
+.lp-nav a.lp-cta:hover { color: var(--bg); }
+.lp-cta {
+  display: inline-block;
+  background: var(--pitch-dark);
+  color: var(--bg);
+  padding: 9px 16px;
+  border-radius: 999px;
+  font-weight: 700;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.lp-cta:hover { background: var(--pitch); }
+
+.lp-footer {
+  border-top: 1px solid var(--hairline);
+  margin-top: 64px;
+  padding: 28px 0;
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+.lp-footer-inner { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.lp-footer-legal { margin-left: auto; display: flex; gap: 18px; flex-wrap: wrap; }
+.lp-footer a { color: var(--muted); text-decoration: none; }
+.lp-footer a:hover { color: var(--ink); text-decoration: underline; }
+
+/* ── The article itself ──────────────────────────────────────────────────── */
+
+.guide {
+  /* Around 68 characters at this size — long enough not to feel clipped,
+     short enough that the eye finds the next line without hunting. */
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 40px 20px 0;
+}
+
+.guide-eyebrow {
+  display: inline-block;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--pitch-dark);
+  text-decoration: none;
+  margin-bottom: 14px;
+}
+.guide-eyebrow:hover { text-decoration: underline; }
+
+.guide h1 {
+  font-family: var(--font-heading);
+  font-size: clamp(1.9rem, 6vw, 2.6rem);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  margin: 0 0 16px;
+  text-wrap: balance;
+}
+
+/* The one-line summary under the title. Sets up the piece and, on a search
+   result, is usually the sentence that decides whether anybody clicks. */
+.guide-standfirst {
+  font-size: 1.12rem;
+  line-height: 1.55;
+  color: var(--guide-muted);
+  margin: 0 0 8px;
+}
+
+.guide-meta {
+  font-size: 0.82rem;
+  color: var(--guide-muted);
+  margin: 0 0 32px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+/*
+ * Every h2 on this page starts from the app's h2, which is a small uppercase
+ * muted section label set in flex — right for "Today so far" above a card,
+ * completely wrong for a heading in an article. style.css is loaded here for
+ * its colour tokens, so those properties arrive whether or not they are
+ * wanted, and anything not named below is inherited from it.
+ *
+ * So these reset explicitly rather than only setting size and family. The
+ * first version of this file set four properties and shipped headings that
+ * were uppercase, tracked, grey and laid out as flex containers.
+ */
+.guide h2 {
+  display: block;
+  text-transform: none;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  font-weight: 600;
+  font-family: var(--font-heading);
+  font-size: 1.45rem;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  margin: 44px 0 12px;
+  text-wrap: balance;
+}
+.guide h3 {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  margin: 30px 0 8px;
+}
+.guide p { margin: 0 0 18px; }
+.guide ul, .guide ol { margin: 0 0 18px; padding-left: 22px; }
+.guide li { margin-bottom: 9px; }
+.guide strong { font-weight: 650; color: var(--ink); }
+.guide a { color: var(--pitch-dark); text-decoration: underline; text-underline-offset: 2px; }
+
+/* A figure worth stopping on — the kind of number the paragraph around it is
+   arguing about. */
+.guide-figure {
+  margin: 28px 0;
+  padding: 20px 22px;
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--pitch);
+  border-radius: var(--radius-md);
+}
+.guide-figure-number {
+  display: block;
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--pitch-dark);
+  margin-bottom: 8px;
+}
+.guide-figure p { margin: 0; font-size: 0.95rem; color: var(--guide-muted); }
+
+/* Where the honest answer is "this is an estimate" or "ask a professional". */
+.guide-note {
+  margin: 28px 0;
+  padding: 16px 18px;
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  font-size: 0.93rem;
+}
+.guide-note p { margin: 0 0 10px; }
+.guide-note p:last-child { margin: 0; }
+.guide-note strong { display: block; margin-bottom: 4px; }
+
+.guide-table-wrap { overflow-x: auto; margin: 24px 0; }
+.guide table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+.guide th, .guide td {
+  text-align: left;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+.guide th { font-weight: 650; }
+.guide td:last-child, .guide th:last-child { font-variant-numeric: tabular-nums; }
+
+/* ── The end of a guide ──────────────────────────────────────────────────── */
+
+.guide-end {
+  margin-top: 48px;
+  padding: 24px;
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+}
+.guide-end h2 { margin: 0 0 8px; font-size: 1.2rem; display: block; text-transform: none; letter-spacing: -0.005em; color: var(--ink); }
+.guide-end p { margin: 0 0 16px; color: var(--guide-muted); font-size: 0.95rem; }
+
+.guide-next { margin-top: 44px; }
+.guide-next h2 { font-size: 1.1rem; margin: 0 0 14px; display: block; text-transform: none; letter-spacing: -0.005em; color: var(--ink); }
+.guide-next ul { list-style: none; padding: 0; margin: 0; }
+.guide-next li { margin-bottom: 10px; }
+.guide-next a { font-weight: 600; text-decoration: none; }
+.guide-next a:hover { text-decoration: underline; }
+.guide-next span { display: block; font-size: 0.88rem; color: var(--guide-muted); font-weight: 400; }
+
+/* ── The hub ─────────────────────────────────────────────────────────────── */
+
+.guide-index { max-width: 52rem; margin: 0 auto; padding: 40px 20px 0; }
+.guide-index-head { max-width: 34rem; margin-bottom: 36px; }
+.guide-index-head h1 {
+  font-family: var(--font-heading);
+  font-size: clamp(1.9rem, 6vw, 2.6rem);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  margin: 0 0 14px;
+  text-wrap: balance;
+}
+.guide-index-head p { font-size: 1.08rem; color: var(--guide-muted); margin: 0; line-height: 1.55; }
+.guide-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.guide-card {
+  display: block;
+  padding: 22px;
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 160ms var(--ease), transform 160ms var(--ease);
+}
+.guide-card:hover { border-color: var(--pitch); transform: translateY(-2px); }
+.guide-card h2 {
+  /* Same inheritance as above — a card title is a title, not a label. */
+  display: block;
+  text-transform: none;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+  font-weight: 600;
+  font-family: var(--font-heading);
+  font-size: 1.15rem;
+  margin: 0 0 8px;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+.guide-card p { margin: 0; font-size: 0.93rem; color: var(--guide-muted); line-height: 1.5; }
+
+@media (prefers-reduced-motion: reduce) {
+  .guide-card { transition: none; }
+  .guide-card:hover { transform: none; }
+}

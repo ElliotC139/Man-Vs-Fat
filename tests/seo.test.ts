@@ -33,8 +33,23 @@ import { planFor } from "../src/plans";
 
 const read = (name: string) => readFileSync(path.join(process.cwd(), "public", name), "utf8");
 
+/** The guides, which are the only pages here with actual prose on them. */
+const GUIDES = [
+  "why-the-scale-lies",
+  "what-you-actually-burn",
+  "how-wrong-is-your-calorie-count",
+  "logging-food-you-didnt-cook",
+  "why-the-weight-stopped-moving",
+] as const;
+
 /** Pages a stranger is meant to find. */
-const INDEXABLE = ["landing.html", "privacy.html", "terms.html"] as const;
+const INDEXABLE = [
+  "landing.html",
+  "privacy.html",
+  "terms.html",
+  "guides/index.html",
+  ...GUIDES.map((slug) => `guides/${slug}.html`),
+] as const;
 
 /** Pages that must never appear in a search result, and why. */
 const PRIVATE: Record<string, string> = {
@@ -47,6 +62,12 @@ const CANONICAL: Record<string, string> = {
   "landing.html": "https://quickcals.com/",
   "privacy.html": "https://quickcals.com/privacy.html",
   "terms.html": "https://quickcals.com/terms.html",
+  // Extensionless, which is what src/server.ts serves them at. If these two
+  // ever disagree, every guide has a canonical pointing at a URL that 404s.
+  "guides/index.html": "https://quickcals.com/guides/",
+  ...Object.fromEntries(
+    GUIDES.map((slug) => [`guides/${slug}.html`, `https://quickcals.com/guides/${slug}`]),
+  ),
 };
 
 function meta(html: string, name: string): string | null {
@@ -230,6 +251,89 @@ describe("llms.txt", () => {
       .filter((p) => p.endsWith(".html"));
     for (const link of new Set(links)) {
       expect(Object.values(CANONICAL)).toContain(`https://quickcals.com${link}`);
+    }
+  });
+});
+
+/**
+ * The guides exist because AdSense rejected the site for "low value content"
+ * and, separately, because three pages cannot rank for anything. Both of those
+ * problems come back the moment a guide becomes thin, unlinked, or orphaned
+ * from the sitemap — none of which is visible by looking at the page.
+ */
+describe("the guides", () => {
+  const guide = (slug: string) => read(`guides/${slug}.html`);
+
+  /** Just the article, with tags and whitespace stripped. */
+  function prose(html: string): string {
+    const main = html.split("<main>")[1]?.split("</main>")[0] ?? "";
+    return main.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  it.each(GUIDES)("%s is substantial, not filler", (slug) => {
+    // The rejection said "substantial unique value". A 300-word page with a
+    // sign-up button on it is exactly what that phrase is aimed at.
+    expect(prose(guide(slug)).split(" ").length).toBeGreaterThan(700);
+  });
+
+  it.each(GUIDES)("%s has one h1 and real structure under it", (slug) => {
+    const html = guide(slug);
+    expect(html.match(/<h1[^>]*>/g)?.length).toBe(1);
+    expect(html.match(/<h2[^>]*>/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+  });
+
+  it.each(GUIDES)("%s declares itself an Article that search can read", (slug) => {
+    const block = guide(slug).match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1];
+    const graph = JSON.parse(block!)["@graph"] as Record<string, any>[];
+    const article = graph.find((n) => n["@type"] === "Article");
+    expect(article?.url).toBe(`https://quickcals.com/guides/${slug}`);
+    expect(article?.headline).toBeTruthy();
+    // The breadcrumb is what puts "Guides" under the title in a result.
+    expect(graph.some((n) => n["@type"] === "BreadcrumbList")).toBe(true);
+  });
+
+  it.each(GUIDES)("%s carries the medical disclaimer", (slug) => {
+    // Every one of these touches weight loss. The app's own terms disclaim
+    // medical advice and the guides have to say the same thing where somebody
+    // actually reads it, not only in a document nobody opens.
+    expect(guide(slug)).toContain("not medical advice");
+    expect(guide(slug)).toMatch(/dietitian/);
+  });
+
+  it.each(GUIDES)("%s links onward to other guides", (slug) => {
+    // An orphan page is the shape of thin content, and a reader who finishes
+    // one of these and finds no next step is a reader who leaves.
+    const others = GUIDES.filter((s) => s !== slug);
+    const linked = others.filter((other) => guide(slug).includes(`/guides/${other}`));
+    expect(linked.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("every guide is reachable from the hub", () => {
+    const hub = read("guides/index.html");
+    for (const slug of GUIDES) expect(hub).toContain(`/guides/${slug}`);
+  });
+
+  it("the hub is reachable from the landing page", () => {
+    // Content nothing links to gets crawled late and counted for little.
+    expect(read("landing.html")).toContain('href="/guides/"');
+  });
+
+  it("no guide links to a page that doesn't exist", () => {
+    const known = new Set([...GUIDES.map((s) => `/guides/${s}`), "/guides/"]);
+    for (const slug of GUIDES) {
+      const links = [...guide(slug).matchAll(/href="(\/guides\/[^"]*)"/g)].map((m) => m[1]!);
+      for (const link of links) {
+        expect(known.has(link), `${slug} links to ${link}`).toBe(true);
+      }
+    }
+  });
+
+  it("llms.txt lists the same guides the sitemap does", () => {
+    const llms = read("llms.txt");
+    const sitemap = read("sitemap.xml");
+    for (const slug of GUIDES) {
+      expect(llms, `llms.txt is missing ${slug}`).toContain(`/guides/${slug}`);
+      expect(sitemap, `sitemap is missing ${slug}`).toContain(`/guides/${slug}`);
     }
   });
 });
