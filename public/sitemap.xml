@@ -2,10 +2,10 @@
 <!--
   Every URL on this site that is meant to be found.
 
-  It is a short list, and that is correct rather than an oversight: the app
-  itself is one authenticated shell behind a login, so there are exactly three
-  pages a stranger can usefully land on. A sitemap listing app routes would be
-  listing pages that serve a sign-in form to everybody who followed the link.
+  Everything here is readable without an account. The app itself is one
+  authenticated shell behind a login and is not listed: a sitemap pointing at
+  app routes would be pointing at pages that serve a sign-in form to everybody
+  who followed the link.
 
   No <lastmod>. It would have to say "today" on every deploy, because a build
   rewrites every file's timestamp whether or not a word changed, and a lastmod
@@ -16,6 +16,24 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://quickcals.com/</loc>
+  </url>
+  <url>
+    <loc>https://quickcals.com/guides/</loc>
+  </url>
+  <url>
+    <loc>https://quickcals.com/guides/why-the-scale-lies</loc>
+  </url>
+  <url>
+    <loc>https://quickcals.com/guides/what-you-actually-burn</loc>
+  </url>
+  <url>
+    <loc>https://quickcals.com/guides/how-wrong-is-your-calorie-count</loc>
+  </url>
+  <url>
+    <loc>https://quickcals.com/guides/logging-food-you-didnt-cook</loc>
+  </url>
+  <url>
+    <loc>https://quickcals.com/guides/why-the-weight-stopped-moving</loc>
   </url>
   <url>
     <loc>https://quickcals.com/privacy.html</loc>

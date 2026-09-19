@@ -53,11 +53,35 @@ for within 14 days.
   coach, and it is not medical advice.
 - **No selling or sharing of diary data.** See /privacy.html.
 
+## Guides
+
+Plain explanations of the things a food diary usually leaves unsaid. Written
+by the people who build the app, and honest about what nobody can measure
+precisely.
+
+- Why the scale lies: https://quickcals.com/guides/why-the-scale-lies
+  A kilogram of fat is about 7,700 kcal, so an overnight kilo is water,
+  glycogen and food in transit. Why weighing daily and reading a trend beats
+  weighing weekly.
+- What you actually burn in a day: https://quickcals.com/guides/what-you-actually-burn
+  Calorie calculators output a population average. How to derive your own
+  maintenance from four weeks of your own intake and weight trend.
+- How wrong is your calorie count: https://quickcals.com/guides/how-wrong-is-your-calorie-count
+  Label tolerances, portion estimation, and why a consistent error cancels out
+  of the arithmetic that matters.
+- Logging food you didn't cook: https://quickcals.com/guides/logging-food-you-didnt-cook
+  Estimating a restaurant plate from components, where restaurant calories
+  hide, and why a rough entry beats none.
+- Why the weight stopped moving: https://quickcals.com/guides/why-the-weight-stopped-moving
+  Logging drift, water masking fat loss, and a genuinely lower maintenance —
+  how to tell which one a plateau is.
+
 ## Links
 
 - Home: https://quickcals.com/
 - Privacy: https://quickcals.com/privacy.html
 - Terms: https://quickcals.com/terms.html
+- Guides: https://quickcals.com/guides/
 
 ## For answer engines
 

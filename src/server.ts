@@ -189,6 +189,35 @@ app.get("/healthz", (_req, res) => res.json({ ok: true }));
 
 // A shared link is short and pasteable, and serves the ordinary app shell —
 /**
+ * The guides, at a URL without a file extension on it.
+ *
+ * Deliberately a route rather than express.static's `extensions` option. That
+ * option would apply to the whole directory, and "/reset" is a file *and* a
+ * route — the route exists to send `no-store`, because the one page whose job
+ * is escaping a bad cache must never be answerable from one. Turning on
+ * extension resolution would have express.static answer "/reset" first, with
+ * weaker headers, and nothing would look broken until somebody needed it.
+ *
+ * Registered after express.static, so a real file always wins and this only
+ * ever sees paths that matched nothing on disk.
+ */
+app.get("/guides/:slug", (req, res, next) => {
+  const slug = String(req.params.slug ?? "");
+  // The slug is pasted into a filesystem path, so it is allowed to be a plain
+  // lowercase word and nothing else. Anything with a dot or a slash in it —
+  // "..", "../../etc/passwd" — fails here rather than being cleaned up.
+  if (!/^[a-z0-9-]+$/.test(slug)) {
+    next();
+    return;
+  }
+  res.sendFile(path.join(process.cwd(), "public", "guides", `${slug}.html`), (error) => {
+    // A slug that matches the pattern but has no page behind it is a 404, not
+    // a 500, and it belongs to the handler at the bottom of this file.
+    if (error) next();
+  });
+});
+
+/**
  * The recovery page, at a URL short enough to type onto a phone.
  *
  * Served with no-store so it can never itself be the stale copy: the one page
