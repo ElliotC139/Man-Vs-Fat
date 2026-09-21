@@ -194,6 +194,10 @@ const exercisePhotoStatus = document.getElementById("exercise-photo-status");
 const exerciseSubmit = document.getElementById("exercise-submit");
 const exerciseError = document.getElementById("exercise-error");
 const exerciseListEl = document.getElementById("exercise-list");
+const todayExerciseSection = document.getElementById("today-exercise-section");
+const todayExerciseHeading = document.getElementById("today-exercise-heading");
+const todayExerciseTotal = document.getElementById("today-exercise-total");
+const todayExerciseListEl = document.getElementById("today-exercise-list");
 
 let authMode = "login";
 let googleClientId = null;
@@ -4054,8 +4058,17 @@ exerciseForm.addEventListener("submit", async (event) => {
 });
 
 // ── Render exercises ───────────────────────────────────────────────────────
-function renderExercises(exercises) {
-  exerciseListEl.innerHTML = "";
+/**
+ * One row per exercise, into whichever list asked for them.
+ *
+ * Two screens show the same rows now — My Week for the whole week, Today for
+ * the day you are looking at — so the container and the reload are arguments
+ * rather than the two globals they used to be. Editing or deleting from Today
+ * has to reload Today: calling loadWeek() from there would leave the row you
+ * just changed on screen, unchanged, which reads as the edit having failed.
+ */
+function renderExerciseRows(container, exercises, refresh) {
+  container.innerHTML = "";
   for (const ex of exercises) {
     const row = document.createElement("div");
     row.className = "exercise-entry";
@@ -4085,7 +4098,7 @@ function renderExercises(exercises) {
     editBtn.type = "button";
     editBtn.title = "Edit";
     editBtn.setAttribute("aria-label", "Edit exercise");
-    editBtn.addEventListener("click", () => enterExerciseEditMode(row, ex));
+    editBtn.addEventListener("click", () => enterExerciseEditMode(row, ex, refresh));
 
     const delBtn = document.createElement("button");
     delBtn.className = "exercise-del";
@@ -4094,16 +4107,50 @@ function renderExercises(exercises) {
     // Auto-imported entries reappear on the next WHOOP sync since they're
     // matched by the workout's own id, not tracked as user-deleted.
     if (ex.fromWhoop) delBtn.title = "Auto-imported from WHOOP — will reappear on next sync";
-    delBtn.addEventListener("click", () => deleteExercise(ex.id));
+    delBtn.addEventListener("click", () => deleteExercise(ex.id, refresh));
 
     row.append(icon, label, kcal, editBtn, delBtn);
-    exerciseListEl.appendChild(row);
+    container.appendChild(row);
   }
 }
 
-async function deleteExercise(id) {
+/** My Week's list, which is every exercise in the week. */
+function renderExercises(exercises) {
+  renderExerciseRows(exerciseListEl, exercises, loadWeek);
+}
+
+/**
+ * Today's list, which is the day on screen rather than today specifically —
+ * the day nav steps back through earlier ones and the heading follows.
+ *
+ * Hidden when the day has none. A rest day showing an empty box under a
+ * heading is worse than the section not being there, and Today is already the
+ * longest screen in the app.
+ */
+function renderTodayExercise(exercises, isToday) {
+  const list = exercises ?? [];
+  todayExerciseSection.hidden = list.length === 0;
+  if (list.length === 0) return;
+
+  todayExerciseHeading.textContent = isToday ? "Exercise today" : "Exercise that day";
+
+  // Only what was actually scored. An exercise with no kcal on it is still
+  // worth showing as a row, but adding it in as a zero would quietly
+  // understate the total rather than admit it is incomplete.
+  const scored = list.filter((ex) => ex.kcalBurned !== null && ex.kcalBurned !== undefined);
+  const burned = scored.reduce((sum, ex) => sum + ex.kcalBurned, 0);
+  todayExerciseTotal.textContent = scored.length === 0
+    ? ""
+    : scored.length === list.length
+      ? `${burned} kcal`
+      : `${burned} kcal from ${scored.length} of ${list.length}`;
+
+  renderExerciseRows(todayExerciseListEl, list, loadToday);
+}
+
+async function deleteExercise(id, refresh) {
   await fetch(`/api/exercises/${id}`, { method: "DELETE" });
-  loadWeek();
+  refresh();
 }
 
 // ── Calorie balance widget ──────────────────────────────────────────────────
@@ -10953,7 +11000,7 @@ function buildUnitSelect(label, current, onChange) {
 // Food entries have always been editable; exercise wasn't, so a typo meant
 // deleting and re-logging — which for a WHOOP-imported workout also broke the
 // link back to that workout.
-function enterExerciseEditMode(row, exercise) {
+function enterExerciseEditMode(row, exercise, refresh) {
   row.innerHTML = "";
   const editRow = document.createElement("div");
   editRow.className = "entry-edit-grid";
@@ -10985,14 +11032,14 @@ function enterExerciseEditMode(row, exercise) {
         date: dateInput.value,
       }),
     });
-    loadWeek();
+    refresh();
   });
 
   const cancelBtn = document.createElement("button");
   cancelBtn.type = "button";
   cancelBtn.className = "ghost-sm";
   cancelBtn.textContent = "Cancel";
-  cancelBtn.addEventListener("click", () => loadWeek());
+  cancelBtn.addEventListener("click", () => refresh());
 
   editRow.append(
     editField("What you did", descInput, "full"),
@@ -13470,6 +13517,7 @@ function renderToday(data) {
   renderTodayBody(data.whoop);
   renderTodayInsights(data.insights);
   renderTodayEntries(data.entries);
+  renderTodayExercise(data.exercises, viewingToday);
   renderWater(data.waterMl ?? 0);
   renderTodayNote(data.note);
 }

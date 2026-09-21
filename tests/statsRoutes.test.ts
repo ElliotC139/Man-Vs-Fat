@@ -106,6 +106,12 @@ vi.mock("../src/db", () => {
         }),
       ),
     },
+    // /today reads both of these alongside the food and the exercise. Neither
+    // had a mock, which is why nothing in this file had ever reached that
+    // endpoint: the first test to try it died on an undefined model rather
+    // than on anything it was actually asserting.
+    waterLog: { findUnique: vi.fn(async () => null) },
+    dayNote: { findUnique: vi.fn(async () => null) },
     whoopSleep: {
       findMany: vi.fn(async ({ where }: any) =>
         state.whoopSleeps.filter((sl) => {
@@ -930,5 +936,63 @@ describe("GET /api/stats/share-card", () => {
     const { cookie } = await signUp("alice");
     const card = await fetchCard(cookie);
     expect(card.label).toMatch(/ – /);
+  });
+});
+
+describe("GET /api/stats/today — the day's exercise", () => {
+  /**
+   * Today shows the exercise for the day on screen, which until now only
+   * appeared on My Week. It reads `exercises` off this response, so the field
+   * is load-bearing for a screen rather than spare data — dropping it would
+   * empty a section with nothing failing anywhere near it.
+   *
+   * `fromWhoop` matters as much as the rows: it picks the watch icon over the
+   * generic one, and it is why the delete button warns that an auto-imported
+   * workout comes back on the next sync instead of staying deleted.
+   */
+  const fetchToday = async (cookie: string, date?: string) => {
+    const query = date ? `?date=${date}` : "";
+    const res = await fetch(`${baseUrl}/api/stats/today${query}`, { headers: { cookie } });
+    return (await res.json()) as {
+      exercises: { description: string; kcalBurned: number | null; fromWhoop: boolean }[];
+    };
+  };
+
+  it("returns the exercises logged on the day being asked for", async () => {
+    const { cookie, userId } = await signUp("alice");
+    const now = daysAgo(0);
+    state.exercises.push(
+      { userId, timestamp: now, description: "45 min gym session", kcalBurned: 420, whoopWorkoutId: null },
+      { userId, timestamp: now, description: "Dog walk", kcalBurned: 130, whoopWorkoutId: null },
+    );
+
+    const today = await fetchToday(cookie);
+    expect(today.exercises.map((e) => e.description)).toEqual(["45 min gym session", "Dog walk"]);
+    expect(today.exercises.map((e) => e.kcalBurned)).toEqual([420, 130]);
+  });
+
+  it("says which ones came off the watch, and never leaks the workout id", async () => {
+    const { cookie, userId } = await signUp("alice");
+    state.exercises.push(
+      { userId, timestamp: daysAgo(0), description: "Running", kcalBurned: 500, whoopWorkoutId: "abc-123" },
+      { userId, timestamp: daysAgo(0), description: "Typed in by hand", kcalBurned: 90, whoopWorkoutId: null },
+    );
+
+    const today = await fetchToday(cookie);
+    expect(today.exercises.map((e) => e.fromWhoop)).toEqual([true, false]);
+    // The id is WHOOP's, not the user's, and the screen has no use for it.
+    expect(today.exercises.every((e) => !("whoopWorkoutId" in e))).toBe(true);
+  });
+
+  it("keeps a day's exercise on its own day", async () => {
+    // The section hides itself when a day has none, so an exercise bleeding
+    // across a date boundary would show a rest day as a training one.
+    const { cookie, userId } = await signUp("alice");
+    state.exercises.push({
+      userId, timestamp: daysAgo(3), description: "Three days ago", kcalBurned: 200, whoopWorkoutId: null,
+    });
+
+    expect((await fetchToday(cookie)).exercises).toEqual([]);
+    expect((await fetchToday(cookie, localDayKey(daysAgo(3), TIMEZONE))).exercises).toHaveLength(1);
   });
 });
