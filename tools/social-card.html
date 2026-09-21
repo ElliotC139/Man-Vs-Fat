@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>QuicKcals social card — source</title>
+    <!--
+      The source for public/icons/social-card.png, the 1200x630 image that
+      represents the site every time somebody pastes a link into WhatsApp,
+      Facebook or a group chat. Kept in the repo rather than regenerated from
+      memory, because an image nobody can rebuild is an image nobody can fix.
+
+      To regenerate: open this file in a browser at 1200x630 and screenshot it,
+      or run it through Playwright:
+
+        await page.setViewportSize({ width: 1200, height: 630 });
+        await page.goto('file:///…/tools/social-card.html');
+        await page.screenshot({ path: 'public/icons/social-card.png' });
+
+      NOTE ON FONTS. The committed PNG was rendered in an environment with no
+      access to Google Fonts, so its type is a system fallback rather than
+      Montserrat and Barlow Condensed. Everything else — the mark, the colours,
+      the layout — is correct. Re-rendering this file anywhere with normal
+      network access will pick up the real faces and produce the intended card.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Barlow+Condensed:wght@700&family=Montserrat:wght@800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        width: 1200px;
+        height: 630px;
+        background: #12602f;
+        color: #f6f7f4;
+        font-family: Inter, "Liberation Sans", system-ui, sans-serif;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 70px 80px;
+        position: relative;
+        overflow: hidden;
+      }
+      /* A pitch, lightly — the app is named after a football league. */
+      .pitch {
+        position: absolute;
+        inset: 0;
+        opacity: 0.07;
+        background: repeating-linear-gradient(90deg, #fff 0 100px, transparent 100px 200px);
+      }
+      .circle {
+        position: absolute;
+        right: -150px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 520px;
+        height: 520px;
+        border: 3px solid rgba(255, 255, 255, 0.14);
+        border-radius: 50%;
+      }
+      .top { display: flex; align-items: center; gap: 18px; position: relative; }
+      .top img { width: 68px; height: 68px; }
+      .word {
+        font-family: Montserrat, "Liberation Sans", sans-serif;
+        font-weight: 800;
+        font-size: 40px;
+        letter-spacing: -0.02em;
+      }
+      h1 {
+        font-family: "Barlow Condensed", "Liberation Sans Narrow", "Liberation Sans", sans-serif;
+        font-weight: 700;
+        font-size: 88px;
+        line-height: 1;
+        letter-spacing: -0.015em;
+        max-width: 16ch;
+        position: relative;
+      }
+      h1 em { font-style: normal; color: #7fe3a8; }
+      .foot {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        font-size: 25px;
+        color: rgba(246, 247, 244, 0.82);
+        position: relative;
+      }
+      .dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(246, 247, 244, 0.45); }
+    </style>
+  </head>
+  <body>
+    <div class="pitch"></div>
+    <div class="circle"></div>
+    <div class="top">
+      <img src="../public/icons/mark-inverse.svg" alt="" />
+      <div class="word">QuicKcals</div>
+    </div>
+    <h1>The calorie diary that <em>stops being work</em>.</h1>
+    <div class="foot">
+      <span>Photograph the plate</span><span class="dot"></span>
+      <span>It does the maths</span><span class="dot"></span>
+      <span>Free, no card</span>
+    </div>
+  </body>
+</html>

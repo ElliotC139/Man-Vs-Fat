@@ -1,5 +1,8 @@
 # QuicKcals
 
+Built and run by Elliot Clifford, a software developer in the UK — not a
+dietitian or a clinician, which the site states plainly. See /about.
+
 > A calorie and macro diary that works out what you ate from a photo, a
 > barcode or a sentence, learns what you actually burn, and judges you on the
 > trend rather than on any single day.
@@ -80,6 +83,7 @@ precisely.
 
 - Home: https://quickcals.com/
 - Privacy: https://quickcals.com/privacy.html
+- About, and who builds it: https://quickcals.com/about
 - Terms: https://quickcals.com/terms.html
 - Guides: https://quickcals.com/guides/
 

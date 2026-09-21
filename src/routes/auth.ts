@@ -1,10 +1,11 @@
 import crypto from "node:crypto";
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { OAuth2Client } from "google-auth-library";
 import { z } from "zod";
 import { config } from "../config";
 import { gateFeature } from "./planGate";
 import { prisma } from "../db";
+import { attributionFrom, type RawAttribution } from "../attribution";
 import {
   hashPassword,
   verifyPassword,
@@ -39,6 +40,17 @@ const signupSchema = z.object({
   // deliberately forgiving: a code that doesn't resolve is ignored rather than
   // refused, because a mistyped invite should still get somebody an account.
   ref: z.string().max(32).optional(),
+  // Where they first arrived from, carried by the page. Every field optional
+  // and forgiving for the same reason the referral code above is: nobody's
+  // account should fail to exist because an analytics field was odd.
+  attribution: z
+    .object({
+      referrer: z.string().max(500).optional(),
+      source: z.string().max(120).optional(),
+      campaign: z.string().max(120).optional(),
+      landing: z.string().max(200).optional(),
+    })
+    .optional(),
 });
 
 const loginSchema = z.object({
@@ -152,6 +164,17 @@ const googleSchema = z.object({
   // Same referral code the password form takes. An invite has to survive
   // someone choosing the Google button, or half the links quietly don't count.
   ref: z.string().max(32).optional(),
+  // Where they first arrived from, carried by the page. Every field optional
+  // and forgiving for the same reason the referral code above is: nobody's
+  // account should fail to exist because an analytics field was odd.
+  attribution: z
+    .object({
+      referrer: z.string().max(500).optional(),
+      source: z.string().max(120).optional(),
+      campaign: z.string().max(120).optional(),
+      landing: z.string().max(200).optional(),
+    })
+    .optional(),
 });
 
 // Undefined (not just falsy) when GOOGLE_SIGNIN_CLIENT_ID is unset, so the
@@ -316,13 +339,33 @@ async function uniqueUsernameFromEmail(email: string): Promise<string> {
   return candidate;
 }
 
+/**
+ * The three columns that record where an account came from.
+ *
+ * The page sends what it saw on the visitor's *first* arrival. The Referer
+ * header on this request is only a fallback, and a weak one: by the time
+ * somebody submits a sign-up form the referring page is almost always our own.
+ * See src/attribution.ts.
+ */
+function attributionColumns(raw: RawAttribution | undefined, req: Request) {
+  const { source, campaign, landing } = attributionFrom(
+    raw ?? { referrer: req.get("referer") },
+    // The host this request actually arrived on, rather than a configured
+    // base URL. It is always present, it is right on staging and on a preview
+    // domain without anybody remembering to set a variable, and it keeps a
+    // column about analytics from being able to fail a signup.
+    req.hostname,
+  );
+  return { signupSource: source, signupCampaign: campaign, signupLanding: landing };
+}
+
 authRouter.post("/signup", async (req, res) => {
   const parsed = signupSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const { username, password, ref } = parsed.data;
+  const { username, password, ref, attribution } = parsed.data;
 
   const existing = await prisma.user.findUnique({ where: { username } });
   if (existing) {
@@ -348,7 +391,10 @@ authRouter.post("/signup", async (req, res) => {
     // The first account gets the admin screen, because otherwise nobody can
     // grant it to anybody and it is unreachable.
     const created = await tx.user.create({
-      data: { username, passwordHash, isAdmin: isFirstUser, referredById },
+      data: {
+        username, passwordHash, isAdmin: isFirstUser, referredById,
+        ...attributionColumns(attribution, req),
+      },
     });
     if (isFirstUser) {
       await tx.matchWeek.updateMany({ where: { userId: null }, data: { userId: created.id } });
@@ -462,7 +508,13 @@ authRouter.post("/google", async (req, res) => {
   const user = await prisma.$transaction(async (tx) => {
     const isFirstUser = (await tx.user.count()) === 0;
     const created = await tx.user.create({
-      data: { username, googleId, email, isAdmin: isFirstUser, referredById },
+      data: {
+        username, googleId, email, isAdmin: isFirstUser, referredById,
+        // Signing in with Google is a signup when no account exists, so it
+        // has to record where they came from too — a channel that sends
+        // Google users would otherwise read as sending nobody.
+        ...attributionColumns(parsed.data.attribution, req),
+      },
     });
     if (isFirstUser) {
       await tx.matchWeek.updateMany({ where: { userId: null }, data: { userId: created.id } });
