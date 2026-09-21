@@ -418,3 +418,65 @@ describe("saying who is behind it", () => {
     expect(read("llms.txt")).toContain("/about");
   });
 });
+
+/**
+ * Invite links.
+ *
+ * The bug: "/?ref=CODE" serves the landing page to anybody without an account
+ * — which is everybody an invite is sent to — and that page read no query
+ * parameters and linked onward to "/?app=1", dropping the code before the
+ * sign-up form ever saw it. Every referral link ever sent lost its code.
+ *
+ * The fix is that attribution.js captures invites, and it loads on every
+ * public page. These hold that arrangement in place, because the failure is
+ * completely silent: the link works, the page loads, and only the credit
+ * disappears.
+ */
+describe("an invite surviving the way in", () => {
+  it("loads the capture script on every page somebody can land on", () => {
+    for (const page of INDEXABLE) {
+      expect(read(page), `${page} would drop an invite code`).toContain("/attribution.js");
+    }
+  });
+
+  it("captures both a referral and a team invite", () => {
+    const js = read("attribution.js");
+    expect(js).toMatch(/params\.get\("ref"\)/);
+    expect(js).toMatch(/params\.get\("team"\)/);
+  });
+
+  it("writes the referral under the key the app already reads", () => {
+    // app.js has read localStorage "referralCode" all along. Writing anything
+    // else here would look right and still lose the code.
+    expect(read("attribution.js")).toContain('REFERRAL_KEY = "referralCode"');
+    expect(read("app.js")).toContain('REFERRAL_KEY = "referralCode"');
+  });
+
+  it("shares a link rather than a code to retype, under the current name", () => {
+    const js = read("app.js");
+    expect(js).toContain("/?team=${encodeURIComponent(team.joinCode)}");
+    expect(js).toContain("Join my team on QuicKcals");
+  });
+
+  it("still shows what other members see before anybody joins", () => {
+    // A link must not skip the disclosure that typing a code by hand shows.
+    const html = read("index.html");
+    expect(html).toContain('id="team-invite-note"');
+    expect(html).toMatch(/Nothing else crosses/);
+  });
+
+  it("has no user-visible trace of the old brand or a match week", () => {
+    // Line-based rather than an attempt to pull string literals out of ten
+    // thousand lines of JavaScript: a regex for that spans template literals
+    // and swallows whole comments, which is how the first version of this
+    // test failed on a comment explaining the fix. A comment may mention
+    // either phrase; a line that is not a comment may not.
+    const isComment = (line: string) => /^\s*(\/\/|\*|\/\*)/.test(line);
+    const offenders = read("app.js")
+      .split("\n")
+      .filter((line) => !isComment(line))
+      .filter((line) => /Man Vs Fat|match week/i.test(line));
+
+    expect(offenders, `user-visible text: ${offenders.join(" | ")}`).toEqual([]);
+  });
+});

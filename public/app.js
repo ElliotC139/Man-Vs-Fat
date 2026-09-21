@@ -409,6 +409,7 @@ const teamCard = document.getElementById("team-card");
 const teamTitle = document.getElementById("team-title");
 const teamRange = document.getElementById("team-range");
 const teamSetup = document.getElementById("team-setup");
+const teamInviteNote = document.getElementById("team-invite-note");
 const teamBody = document.getElementById("team-body");
 const teamRowsEl = document.getElementById("team-rows");
 const teamEmpty = document.getElementById("team-empty");
@@ -428,7 +429,11 @@ async function loadTeamTable() {
   // Off by default, and off means gone rather than empty: most people using
   // this are one person with a diary, and a card asking them to start a league
   // is a card in the way.
-  if (!currentUser?.teamsEnabled) {
+  const invite = window.quickcalsTeamInvite?.() ?? null;
+  // Somebody who followed an invite link gets the card whether or not they
+  // have the team table switched on: they asked for this by opening the link,
+  // and hiding it would make the invite look broken.
+  if (!currentUser?.teamsEnabled && !invite) {
     teamCard.hidden = true;
     return;
   }
@@ -448,6 +453,10 @@ async function loadTeamTable() {
     teamTitle.textContent = "Your team";
     teamRange.textContent = "";
     teamSetup.hidden = false;
+    if (invite) {
+      teamCodeInput.value = invite;
+      teamInviteNote.hidden = false;
+    }
     teamBody.hidden = true;
     return;
   }
@@ -473,13 +482,13 @@ function renderTeamTable(data) {
   teamError.hidden = true;
   teamTitle.textContent = data.team.name;
   teamRange.textContent = data.rangeLabel;
-  teamShareCodeBtn.textContent = `Code: ${data.team.joinCode}`;
+  teamShareCodeBtn.textContent = "Invite someone";
   teamLeaveBtn.textContent = data.team.memberCount === 1 ? "Delete team" : "Leave";
 
   teamRowsEl.innerHTML = "";
   teamEmpty.hidden = data.rows.length > 0;
   if (data.rows.length === 0) {
-    teamEmpty.textContent = "Nobody's in this yet — share the code.";
+    teamEmpty.textContent = "Nobody's in this yet — send someone the invite link.";
     return;
   }
 
@@ -570,6 +579,20 @@ teamJoinBtn.addEventListener("click", () => {
   teamRequest("/api/teams/join", { method: "POST", body: JSON.stringify({ code }) }, (team) => {
     teamCodeInput.value = "";
     currentTeamId = team.id;
+    teamInviteNote.hidden = true;
+    // Spent, so the next person to use this browser doesn't inherit it.
+    window.quickcalsClearTeamInvite?.();
+    // Somebody who has joined a team wants the table, whatever the setting
+    // said before they were invited.
+    if (!currentUser?.teamsEnabled) {
+      currentUser.teamsEnabled = true;
+      settingTeams.checked = true;
+      fetch("/api/auth/me", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamsEnabled: true }),
+      }).catch(() => {});
+    }
     showToast(`Joined ${team.name}`);
   });
 });
@@ -577,14 +600,19 @@ teamJoinBtn.addEventListener("click", () => {
 teamShareCodeBtn.addEventListener("click", async () => {
   const team = myTeams.find((t) => t.id === currentTeamId);
   if (!team) return;
-  const text = `Join my team on Man Vs Fat with the code ${team.joinCode}`;
+  // A link, not a code to retype. Pasting six characters into a group chat asks
+  // every reader to copy it correctly, open the app, find the right box and
+  // type it in — and most won't. The old text also still carried the app's
+  // pre-rebrand name, which it has not been called for a long time.
+  const url = `${window.location.origin}/?team=${encodeURIComponent(team.joinCode)}`;
+  const text = `Join my team on QuicKcals — ${url}`;
   // The OS share sheet where there is one, the clipboard otherwise — same
   // path a shared meal takes.
   try {
     if (navigator.share) await navigator.share({ text });
     else {
-      await navigator.clipboard.writeText(team.joinCode);
-      showToast("Code copied");
+      await navigator.clipboard.writeText(url);
+      showToast("Invite link copied");
     }
   } catch {
     // A share the user backed out of is not a failure worth reporting.
@@ -8750,7 +8778,10 @@ function drawShareCard(ctx, data) {
   ctx.stroke();
   ctx.restore();
 
-  heading(ctx, "MATCH WEEK", 64, PAD, 128, SHARE_COLOURS.pitchLight, 0.16);
+  // "MY WEEK", not "MATCH WEEK". This is the most public string in the app —
+  // it is printed across an image people post into feeds — and it was the last
+  // place the football-league heritage was still visible to anybody.
+  heading(ctx, "MY WEEK", 64, PAD, 128, SHARE_COLOURS.pitchLight, 0.16);
   body(ctx, data.label, 36, PAD, 186, SHARE_COLOURS.faint);
   body(ctx, "Tracked with QuicKcals", 30, PAD, SHARE_H - PAD, SHARE_COLOURS.faint);
 
@@ -10475,7 +10506,7 @@ const INFO_TEXT = {
     "Trailing averages. Calories in comes from your diary; calories out from your tracker, " +
     "averaged only over days it actually recorded. Today is left out, since it's still going.",
   "weekly-calories":
-    "A match week runs Monday evening to Monday evening, so it touches 8 calendar days — the " +
+    "Your week runs Monday evening to Monday evening, so it touches 8 calendar days — the " +
     "first and last count as half each. That's why days logged can be 6.5 rather than a whole " +
     "number. Tap + to see the individual days.",
   "weekly-weight":
@@ -10483,7 +10514,7 @@ const INFO_TEXT = {
     "left out entirely rather than shown as no change. Tap + to see each day's reading.",
   streak:
     "Consecutive days you finished under what you burned. A day you didn't log can't be " +
-    "claimed, so it breaks the run. The Monday a match week starts and ends on counts once, " +
+    "claimed, so it breaks the run. The Monday your week starts and ends on counts once, " +
     "as one day — not as two halves.",
   "weekly-recovery":
     "WHOOP's recovery score is how ready your body is that day, from heart-rate variability " +

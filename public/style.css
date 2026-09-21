@@ -7167,3 +7167,16 @@ body.hide-entry-times .entry-time {
   /* A long list of landing pages wraps rather than pushing the panel wide. */
   overflow-wrap: anywhere;
 }
+
+/* An invite note above the team disclosure. Deliberately does not replace that
+   disclosure — a link must not skip what typing a code by hand would show. */
+.team-invite-note {
+  margin: 0 0 10px;
+  padding: 9px 12px;
+  background: var(--card);
+  border: 1px solid var(--pitch);
+  border-radius: var(--radius-sm);
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--pitch-dark);
+}
