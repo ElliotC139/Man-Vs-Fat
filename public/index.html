@@ -483,6 +483,12 @@
 
           <!-- Nobody in a team sees this; nobody in one sees the setup. -->
           <div id="team-setup">
+            <!-- Only shown to somebody who arrived on an invite link. The
+                 paragraph below it is the disclosure, and it stays on screen:
+                 a link must not skip what a code typed by hand would show. -->
+            <p id="team-invite-note" class="team-invite-note" hidden>
+              You've been invited to a team. Here's what the others would see.
+            </p>
             <p class="muted">
               A table for a group of you, over the same week. Everyone sees each other's
               name, how many days they logged, and how much weight they changed as a

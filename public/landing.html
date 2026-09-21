@@ -876,6 +876,21 @@
       }
     </style>
     <script src="/attribution.js"></script>
+    <!--
+      AdSense, as the script on its own. There is no ad unit on this page and
+      none is wanted: this is the page that has to convert, and an advert
+      beside the sign-up button competes with it. The tag is here because a
+      review that cannot find the code on the site's front page is a review
+      that fails, and because "/" is the URL everything else points at.
+
+      Placement is Auto ads, from the AdSense dashboard. If ads start showing
+      up here and signups drop, exclude this page there rather than deleting
+      this line — the code still has to be findable.
+
+      The publisher id is public: it is in /ads.txt, which is how the domain
+      vouches for the account. tests/seo.test.ts keeps the two in agreement.
+    -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4777766850308562" crossorigin="anonymous"></script>
   </head>
   <body>
     <header class="lp-header">

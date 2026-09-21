@@ -16,6 +16,32 @@ AUTHOR_URL = f"{BASE}/about"
 # schedule would be the first dishonest thing on the site.
 PUBLISHED = "2026-09-19"
 
+# The AdSense publisher id, which is public by design: it sits in ads.txt, and
+# on every page of every site that runs AdSense. It is not a key and grants
+# nothing — the account is identified by it, not authorised by it.
+#
+# Why a literal rather than config: these pages are static files served by
+# sendFile, with no server-side templating to inject anything into, and the
+# script has to be findable in the page source. AdSense's own review looks for
+# this tag, and a tag written in by JavaScript after a fetch is a tag a
+# reviewer may never see. It has to be in the HTML.
+#
+# There is no ad *unit* here on purpose. A unit needs a slot id, slot ids can
+# only be created once an account is approved, and an <ins> carrying no slot
+# is an invalid ad request rather than an empty space. So this is the script
+# on its own: placement is Auto ads, switched on per-site from the AdSense
+# dashboard, where the density is also somebody's decision rather than a
+# constant in here. A fixed foot-of-article unit can replace it later; that is
+# one line in this file and a rebuild.
+#
+# Must match public/ads.txt. A mismatch earns nothing and says nothing — the
+# pages would ask one account for ads while the domain vouches for another.
+# tests/seo.test.ts asserts the two agree.
+ADSENSE_CLIENT = "ca-pub-4777766850308562"
+
+ADSENSE_TAG = f'''    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client={ADSENSE_CLIENT}" crossorigin="anonymous"></script>
+'''
+
 HEADER = '''  <body>
     <header class="lp-header">
       <div class="lp-wrap lp-header-inner">
@@ -86,7 +112,7 @@ def head(*, title, description, url, jsonld):
     <link rel="stylesheet" href="/style.css" />
     <link rel="stylesheet" href="/guide.css" />
     <script src="/attribution.js"></script>
-    <script type="application/ld+json">
+{ADSENSE_TAG}    <script type="application/ld+json">
 {json.dumps(jsonld, indent=6, ensure_ascii=False)}
     </script>
   </head>
