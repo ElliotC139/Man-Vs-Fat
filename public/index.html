@@ -427,6 +427,24 @@
           </div>
           <div id="today-entry-list"></div>
         </section>
+
+        <!--
+          Exercise for the day being viewed. Read-only on purpose: logging one
+          lives on My Week, and a second form here would be two places to do
+          the same thing with no way to tell which you used. What was missing
+          was only ever the seeing — a WHOOP workout auto-imports and then was
+          invisible until you changed tab.
+
+          Hidden when the day has none, like the other conditional cards, so a
+          rest day doesn't cost a heading and an empty box.
+        -->
+        <section id="today-exercise-section" data-module="today:exercise" data-module-name="Exercise" hidden>
+          <div class="section-header">
+            <h2 id="today-exercise-heading">Exercise today</h2>
+            <span id="today-exercise-total" class="muted"></span>
+          </div>
+          <div id="today-exercise-list"></div>
+        </section>
       </main>
     </div>
 

@@ -4474,13 +4474,19 @@ tr.has-tooltip:active {
 
 
 /* Every screen has to clear the bar. Applied to the scrolling containers
-   rather than to body, so a header still sits flush at the top. */
+   rather than to body, so a header still sits flush at the top.
+
+   Every screen that shows the bar needs a line here, and a screen added later
+   does not announce that it is missing one — it just quietly hides its last
+   card behind the bar, which is how Admin shipped. tests/layout.test.ts reads
+   the screens out of index.html and fails if one is absent. */
 #today-screen main,
 #app-shell main,
 #stats-screen main,
 #settings-screen main,
 #food-library-screen main,
-#review-screen main {
+#review-screen main,
+#admin-screen main {
   padding-bottom: calc(84px + env(safe-area-inset-bottom));
 }
 
