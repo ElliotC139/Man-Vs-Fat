@@ -35,3 +35,31 @@ merge rather than discovering it next time.
 
 Bump `VERSION` in `public/sw.js` on any deploy that changes a file in
 `SHELL_ASSETS`.
+
+## Secrets
+
+`fly secrets set` from a terminal deploys immediately. **The Fly dashboard does
+not** — saving a secret there only stages it, and it reaches the running
+machines when you press **Deploy Secrets**. A staged secret shows an amber dot
+beside its name in the list, and that dot is the only sign; the name and digest
+look identical either way. Symptom is a feature that stays switched off while
+the secret plainly exists.
+
+## Food data sources
+
+Three providers, two of which need keys (`src/foodSearchProviders.ts`):
+
+- **Open Food Facts** — packaged food and barcodes. Free, no key, always on.
+- **USDA** (`USDA_API_KEY`) — plain ingredients. Free key.
+- **Nutritionix** (`NUTRITIONIX_APP_ID` + `NUTRITIONIX_APP_KEY`) — restaurant
+  and pub menus. Paid, and **both** must be set or the "Eating out" tab stays
+  dark.
+
+`GET /api/food-search?q=` (empty query) returns `sources: {menus, ingredients}`
+without touching the database, which is the quickest way to see what is
+actually switched on in a running deployment.
+
+A provider that throws is swallowed by `safely()` so one bad source cannot kill
+a whole search — it logs and returns nothing. So "no results from X" and "X is
+not configured" look identical from the app; check the flags above, then the
+logs.
