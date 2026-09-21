@@ -13,12 +13,17 @@ a call to action and a medical disclaimer. Editing any of that by hand means
 editing it six times and getting it right six times, and the first thing to
 drift is always the one nobody re-checks.
 
-- `shell.py` — the head, chrome, byline, closing card and disclaimer.
+- `shell.py` — the head, chrome, byline, closing card, disclaimer and the
+  AdSense script tag. The publisher id lives here and has to match
+  `public/ads.txt`; `public/landing.html` carries the same tag by hand, being
+  the one public page this generator does not write.
 - `g1.py`–`g5.py` — one guide each: metadata and body copy.
 - `hub.py` — `/guides/`, the index.
 - `about.py` — `/about`, which shares the same shell.
 - `build.py` — runs all of them.
 
 `tests/seo.test.ts` holds the output to its promises: a minimum length, a
-byline, a date, a named author in the structured data, the disclaimer, and
-links onward to other guides.
+byline, a date, a named author in the structured data, the disclaimer, links
+onward to other guides, and the advertising code — that it is in the page
+source rather than written in by JavaScript, that its publisher id agrees with
+`ads.txt`, and that no ad unit ships without a slot id.

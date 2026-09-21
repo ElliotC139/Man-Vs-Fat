@@ -480,3 +480,93 @@ describe("an invite surviving the way in", () => {
     expect(offenders, `user-visible text: ${offenders.join(" | ")}`).toEqual([]);
   });
 });
+
+/**
+ * The AdSense code, on the pages a reviewer can actually reach.
+ *
+ * The first application was turned down for "low value content". Three
+ * crawlable pages was most of that, and ten pages of prose answers it — but
+ * the other half was structural and easy to miss: every ad unit this app has
+ * ever had lives on a tab inside the signed-in diary. A reviewer opening
+ * quickcals.com saw a site with no advertising code anywhere on it and no way
+ * to reach any without creating an account.
+ *
+ * So the script goes in the HTML of the public pages. These tests hold the
+ * three things about that which fail silently:
+ *
+ *   - it is present, and present in the source rather than written in later
+ *     by JavaScript, which is the form a crawler is guaranteed to see;
+ *   - the publisher id agrees with ads.txt, because a page asking one account
+ *     for ads while the domain vouches for another earns nothing at all and
+ *     gives no sign that it is doing so;
+ *   - no <ins> unit without a slot id, which is an invalid ad request rather
+ *     than a blank space, and is the sort of thing that gets an account
+ *     limited rather than merely earning nothing.
+ */
+describe("the advertising code a reviewer has to find", () => {
+  const AD_SCRIPT = /<script async src="https:\/\/pagead2\.googlesyndication\.com\/pagead\/js\/adsbygoogle\.js\?client=(ca-pub-\d+)" crossorigin="anonymous"><\/script>/;
+
+  /** Public pages that carry the script: the front page and all the prose. */
+  const CARRIES_ADS = [
+    "landing.html",
+    "about.html",
+    "guides/index.html",
+    ...GUIDES.map((slug) => `guides/${slug}.html`),
+  ] as const;
+
+  /** The publisher id as the domain declares it, which is the source of truth. */
+  const declaredClient = () => {
+    // ads.txt names the publisher without the "ca-" prefix, which is how that
+    // file wants it; the script tag wants it with. Parsed rather than matched
+    // against a constant, so a hand-edit to either file that drifts from the
+    // other fails here instead of quietly earning nothing.
+    const record = read("ads.txt")
+      .split("\n")
+      .find((l) => l.trim().startsWith("google.com,"))
+      ?.split(",");
+    expect(record, "no google.com record in ads.txt").toBeDefined();
+    return `ca-${record![1]?.trim()}`;
+  };
+
+  it.each(CARRIES_ADS)("%s carries the AdSense script in its source", (page) => {
+    expect(read(page)).toMatch(AD_SCRIPT);
+  });
+
+  it.each(CARRIES_ADS)("%s asks for ads as the account ads.txt vouches for", (page) => {
+    expect(read(page).match(AD_SCRIPT)![1]).toBe(declaredClient());
+  });
+
+  it.each(CARRIES_ADS)("%s has no ad unit without a slot id", (page) => {
+    // An <ins class="adsbygoogle"> with no data-ad-slot is a request Google
+    // cannot fill and counts against the account. Until a unit exists there
+    // is no slot id to write, so placement is Auto ads and there is no <ins>.
+    const units = read(page).match(/<ins[^>]*class="[^"]*adsbygoogle[^"]*"[^>]*>/g) ?? [];
+    const slotless = units.filter((unit) => !/data-ad-slot="[^"]+"/.test(unit));
+    expect(slotless, `slotless units: ${slotless.join(" | ")}`).toEqual([]);
+  });
+
+  it.each(["privacy.html", "terms.html"])("%s stays clean", (page) => {
+    // The policy pages say what the advertising does. Running advertising on
+    // them while they do it is the kind of detail that reads as carelessness
+    // to the one reader who is checking.
+    expect(read(page)).not.toMatch(/googlesyndication/);
+  });
+
+  it("the app shell still loads its ads at runtime, not from the markup", () => {
+    // index.html is behind the sign-in and serves /s/:token as well. Its ads
+    // depend on the plan, so they are mounted by renderAds() from /api/plan —
+    // a hardcoded script here would load Google's JS for people who have paid
+    // not to have it.
+    expect(read("index.html")).not.toMatch(/googlesyndication/);
+    expect(read("app.js")).toMatch(/googlesyndication/);
+  });
+
+  it("the privacy policy says the public pages carry it", () => {
+    // The policy used to say a paid plan loads no advertising script "at
+    // all". Putting the script on the guides made that sentence false for a
+    // subscriber reading one, which is a promise broken rather than a typo.
+    const html = read("privacy.html");
+    expect(html).toMatch(/public pages/i);
+    expect(html).toMatch(/Inside the app, a paid plan loads no advertising script/);
+  });
+});
