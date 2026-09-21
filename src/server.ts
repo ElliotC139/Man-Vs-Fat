@@ -201,6 +201,15 @@ app.get("/healthz", (_req, res) => res.json({ ok: true }));
  * Registered after express.static, so a real file always wins and this only
  * ever sees paths that matched nothing on disk.
  */
+/**
+ * The about page, without a file extension, for the same reason the guides
+ * have none. Its own route rather than express.static's `extensions` option —
+ * see the note on the guides route below for why that option is not used.
+ */
+app.get("/about", (_req, res) => {
+  res.sendFile(path.join(process.cwd(), "public", "about.html"));
+});
+
 app.get("/guides/:slug", (req, res, next) => {
   const slug = String(req.params.slug ?? "");
   // The slug is pasted into a filesystem path, so it is allowed to be a plain

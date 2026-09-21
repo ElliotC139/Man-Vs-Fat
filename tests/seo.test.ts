@@ -47,6 +47,7 @@ const INDEXABLE = [
   "landing.html",
   "privacy.html",
   "terms.html",
+  "about.html",
   "guides/index.html",
   ...GUIDES.map((slug) => `guides/${slug}.html`),
 ] as const;
@@ -64,6 +65,7 @@ const CANONICAL: Record<string, string> = {
   "terms.html": "https://quickcals.com/terms.html",
   // Extensionless, which is what src/server.ts serves them at. If these two
   // ever disagree, every guide has a canonical pointing at a URL that 404s.
+  "about.html": "https://quickcals.com/about",
   "guides/index.html": "https://quickcals.com/guides/",
   ...Object.fromEntries(
     GUIDES.map((slug) => [`guides/${slug}.html`, `https://quickcals.com/guides/${slug}`]),
@@ -356,5 +358,63 @@ describe("the guides", () => {
       expect(llms, `llms.txt is missing ${slug}`).toContain(`/guides/${slug}`);
       expect(sitemap, `sitemap is missing ${slug}`).toContain(`/guides/${slug}`);
     }
+  });
+});
+
+/**
+ * Who is talking.
+ *
+ * Weight loss is what Google calls a YMYL subject — the kind where advice from
+ * nobody in particular is held to a visibly higher bar, and rightly. These
+ * hold the site to naming its author, dating the work, and saying out loud
+ * that he is not a clinician.
+ */
+describe("saying who is behind it", () => {
+  const AUTHOR = "Elliot Clifford";
+
+  it.each(GUIDES)("%s carries a byline", (slug) => {
+    const html = read(`guides/${slug}.html`);
+    expect(html).toContain(`Written by <a href="/about">${AUTHOR}</a>`);
+  });
+
+  it.each(GUIDES)("%s is dated", (slug) => {
+    // A machine-readable date, not just words: it is what a crawler reads and
+    // what stops five pages looking like they appeared from nowhere.
+    expect(read(`guides/${slug}.html`)).toMatch(/<time datetime="\d{4}-\d{2}-\d{2}">/);
+  });
+
+  it.each(GUIDES)("%s names a person in its structured data", (slug) => {
+    // A visible byline and an anonymous Article is worse than either alone.
+    const block = read(`guides/${slug}.html`).match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1];
+    const graph = JSON.parse(block!)["@graph"] as Record<string, any>[];
+    const article = graph.find((n) => n["@type"] === "Article");
+    expect(article?.author).toMatchObject({ "@type": "Person", name: AUTHOR });
+    expect(article?.datePublished).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("has an about page that names him and a way to reach him", () => {
+    const about = read("about.html");
+    expect(about).toContain(AUTHOR);
+    expect(about).toContain("mailto:hello@quickcals.com");
+  });
+
+  it("states plainly that he is not a clinician", () => {
+    // The single most important sentence on the page, for a site that writes
+    // about what to eat. If this ever gets softened, the test should fail.
+    const about = read("about.html").toLowerCase();
+    expect(about).toMatch(/not a dietitian|not a (dietitian|nutritionist|doctor)/);
+    expect(about).toMatch(/no clinical qualification/);
+  });
+
+  it("is reachable from the landing page and every guide", () => {
+    expect(read("landing.html")).toContain('href="/about"');
+    for (const slug of GUIDES) {
+      expect(read(`guides/${slug}.html`), `${slug} does not link to /about`).toContain('href="/about"');
+    }
+  });
+
+  it("is in the sitemap and llms.txt", () => {
+    expect(read("sitemap.xml")).toContain("https://quickcals.com/about");
+    expect(read("llms.txt")).toContain("/about");
   });
 });

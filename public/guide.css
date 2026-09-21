@@ -104,7 +104,15 @@ main {
 .lp-nav a.lp-cta { color: var(--bg); }
 .lp-nav a.lp-cta:hover { color: var(--bg); }
 .lp-cta {
-  display: inline-block;
+  /* inline-flex and nowrap, not inline-block: at phone width the header has a
+     brand, two links and this button, and an inline-block that is allowed to
+     wrap turns "Open the app" into a three-line blob 87px tall. landing.html
+     sets the same two properties for the same reason. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  flex: 0 0 auto;
   background: var(--pitch-dark);
   color: var(--bg);
   padding: 9px 16px;
@@ -114,6 +122,14 @@ main {
   font-size: 0.9rem;
 }
 .lp-cta:hover { background: var(--pitch); }
+
+/* Below this the nav links have to go, or they push the button out of the
+   header entirely. Both are in the footer of every page, so nothing is lost.
+   Copied from landing.html, breakpoint included, so the two headers behave
+   identically rather than nearly. */
+@media (max-width: 620px) {
+  .lp-nav .lp-nav-link { display: none; }
+}
 
 .lp-footer {
   border-top: 1px solid var(--hairline);
