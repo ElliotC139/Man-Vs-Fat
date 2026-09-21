@@ -10,7 +10,15 @@ vi.mock("../src/config", () => ({
   },
 }));
 
-import { allPlans, planFor, PLAN_IDS , type Plan } from "../src/plans";
+import {
+  allPlans,
+  basePlanFor,
+  planFor,
+  PLAN_IDS,
+  WHOOP_FREE_UNTIL,
+  whoopPromotionActive,
+  type Plan,
+} from "../src/plans";
 import { costMicros } from "../src/modelPricing";
 
 /**
@@ -230,5 +238,67 @@ describe("the ladder", () => {
       if (plan.yearlyPence === null) continue;
       expect(plan.yearlyPence).toBeLessThan(plan.pricePence * 12);
     }
+  });
+});
+
+/**
+ * WHOOP, free to everybody for a month, then Pro again.
+ *
+ * The launch post to r/WHOOP promises a specific date. That makes this a
+ * commitment made in public rather than a flag, and the failure modes are
+ * both bad in the same way: ending early makes a liar of the post, and never
+ * ending at all teaches the people who believed it not to next time.
+ *
+ * So the window is tested at both edges rather than only in the middle, and
+ * the plan data itself is checked to be unchanged underneath — when the date
+ * passes, Pro has to still be the only tier with a watch on it, with nothing
+ * left behind needing a deploy to clean up.
+ */
+describe("the WHOOP promotion", () => {
+  const during = new Date(WHOOP_FREE_UNTIL.getTime() - 1000);
+  const after = new Date(WHOOP_FREE_UNTIL.getTime() + 1000);
+
+  it("gives every plan a WHOOP connection while it runs", () => {
+    for (const id of PLAN_IDS) {
+      expect(planFor(id, during).health, `${id} during the promotion`).toBe(true);
+    }
+  });
+
+  it("takes it back the moment the window closes", () => {
+    expect(planFor("free", after).health).toBe(false);
+    expect(planFor("plus", after).health).toBe(false);
+    // Pro paid for it and keeps it either way — that is the whole point of
+    // the promotion ending rather than the feature moving.
+    expect(planFor("pro", after).health).toBe(true);
+  });
+
+  it("does not quietly rewrite the plans underneath", () => {
+    // basePlanFor is what the admin screen shows as "unchanged", and what the
+    // app falls back to. A promotion that edited the data in place would
+    // outlive its own end date.
+    expect(basePlanFor("free").health).toBe(false);
+    expect(basePlanFor("plus").health).toBe(false);
+    expect(basePlanFor("pro").health).toBe(true);
+  });
+
+  it("leaves Pro's selling points describing Pro", () => {
+    // The highlights are read by the pricing page, which will still be there
+    // in November. Promoting a feature must not edit the copy that explains
+    // why the tier exists.
+    const pro = planFor("pro", during);
+    expect(pro.highlights.some((line) => /WHOOP/i.test(line))).toBe(true);
+    expect(planFor("free", during).highlights.some((line) => /WHOOP/i.test(line))).toBe(false);
+  });
+
+  it("agrees with itself about whether it is running", () => {
+    expect(whoopPromotionActive(during)).toBe(true);
+    expect(whoopPromotionActive(after)).toBe(false);
+    expect(whoopPromotionActive(new Date(WHOOP_FREE_UNTIL))).toBe(false);
+  });
+
+  it("ends on a date that is actually in the future when shipped", () => {
+    // A promotion committed with a date already past would advertise an offer
+    // nobody can take, and the post would be wrong the day it went up.
+    expect(WHOOP_FREE_UNTIL.getTime()).toBeGreaterThan(new Date("2026-09-21T00:00:00Z").getTime());
   });
 });

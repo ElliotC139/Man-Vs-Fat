@@ -10,7 +10,7 @@
 import { Router } from "express";
 import { requireAuth } from "../auth";
 import { readAllowance } from "../entitlements";
-import { allPlans } from "../plans";
+import { allPlans, WHOOP_FREE_UNTIL, whoopPromotionActive } from "../plans";
 import { adsConfigured, config } from "../config";
 
 export const planRouter = Router();
@@ -67,6 +67,15 @@ planRouter.get("/", requireAuth, async (req, res) => {
       allowance: plan.dailyEstimates,
       remaining: allowance.remainingToday,
     },
+    // The WHOOP promotion, while it is running, so the app can say what is
+    // free and until when. Sent to everyone rather than only to accounts that
+    // gain from it: a Pro subscriber seeing "free for everybody until the
+    // 21st" is being told what their neighbours get, which is the honest
+    // version, and it stops the note reading as a different app to different
+    // people. Null once it has ended, and the whole thing disappears.
+    promotion: whoopPromotionActive()
+      ? { feature: "health" as const, endsAt: WHOOP_FREE_UNTIL.toISOString() }
+      : null,
     // Deliberately not the pounds. What this account has cost to run is the
     // operator's business, not something to put in front of the person — "you
     // have used 43p of your £2" is a strange thing to tell a customer, and it

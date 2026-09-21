@@ -1085,6 +1085,24 @@ h2 {
 .whoop-status-row {
   margin-bottom: 8px;
 }
+
+/* The dated promotion note. Given the amber accent rather than the muted grey
+   the notes around it use, because this one has an expiry on it and is worth
+   reading once — but not the pitch green, which in this app means "this is
+   fine" and would read as a status rather than a deadline.
+
+   --muted measures 4.11:1 on --bg, which is below AA, so this uses the same
+   darker treatment the guides do rather than inheriting a known shortfall. */
+.promo-note {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--amber);
+  border-radius: 0 var(--radius-sm, 8px) var(--radius-sm, 8px) 0;
+  background: var(--amber-soft, rgba(212, 143, 0, 0.1));
+  color: var(--ink);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
 #whoop-connect-btn,
 #whoop-disconnect-btn {
   width: auto;

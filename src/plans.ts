@@ -373,13 +373,53 @@ export function isPlanId(value: unknown): value is PlanId {
 }
 
 /**
+ * WHOOP, free on every plan until this moment, and Pro-only again afterwards.
+ *
+ * Launching to r/WHOOP with the WHOOP integration behind the £9.99 tier is
+ * asking people to take the headline feature on trust and then pay to see it.
+ * This opens it to everybody for a month so the feedback is about whether the
+ * thing is any good rather than about the price of finding out.
+ *
+ * It is a real end date, not a soft one, and the post says so plainly. A
+ * "limited time" that quietly never ends teaches people not to believe the
+ * next thing you tell them; one that ends when it said it would is just a
+ * promise kept.
+ *
+ * End of day UK on 21 October 2026. Stated in UTC because the cutoff should
+ * not move by an hour when the clocks change at the end of that month.
+ */
+export const WHOOP_FREE_UNTIL = new Date("2026-10-21T22:59:59Z");
+
+/** Whether the WHOOP promotion is still running at this instant. */
+export function whoopPromotionActive(now: Date = new Date()): boolean {
+  return now.getTime() < WHOOP_FREE_UNTIL.getTime();
+}
+
+/**
  * The plan for a stored value.
  *
  * Anything unrecognised reads as free, which is the safe direction: a bad
  * value should ration someone, never hand them an unlimited account.
+ *
+ * The promotion is applied *before* the lens, so an operator who has turned
+ * `health` off for a tier from the admin screen still wins. A promotion is a
+ * default with a date on it; an override is somebody deciding.
  */
-export function planFor(stored: string | null | undefined): Plan {
-  return lens(basePlanFor(stored));
+export function planFor(stored: string | null | undefined, now: Date = new Date()): Plan {
+  return lens(withWhoopPromotion(basePlanFor(stored), now));
+}
+
+/**
+ * The plan as written, plus the promotion if it is running.
+ *
+ * Only `health` moves. The highlights are left alone deliberately: the promo
+ * is not a change to what Pro is for, and rewriting a tier's selling points
+ * for a month would leave the pricing page describing a product that stops
+ * existing in October.
+ */
+function withWhoopPromotion(plan: Plan, now: Date): Plan {
+  if (plan.health || !whoopPromotionActive(now)) return plan;
+  return { ...plan, health: true };
 }
 
 /**

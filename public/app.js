@@ -194,6 +194,7 @@ const exercisePhotoStatus = document.getElementById("exercise-photo-status");
 const exerciseSubmit = document.getElementById("exercise-submit");
 const exerciseError = document.getElementById("exercise-error");
 const exerciseListEl = document.getElementById("exercise-list");
+const whoopPromoNote = document.getElementById("whoop-promo-note");
 const todayExerciseSection = document.getElementById("today-exercise-section");
 const todayExerciseHeading = document.getElementById("today-exercise-heading");
 const todayExerciseTotal = document.getElementById("today-exercise-total");
@@ -1650,6 +1651,7 @@ function renderPlan() {
   renderPlanOptions(plan.id);
   renderAds(currentPlan.ads);
   applyPlanGates(plan);
+  renderWhoopPromo(currentPlan.promotion);
 
   // The line under the log button: silent until it isn't.
   const low = !monthlyCapReached && estimates.remaining <= ALLOWANCE_WARN_AT;
@@ -1662,6 +1664,38 @@ function renderPlan() {
       : `${estimates.remaining} AI ${estimates.remaining === 1 ? "estimate" : "estimates"} left today.`;
   }
 }
+
+/**
+ * The WHOOP promotion note in Settings, while there is one.
+ *
+ * The server decides whether it is running, so this never has to know the
+ * date or do its own arithmetic — when the promotion ends, `promotion` comes
+ * back null and the note disappears without anybody deploying anything.
+ *
+ * It says what it is and when it stops, in that order. A note that only says
+ * "free right now" leaves someone to find out the hard way; one that names
+ * the date is a thing they can plan around, and it is the same sentence the
+ * launch post makes, which is the point.
+ */
+function renderWhoopPromo(promotion) {
+  if (!whoopPromoNote) return;
+  if (!promotion || promotion.feature !== "health") {
+    whoopPromoNote.hidden = true;
+    whoopPromoNote.textContent = "";
+    return;
+  }
+  const ends = new Date(promotion.endsAt);
+  whoopPromoNote.hidden = false;
+  whoopPromoNote.textContent =
+    `WHOOP is free on every plan until ${promoDateFmt.format(ends)}, after which it goes back to being part of Pro. Anything already synced stays in your diary.`;
+}
+
+/** "21 October" — the date the promotion ends, as somebody would say it. */
+const promoDateFmt = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "long",
+  timeZone: "Europe/London",
+});
 
 /**
  * The monthly/yearly switch.

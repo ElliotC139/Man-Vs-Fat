@@ -54,6 +54,7 @@ vi.mock("../src/db", () => {
 
 import { authRouter } from "../src/routes/auth";
 import { planRouter } from "../src/routes/plan";
+import { WHOOP_FREE_UNTIL } from "../src/plans";
 
 let server: http.Server;
 let baseUrl: string;
@@ -136,5 +137,33 @@ describe("GET /api/plan — the ad configuration", () => {
     // way to get an ad-free account.
     const body = await plan(await signUpAs("enterprise-gold"));
     expect(body.ads).not.toBeNull();
+  });
+});
+
+describe("GET /api/plan — the WHOOP promotion", () => {
+  /**
+   * The app never does the date arithmetic. It shows the note when the server
+   * sends one and hides it when the server stops, which is what makes the
+   * promotion end on its own rather than needing a deploy on the day.
+   *
+   * So the contract worth holding is the shape: which feature, and when it
+   * stops. The window itself is tested in plans.test.ts, at both edges.
+   */
+  it("tells a free account that WHOOP is on, and when that stops", async () => {
+    const body = await plan(await signUpAs("free"));
+    expect(body.promotion).toEqual({
+      feature: "health",
+      endsAt: WHOOP_FREE_UNTIL.toISOString(),
+    });
+    // And the entitlement itself actually moved, not just the note about it.
+    expect(body.plan.health).toBe(true);
+  });
+
+  it("tells a Pro account the same thing", async () => {
+    // A subscriber seeing what everyone else has for free is the honest
+    // version. Sending it only to the accounts that gain would make this a
+    // different app depending on who you are.
+    const body = await plan(await signUpAs("pro"));
+    expect(body.promotion?.feature).toBe("health");
   });
 });
