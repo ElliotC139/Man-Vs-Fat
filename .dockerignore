@@ -3,3 +3,5 @@ dist
 data
 .env
 *.log
+# The promo video: source, fonts and the rendered MP4. None of it is served.
+tools/promo

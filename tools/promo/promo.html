@@ -1,0 +1,966 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <title>QuicKcals Promo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      The source for the social-media promo video (tools/promo/out/*.mp4):
+      a 35-second, 1080x1920 vertical piece for Reels, TikTok and Shorts.
+
+      Every frame is a pure function of time. seek(t) lays the whole stage out
+      for second t, and nothing else moves it, so the renderer can step
+      through the timeline one frame at a time and get exactly the same
+      picture on every run. Open this file in a browser and it plays itself
+      on a loop, which is the quickest way to review a change; render.mjs
+      turns it into the MP4. See README.md.
+
+      The phone screens are drawn, not screenshotted. They copy the app's
+      colours, faces and numbers (the same day as the landing page mock:
+      1,512 of 2,100 kcal), so if the app's look changes, change it here too.
+    -->
+    <link rel="stylesheet" href="fonts/fonts.css" />
+    <style>
+      :root {
+        --g1: #2ec26b;
+        --g2: #7fe3a8;
+        --brand: #176b3a;
+        --pitch: #1f9d52;
+        --pitch-dark: #12602f;
+        --bg: #f6f7f4;
+        --ink: #0f1417;
+        --muted: #6e7b74;
+        --hair: #e6ece8;
+        --grey: #86868b;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { background: #000; height: 100%; overflow: hidden; }
+      body { font-family: Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+
+      #stage {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 1920px;
+        background: #000;
+        overflow: hidden;
+        color: #f5f5f7;
+        transform-origin: 0 0;
+      }
+      .abs { position: absolute; }
+      .scene { position: absolute; inset: 0; will-change: opacity, transform; }
+      .grad {
+        background: linear-gradient(100deg, #7fe3a8 0%, #2ec26b 45%, #1f9d52 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .w { display: inline-block; will-change: transform, opacity, filter; }
+
+      /* ── Ambient glow ─────────────────────────────────────────────── */
+      .glow {
+        position: absolute;
+        width: 1500px;
+        height: 1500px;
+        border-radius: 50%;
+        background: radial-gradient(closest-side, rgba(46, 194, 107, 0.34), rgba(23, 107, 58, 0.12) 55%, transparent);
+        filter: blur(40px);
+      }
+
+      /* ── Scene 1: logo ────────────────────────────────────────────── */
+      #s1 .mark { left: 390px; top: 620px; width: 300px; height: 300px; }
+      #s1 .wordmark {
+        left: 0; right: 0; top: 980px; text-align: center;
+        font-family: Montserrat, sans-serif; font-weight: 800; font-size: 132px;
+        letter-spacing: -0.03em; color: #fff;
+      }
+
+      /* ── Big type ─────────────────────────────────────────────────── */
+      .big {
+        left: 60px; right: 60px; text-align: center;
+        font-weight: 800; font-size: 150px; line-height: 1.02; letter-spacing: -0.045em;
+      }
+
+      /* ── Captions above the phone ─────────────────────────────────── */
+      .cap { position: absolute; left: 50px; right: 50px; top: 150px; text-align: center; }
+      .cap h2 { font-weight: 800; font-size: 112px; line-height: 1.02; letter-spacing: -0.045em; color: #f5f5f7; }
+      .cap p { margin-top: 26px; font-weight: 500; font-size: 40px; line-height: 1.25; color: var(--grey); letter-spacing: -0.01em; }
+
+      /* ── The phone ────────────────────────────────────────────────── */
+      #phoneWrap { position: absolute; inset: 0; perspective: 2600px; }
+      #phone {
+        position: absolute; left: 230px; top: 590px; width: 620px; height: 1270px;
+        border-radius: 112px;
+        background: linear-gradient(145deg, #5b5f63, #2a2c2f 30%, #4a4d51 55%, #1d1f21 80%, #55595d);
+        padding: 7px;
+        box-shadow: 0 60px 120px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+        transform-style: preserve-3d;
+      }
+      #phone .bezel { position: absolute; inset: 7px; border-radius: 105px; background: #050505; padding: 14px; }
+      #phone .screen { position: relative; width: 100%; height: 100%; border-radius: 92px; overflow: hidden; background: var(--bg); }
+      #phone .island {
+        position: absolute; top: 18px; left: 50%; width: 176px; height: 52px; margin-left: -88px;
+        border-radius: 30px; background: #000; z-index: 50;
+      }
+      #phone .btn { position: absolute; width: 8px; border-radius: 3px; background: linear-gradient(90deg, #3a3d40, #6a6e72); }
+      .glare {
+        position: absolute; inset: 0; border-radius: 92px; pointer-events: none; z-index: 60;
+        background: linear-gradient(115deg, rgba(255, 255, 255, 0.13) 0%, rgba(255, 255, 255, 0.02) 28%, transparent 40%);
+      }
+
+      /* Each screen is laid out in iPhone points (390 wide) and scaled up. */
+      .scr {
+        position: absolute; left: 0; top: 0; width: 390px; height: 824px;
+        transform-origin: 0 0; overflow: hidden; background: var(--bg); color: var(--ink);
+        font-family: Inter, sans-serif;
+      }
+      .status { position: absolute; left: 0; right: 0; top: 0; height: 50px; z-index: 40; font-size: 16px; font-weight: 600; }
+      .status .time { position: absolute; left: 38px; top: 17px; }
+      .status .icons { position: absolute; right: 30px; top: 18px; display: flex; gap: 6px; align-items: center; }
+      .status.light { color: #fff; }
+
+      /* App chrome */
+      .appbar { position: absolute; left: 20px; right: 20px; top: 58px; display: flex; align-items: center; gap: 8px; }
+      .appbar img, .appbar svg { width: 30px; height: 30px; }
+      .appbar .name { font-family: Montserrat, sans-serif; font-weight: 800; font-size: 20px; color: var(--pitch-dark); letter-spacing: -0.02em; }
+      .appbar .av { margin-left: auto; width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #2ec26b, #176b3a); color: #fff; font-size: 13px; font-weight: 700; display: grid; place-items: center; }
+      .card { background: #fff; border-radius: 20px; box-shadow: 0 1px 2px rgba(15, 20, 23, 0.04), 0 6px 20px rgba(15, 20, 23, 0.05); }
+      .kc { font-family: "Barlow Condensed", sans-serif; font-weight: 700; letter-spacing: -0.01em; }
+      .tag {
+        display: inline-block; font-size: 11px; font-weight: 600; font-style: normal; padding: 3px 8px; border-radius: 999px;
+        background: #e8f5ed; color: var(--pitch-dark);
+      }
+
+      /* Camera screen */
+      .wood {
+        position: absolute; inset: 0;
+        background:
+          repeating-linear-gradient(92deg, rgba(0,0,0,0.06) 0 3px, transparent 3px 19px),
+          repeating-linear-gradient(88deg, rgba(255,255,255,0.05) 0 2px, transparent 2px 41px),
+          linear-gradient(180deg, #6b4a31, #8a6242 40%, #5e3f28);
+      }
+      .plate {
+        position: absolute; left: 22px; top: 190px; width: 346px; height: 346px; border-radius: 50%;
+        background: radial-gradient(circle at 50% 50%, #fbfbf8 0 58%, #eeeee8 63%, #fdfdfb 67%, #e3e2dc 72%, #f7f7f3 80%, #d8d6cf 100%);
+        box-shadow: 0 26px 40px rgba(0, 0, 0, 0.45), 0 4px 10px rgba(0, 0, 0, 0.3);
+      }
+      .leaf { position: absolute; border-radius: 60% 40% 60% 40%; }
+      .chk {
+        position: absolute; width: 104px; height: 36px; border-radius: 16px;
+        background:
+          repeating-linear-gradient(115deg, transparent 0 14px, rgba(90, 45, 10, 0.55) 14px 18px),
+          linear-gradient(180deg, #e7b77b, #c98a4b 60%, #b27538);
+        box-shadow: inset 0 -4px 6px rgba(0, 0, 0, 0.18), 0 3px 5px rgba(0, 0, 0, 0.18);
+      }
+      .avo {
+        position: absolute; width: 90px; height: 40px; border-radius: 50% 50% 50% 50% / 80% 80% 20% 20%;
+        background: radial-gradient(ellipse at 50% 90%, #e9ec9a 0 40%, #b9d36a 65%, #6c9a2e 88%, #2f4a14 100%);
+        box-shadow: 0 3px 5px rgba(0, 0, 0, 0.2);
+      }
+      .tom {
+        position: absolute; width: 34px; height: 34px; border-radius: 50%;
+        background: radial-gradient(circle at 35% 30%, #ffb3a1 0 8%, #f0412c 30%, #b81f10 90%);
+        box-shadow: 0 3px 5px rgba(0, 0, 0, 0.25);
+      }
+      .feta { position: absolute; width: 18px; height: 16px; border-radius: 5px; background: linear-gradient(135deg, #fffef6, #ecebd9); box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+      .camtop { position: absolute; left: 0; right: 0; top: 56px; text-align: center; color: #fff; font-weight: 600; font-size: 17px; z-index: 5; }
+      .camtop .x { position: absolute; left: 22px; top: -4px; width: 30px; height: 30px; border-radius: 50%; background: rgba(0,0,0,0.35); display: grid; place-items: center; font-size: 15px; }
+      .cambar { position: absolute; left: 0; right: 0; bottom: 0; height: 170px; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(14px); z-index: 5; }
+      .modes { position: absolute; left: 0; right: 0; top: 16px; display: flex; justify-content: center; gap: 22px; font-size: 13px; font-weight: 600; letter-spacing: 0.06em; color: rgba(255,255,255,0.6); }
+      .modes b { color: #ffd60a; font-weight: 700; }
+      .shutter { position: absolute; left: 50%; top: 52px; width: 76px; height: 76px; margin-left: -38px; border-radius: 50%; border: 5px solid #fff; }
+      .shutter i { position: absolute; inset: 5px; border-radius: 50%; background: #fff; }
+      .thumb { position: absolute; left: 42px; top: 68px; width: 44px; height: 44px; border-radius: 10px; background: linear-gradient(135deg, #8a6242, #3e2a1a); border: 2px solid rgba(255,255,255,0.8); }
+      .flash { position: absolute; inset: 0; background: #fff; opacity: 0; z-index: 30; }
+      .scan {
+        position: absolute; left: 0; right: 0; height: 160px; z-index: 6;
+        background: linear-gradient(180deg, transparent, rgba(46, 194, 107, 0.0) 40%, rgba(127, 227, 168, 0.55) 96%, #b7f5cf 100%);
+      }
+      .box { position: absolute; border: 2.5px solid rgba(255, 255, 255, 0.95); border-radius: 18px; box-shadow: 0 0 0 1px rgba(0,0,0,0.08), 0 0 24px rgba(127, 227, 168, 0.5); z-index: 7; }
+      .box span {
+        position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); white-space: nowrap;
+        font-size: 12.5px; font-weight: 600; color: #0f1417; padding: 5px 10px; border-radius: 999px;
+        background: rgba(255, 255, 255, 0.92); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+      }
+      .sheet {
+        position: absolute; left: 0; right: 0; top: 262px; bottom: 0; z-index: 20; background: #fff;
+        border-radius: 30px 30px 0 0; padding: 12px 22px 0; box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.35);
+      }
+      .grabber { width: 40px; height: 5px; border-radius: 3px; background: #d7dcd9; margin: 0 auto 16px; }
+      .row { display: flex; align-items: baseline; gap: 8px; padding: 11px 0; border-top: 1px solid var(--hair); font-size: 15.5px; }
+      .row:first-child { border-top: 0; }
+      .row small { color: var(--muted); font-size: 13.5px; font-weight: 500; }
+      .row b { margin-left: auto; font-family: "Barlow Condensed", sans-serif; font-size: 21px; font-weight: 700; }
+      .gbtn {
+        display: grid; place-items: center; height: 54px; border-radius: 16px; background: var(--pitch); color: #fff;
+        font-weight: 700; font-size: 17px;
+      }
+
+      /* Barcode screen */
+      .dark { background: radial-gradient(ellipse at 50% 40%, #4a4f55, #1c1e21 70%, #0e0f10); }
+      .pot {
+        position: absolute; left: 75px; top: 190px; width: 240px; height: 300px;
+        clip-path: polygon(0 0, 100% 0, 91% 100%, 9% 100%);
+        background: linear-gradient(90deg, #cfd5db, #ffffff 30%, #f4f6f8 60%, #b9c0c7);
+      }
+      .pot .lid { position: absolute; left: 0; right: 0; top: 0; height: 26px; background: linear-gradient(90deg, #0d4a8a, #2d7ad0 40%, #0b3f78); }
+      .pot .brand { position: absolute; left: 0; right: 0; top: 50px; text-align: center; color: #0d4a8a; font-weight: 900; font-size: 27px; letter-spacing: -0.02em; line-height: 1; }
+      .pot .brand small { display: block; margin-top: 4px; font-size: 13px; font-weight: 700; letter-spacing: 0.12em; color: #2d7ad0; }
+      .bars { position: absolute; left: 50px; top: 160px; width: 140px; height: 86px; background: #fff; padding: 6px 8px 16px; display: flex; gap: 0; }
+      .bars i { display: block; height: 100%; background: #111; }
+      .bars em { position: absolute; left: 0; right: 0; bottom: 2px; text-align: center; font-style: normal; font-size: 10px; letter-spacing: 0.2em; color: #111; }
+      .vf { position: absolute; z-index: 5; }
+      .vf i { position: absolute; width: 34px; height: 34px; border-color: #fff; border-style: solid; border-width: 0; }
+      .vf .a { left: 0; top: 0; border-top-width: 5px; border-left-width: 5px; border-top-left-radius: 14px; }
+      .vf .b { right: 0; top: 0; border-top-width: 5px; border-right-width: 5px; border-top-right-radius: 14px; }
+      .vf .c { left: 0; bottom: 0; border-bottom-width: 5px; border-left-width: 5px; border-bottom-left-radius: 14px; }
+      .vf .d { right: 0; bottom: 0; border-bottom-width: 5px; border-right-width: 5px; border-bottom-right-radius: 14px; }
+      .laser { position: absolute; left: 10px; right: 10px; height: 3px; background: #ff3b30; box-shadow: 0 0 12px 3px rgba(255, 59, 48, 0.8); border-radius: 2px; }
+      .pcard { position: absolute; left: 14px; right: 14px; bottom: 34px; padding: 18px; z-index: 20; border-radius: 26px; background: #fff; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+      .verified { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: #fff; background: var(--pitch); padding: 4px 10px 4px 7px; border-radius: 999px; }
+
+      /* Say screen */
+      .composer { position: absolute; left: 16px; right: 16px; top: 118px; height: 150px; padding: 18px; }
+      .composer .txt { font-size: 22px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; min-height: 58px; }
+      .caret { display: inline-block; width: 2.5px; height: 25px; background: var(--pitch); vertical-align: -4px; margin-left: 1px; }
+      .mic { position: absolute; right: 16px; bottom: 14px; width: 48px; height: 48px; border-radius: 50%; background: var(--pitch); display: grid; place-items: center; }
+      .ring { position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--g1); }
+      .wave { position: absolute; left: 18px; bottom: 26px; display: flex; gap: 4px; align-items: center; height: 26px; }
+      .wave i { display: block; width: 4px; border-radius: 2px; background: var(--g1); }
+      .shimmer { position: absolute; left: 16px; right: 16px; top: 284px; height: 22px; border-radius: 8px; background: linear-gradient(90deg, #e9eee9 0%, #f8fbf8 50%, #e9eee9 100%); background-size: 200% 100%; }
+
+      /* Trend screen */
+      .h1 { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; }
+
+      /* ── Bento ────────────────────────────────────────────────────── */
+      .tile {
+        position: absolute; width: 440px; height: 300px; border-radius: 48px; padding: 40px 38px;
+        background: linear-gradient(160deg, #1d1f21, #131415);
+        box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.07);
+      }
+      .tile svg { width: 64px; height: 64px; }
+      .tile h3 { margin-top: 36px; font-size: 44px; font-weight: 800; letter-spacing: -0.03em; color: #f5f5f7; line-height: 1.05; }
+      .tile p { margin-top: 12px; font-size: 27px; font-weight: 500; color: var(--grey); line-height: 1.25; letter-spacing: -0.01em; }
+
+      /* ── End card ─────────────────────────────────────────────────── */
+      .pill {
+        position: absolute; left: 50%; transform: translateX(-50%); padding: 30px 72px; border-radius: 999px;
+        background: linear-gradient(180deg, #2ec26b, #1f9d52); color: #fff; font-weight: 700; font-size: 46px;
+        letter-spacing: -0.02em; white-space: nowrap; box-shadow: 0 20px 60px rgba(46, 194, 107, 0.35);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- The mark, defined once. Outside every scene so hiding a scene never
+         hides the shapes the others borrow. -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+            <linearGradient id="mg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#2ec26b" />
+              <stop offset="1" stop-color="#176B3A" />
+            </linearGradient>
+          </defs>
+          <path id="bubble" fill="url(#mg)" d="M 81,310 C 87.56,318.35 93.93,323.94 101,330 C 107.93,335.94 115.41,341.28 123,346 C 130.41,350.61 137.51,354.54 146,358 C 155.51,361.88 167.58,365.55 177,368 C 184.24,369.88 188.34,370.57 196,371 C 206.34,371.57 219.3,372.15 231,371 C 242.97,369.82 255,366.33 267,364 C 275,370 283.71,377.27 291,382 C 296.04,385.27 299.34,386.39 304,388 C 309,389.730 313.88,391.7 320,392 C 327.55,392.37 337.55,391.64 345,390 C 351.22,388.64 356.45,385.47 361,383 C 364.45,381.13 366.14,379.72 369,377 C 372.81,373.38 377.64,368.42 381,364 C 383.98,360.08 386.48,355.47 388,352 C 388.81,350.14 388,349.33 388,348 C 385.33,345.33 382.67,342.67 380,340 C 373.67,344 367.51,349.71 361,352 C 355.17,354.05 348.41,353.72 343,353 C 338.41,352.39 334.7,350.42 331,348 C 327.04,345.42 323.67,341.33 320,338 C 320,337 320,336 320,335 C 329,326.67 338.89,319.56 347,310 C 355.56,299.9 363.74,287.470 370,276 C 375.74,265.47 379.78,255.43 383,244 C 386.45,231.76 388.98,217.88 390,205 C 390.98,192.55 390.23,179.61 389,168 C 387.9,157.61 386.36,149.24 383,139 C 379.03,126.91 373.35,112.67 367,101 C 361.02,90 353.68,80.05 346,71 C 338.68,62.38 331.3,55.09 322,48 C 311.63,40.09 298.27,31.81 287,26 C 277.6,21.15 269.96,18.49 260,16 C 248.63,13.16 234.87,10.87 223,10 C 212.2,9.21 203.15,9.17 192,11 C 178.81,13.17 162.13,17.96 150,22 C 141.13,24.96 136.54,27.42 129,32 C 119.54,37.75 108.08,45.1 99,53 C 90.08,60.77 81.91,70.32 75,79 C 68.91,86.65 64.54,93.38 60,102 C 54.88,111.72 49.55,122.55 46,134 C 42.21,146.22 39.37,160.19 38,173 C 36.7,185.19 36.97,197.38 38,209 C 38.97,220.05 40.9,230.4 44,241 C 47.23,252.07 51.14,263.07 57,274 C 63.47,286.07 72.89,299.68 81,310 Z" />
+          <path id="kf" fill="#FFFFFF" d="M 304,106 C 303,106 302,106 301,106 C 290.67,117 280.33,128 270,139 C 268.67,139 267.33,139 266,139 C 265.33,137.67 264.67,136.33 264,135 C 274.33,123 284.67,111 295,99 C 294,98.33 293,97.67 292,97 C 281.67,108 269.96,121.29 261,130 C 258.3,132.63 258.33,130.67 257,131 C 256.33,129.33 255.67,127.67 255,126 C 265.33,114.33 275.67,102.67 286,91 C 285,90.33 284,89.67 283,89 C 272,100 261,111 250,122 C 249,122 248,122 247,122 C 246.67,120.33 246.33,118.67 246,117 C 256,105.67 268.05,92.81 276,83 C 278.05,80.48 276,81 276,80 C 275.33,80 274.67,80 274,80 C 260.67,92.33 244.2,106.12 234,117 C 229.2,122.12 229.73,123.48 229,128 C 228.06,133.81 229.99,142.47 229,148 C 228.32,151.8 228.94,150.71 224,156 C 210.27,170.71 190,190.67 173,208 C 172.33,208 171.67,208 171,208 C 171,167.33 172.05,120.1 171,86 C 170.72,76.77 168.33,80.67 167,78 C 165.67,78 164.32,77.41 163,78 C 161.32,78.74 159.74,79.21 158,82 C 154.74,87.21 150.5,93.24 148,102 C 144.5,114.24 141.24,131.36 140,145 C 138.91,157.03 138.5,169.78 141,179 C 142.84,185.78 149.97,188.89 153,193 C 154.64,195.22 155.2,192.09 155,198 C 154.2,221.09 151.12,257.23 150,280 C 149.45,291.23 149.15,294.68 150,300 C 150.48,303.01 152.67,303.33 154,305 C 157,305.33 160,305.67 163,306 C 165.33,304 167.67,302 170,300 C 170.33,279.33 165.73,255.25 171,238 C 175.4,223.59 189.67,216 199,205 C 200,205 201,205 202,205 C 212.67,215.330 225.89,226.96 234,236 C 237.55,239.96 236.73,240.47 237,244 C 237.39,249.13 235.8,256.9 236,262 C 236.13,265.24 236.05,266.08 238,269 C 241.39,274.08 247.01,281.36 252,286 C 256.34,290.03 261.1,292.64 266,295 C 270.77,297.3 276.11,299.3 281,300 C 285.44,300.63 290.21,300.38 294,299 C 297.54,297.71 300.83,294.37 303,292 C 304.49,290.37 304.74,289.42 305,287 C 305.41,283.09 305.81,277.69 305,273 C 304.14,268.02 302.22,262.6 300,258 C 297.88,253.6 294.83,249.54 292,246 C 289.49,242.87 286.98,240.32 284,238 C 280.98,235.65 277.17,233.49 274,232 C 271.5,230.82 270.09,230.13 267,230 C 262.42,229.8 255.58,231.570 251,231 C 247.58,230.57 246.96,230.96 243,227 C 233.96,217.96 220.24,202.11 212,192 C 209.91,189.44 210.07,191.36 212,189 C 219.07,180.36 230.92,166.41 239,159 C 242.92,155.41 244.97,156.34 248,156 C 250.97,155.67 253.88,157.47 257,157 C 260.55,156.47 264.19,156.28 268,153 C 273.86,147.95 280.2,139.57 286,132 C 292.2,123.9 298,114.67 304,106 Z" />
+    </svg>
+    <div id="stage">
+      <div class="glow" id="glowA"></div>
+      <div class="glow" id="glowB"></div>
+
+      <!-- Scene 1: the mark -->
+      <div class="scene" id="s1">
+        <svg class="abs mark" viewBox="-6.15 -19.2 440 440" aria-hidden="true"><use href="#bubble" /><use href="#kf" /></svg>
+        <div class="abs wordmark" id="wm"></div>
+      </div>
+
+      <!-- Scene 2: the promise -->
+      <div class="scene" id="s2">
+        <div class="abs big" style="top: 560px" data-words="Calorie"></div>
+        <div class="abs big" style="top: 715px" data-words="counting."></div>
+        <div class="abs big" style="top: 930px" data-words="Without the" data-grad="1"></div>
+        <div class="abs big" style="top: 1085px" data-words="counting." data-grad="1"></div>
+      </div>
+
+      <!-- Captions for the phone section -->
+      <div class="scene" id="caps">
+        <div class="cap" id="c1"><h2 data-words="Snap it."></h2><p data-words="Photograph the plate. That's the log."></p></div>
+        <div class="cap" id="c2"><h2 data-words="It does the maths."></h2><p data-words="Itemised, so you fix one thing — not all of it."></p></div>
+        <div class="cap" id="c3"><h2 data-words="Scan it."></h2><p data-words="Millions of barcodes. Looked up, not guessed."></p></div>
+        <div class="cap" id="c4"><h2 data-words="Or just say it."></h2><p data-words="Type it. Say it. Whatever's fastest."></p></div>
+        <div class="cap" id="c5"><h2 data-words="Every calorie."></h2><h2 data-words="Every macro." data-grad="1"></h2></div>
+        <div class="cap" id="c6"><h2 data-words="Watch the trend."></h2><p data-words="Not the day. One heavy Saturday means nothing."></p></div>
+        <div class="cap" id="c7"><h2 data-words="It learns what"></h2><h2 data-words="you really burn." data-grad="1"></h2></div>
+      </div>
+
+      <!-- The phone -->
+      <div id="phoneWrap">
+        <div id="phone">
+          <div class="btn" style="left: -6px; top: 250px; height: 60px"></div>
+          <div class="btn" style="left: -6px; top: 340px; height: 110px"></div>
+          <div class="btn" style="left: -6px; top: 470px; height: 110px"></div>
+          <div class="btn" style="right: -6px; top: 380px; height: 170px"></div>
+          <div class="bezel">
+            <div class="screen" id="screen">
+              <div class="island"></div>
+
+              <!-- Camera -->
+              <div class="scr" id="scrCam">
+                <div id="camPhoto" class="abs" style="inset: 0">
+                  <div class="wood"></div>
+                  <div class="plate" id="plate"></div>
+                </div>
+                <div class="status light"><span class="time">12:41</span><span class="icons" data-icons="light"></span></div>
+                <div class="camtop"><span class="x">✕</span>Log by photo</div>
+                <div class="scan" id="scan"></div>
+                <div id="boxes"></div>
+                <div class="cambar">
+                  <div class="modes"><span>BARCODE</span><b>PHOTO</b><span>LABEL</span></div>
+                  <div class="thumb"></div>
+                  <div class="shutter" id="shutter"><i></i></div>
+                </div>
+                <div class="flash" id="flash"></div>
+                <div class="sheet" id="sheet">
+                  <div class="grabber"></div>
+                  <div style="display: flex; align-items: flex-start">
+                    <div>
+                      <div style="font-size: 23px; font-weight: 800; letter-spacing: -0.02em">Chicken salad</div>
+                      <div style="margin-top: 6px"><span class="tag">AI estimate · 5 items</span></div>
+                    </div>
+                    <div style="margin-left: auto; text-align: right">
+                      <span class="kc" id="camTotal" style="font-size: 46px; line-height: 1">0</span>
+                      <span style="font-size: 14px; color: var(--muted); font-weight: 600"> kcal</span>
+                    </div>
+                  </div>
+                  <div id="camRows" style="margin-top: 12px"></div>
+                  <div id="camMacros" style="display: flex; gap: 8px; margin: 10px 0 16px; font-size: 13px; font-weight: 600; color: var(--muted)"></div>
+                  <div class="gbtn" id="addBtn">Add to lunch</div>
+                </div>
+              </div>
+
+              <!-- Barcode -->
+              <div class="scr dark" id="scrBar">
+                <div class="status light"><span class="time">15:02</span><span class="icons" data-icons="light"></span></div>
+                <div class="camtop"><span class="x">✕</span>Scan barcode</div>
+                <div class="pot" id="pot">
+                  <div class="lid"></div>
+                  <div class="brand">GREEK<small>STYLE YOGHURT 2%</small></div>
+                  <div class="bars" id="bars"><em>5 012345 678900</em></div>
+                </div>
+                <div class="vf" id="vf"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i><div class="laser" id="laser"></div></div>
+                <div class="pcard" id="pcard">
+                  <div style="display: flex; gap: 14px; align-items: center">
+                    <div style="width: 54px; height: 54px; border-radius: 14px; background: linear-gradient(135deg, #e9f0f7, #c8d4e0); display: grid; place-items: center">
+                      <div style="width: 30px; height: 34px; clip-path: polygon(0 0, 100% 0, 90% 100%, 10% 100%); background: linear-gradient(#0d4a8a 0 22%, #fff 22%)"></div>
+                    </div>
+                    <div>
+                      <div style="font-size: 18px; font-weight: 800; letter-spacing: -0.01em">Greek yoghurt 2%</div>
+                      <div style="font-size: 13.5px; color: var(--muted); font-weight: 500; margin-top: 2px">170g pot</div>
+                    </div>
+                    <div style="margin-left: auto"><span class="verified">✓ Verified</span></div>
+                  </div>
+                  <div style="display: flex; align-items: baseline; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hair)">
+                    <span style="font-size: 13px; font-weight: 600; color: var(--muted)">P 17g · C 6g · F 4g</span>
+                    <span style="margin-left: auto"><span class="kc" id="barTotal" style="font-size: 40px">132</span><span style="font-size: 14px; color: var(--muted); font-weight: 600"> kcal</span></span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Say it -->
+              <div class="scr" id="scrSay">
+                <div class="status"><span class="time">08:14</span><span class="icons" data-icons="dark"></span></div>
+                <div style="position: absolute; left: 20px; top: 66px" class="h1">What did you eat?</div>
+                <div class="card composer">
+                  <div class="txt"><span id="typed"></span><span class="caret" id="caret"></span></div>
+                  <div class="wave" id="wave"></div>
+                  <div class="mic" id="mic">
+                    <div class="ring" id="ring"></div>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3" fill="#fff" stroke="none" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
+                  </div>
+                </div>
+                <div class="shimmer" id="shim"></div>
+                <div class="card" id="sayCard" style="position: absolute; left: 16px; right: 16px; top: 284px; padding: 18px 18px 8px">
+                  <div style="display: flex; align-items: flex-start">
+                    <div>
+                      <div style="font-size: 18px; font-weight: 800">Eggs on sourdough</div>
+                      <div style="margin-top: 6px"><span class="tag">AI estimate · 3 items</span></div>
+                    </div>
+                    <div style="margin-left: auto"><span class="kc" id="sayTotal" style="font-size: 40px; line-height: 1">0</span><span style="font-size: 14px; color: var(--muted); font-weight: 600"> kcal</span></div>
+                  </div>
+                  <div id="sayRows" style="margin-top: 10px"></div>
+                </div>
+              </div>
+
+              <!-- Dashboard -->
+              <div class="scr" id="scrDash">
+                <div class="status"><span class="time">19:30</span><span class="icons" data-icons="dark"></span></div>
+                <div class="appbar"><svg viewBox="-6.15 -19.2 440 440"><use href="#bubble" fill="#176B3A" /><use href="#kf" /></svg><span class="name">QuicKcals</span><span class="av">EC</span></div>
+                <div style="position: absolute; left: 20px; top: 106px; font-size: 14px; color: var(--muted); font-weight: 600">Tuesday 10 September</div>
+                <div class="card" style="position: absolute; left: 16px; right: 16px; top: 134px; padding: 18px">
+                  <div style="display: flex; align-items: baseline">
+                    <span class="kc" id="dashK" style="font-size: 62px; line-height: 1">0</span>
+                    <span style="font-size: 16px; color: var(--muted); font-weight: 600; margin-left: 8px">/ 2,100 kcal</span>
+                    <span class="tag" id="leftTag" style="margin-left: auto; font-size: 13px">588 left</span>
+                  </div>
+                  <div style="margin-top: 14px; height: 12px; border-radius: 999px; background: #e8efe9; overflow: hidden"><i id="meter" style="display: block; height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, #2ec26b, #1f9d52)"></i></div>
+                  <div id="macros" style="margin-top: 18px; display: grid; gap: 12px"></div>
+                </div>
+                <div class="card" id="meals" style="position: absolute; left: 16px; right: 16px; top: 408px; padding: 4px 18px"></div>
+              </div>
+
+              <!-- Trend -->
+              <div class="scr" id="scrTrend">
+                <div class="status"><span class="time">07:02</span><span class="icons" data-icons="dark"></span></div>
+                <div style="position: absolute; left: 20px; top: 62px" class="h1">Weight</div>
+                <div style="position: absolute; left: 20px; top: 102px; font-size: 14px; color: var(--muted); font-weight: 600">Last 4 weeks · trend, not scale</div>
+                <div class="card" style="position: absolute; left: 16px; right: 16px; top: 134px; padding: 18px">
+                  <div style="display: flex; align-items: baseline; gap: 8px">
+                    <span class="kc" style="font-size: 52px; line-height: 1" id="trendW">84.6</span><span style="font-size: 16px; color: var(--muted); font-weight: 600">kg trend</span>
+                    <span class="tag" id="trendTag" style="margin-left: auto; font-size: 13px">−2.3 kg</span>
+                  </div>
+                  <svg id="chart" width="326" height="230" viewBox="0 0 326 230" style="display: block; margin-top: 12px; overflow: visible"></svg>
+                </div>
+                <div class="card" id="burn" style="position: absolute; left: 16px; right: 16px; top: 470px; padding: 18px">
+                  <div style="font-size: 14px; font-weight: 700; color: var(--muted); letter-spacing: 0.02em">YOUR BURN, LEARNED</div>
+                  <div style="display: flex; align-items: baseline; gap: 6px; margin-top: 6px">
+                    <span class="kc" id="burnN" style="font-size: 52px; line-height: 1">2,450</span><span style="font-size: 16px; color: var(--muted); font-weight: 600">kcal / day</span>
+                  </div>
+                  <div style="margin-top: 10px; font-size: 14.5px; line-height: 1.4; color: #3b4540">The formula guessed <b>2,450</b>. Your weight says <b style="color: var(--pitch-dark)">2,318</b>.</div>
+                  <div id="updated" style="margin-top: 14px; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--pitch-dark)">
+                    <span style="width: 22px; height: 22px; border-radius: 50%; background: var(--pitch); color: #fff; display: grid; place-items: center; font-size: 13px">✓</span>
+                    Daily target updated
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="glare"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scene 7: everything else -->
+      <div class="scene" id="s7">
+        <div class="cap" style="top: 250px"><h2 data-words="And everything else." style="font-size: 96px"></h2></div>
+        <div id="tiles"></div>
+        <div class="abs" id="freeLine" style="left: 0; right: 0; top: 1660px; text-align: center; font-size: 42px; font-weight: 600; color: var(--grey); letter-spacing: -0.01em">Most of it free. <span style="color: #f5f5f7">Forever.</span></div>
+      </div>
+
+      <!-- Scene 8: end card -->
+      <div class="scene" id="s8">
+        <svg class="abs" id="endMark" viewBox="-6.15 -19.2 440 440" style="left: 410px; top: 470px; width: 260px; height: 260px"><use href="#bubble" /><use href="#kf" /></svg>
+        <div class="abs wordmark" id="endWm" style="left: 0; right: 0; top: 780px; text-align: center; font-family: Montserrat, sans-serif; font-weight: 800; font-size: 140px; letter-spacing: -0.03em; color: #fff">QuicKcals</div>
+        <div class="abs" id="endTag" style="left: 60px; right: 60px; top: 990px; text-align: center; font-size: 60px; font-weight: 700; line-height: 1.12; letter-spacing: -0.035em; color: #f5f5f7">The calorie diary that<br /><span class="grad">stops being work.</span></div>
+        <div class="pill" id="endBtn" style="top: 1260px">Start free</div>
+        <div class="abs" id="endSub" style="left: 0; right: 0; top: 1440px; text-align: center; font-size: 36px; font-weight: 500; color: var(--grey)">No card. No trial. Just free.</div>
+        <div class="abs" id="endUrl" style="left: 0; right: 0; top: 1640px; text-align: center; font-size: 44px; font-weight: 700; color: #f5f5f7; letter-spacing: -0.01em">quickcals.com</div>
+      </div>
+    </div>
+
+    <script>
+      /* ── Timing ──────────────────────────────────────────────────────
+         Every number below is a second on the timeline. */
+      const DURATION = 35;
+
+      const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+      const p = (t, a, b) => clamp((t - a) / (b - a));
+      const lerp = (a, b, x) => a + (b - a) * x;
+      const outCubic = (x) => 1 - Math.pow(1 - x, 3);
+      const outExpo = (x) => (x >= 1 ? 1 : 1 - Math.pow(2, -10 * x));
+      const inOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+      const inCubic = (x) => x * x * x;
+      const outBack = (x) => { const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+      const fmt = (n) => Math.round(n).toLocaleString('en-GB');
+      const $ = (id) => document.getElementById(id);
+
+      function rng(seed) {
+        return () => {
+          seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+          let r = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+          r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+          return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      /* ── Build ─────────────────────────────────────────────────────── */
+
+      // Split every data-words element into word spans that animate in turn.
+      document.querySelectorAll('[data-words]').forEach((el) => {
+        const grad = el.dataset.grad;
+        el.innerHTML = el.dataset.words
+          .split(' ')
+          .map((w) => `<span class="w${grad ? ' grad' : ''}">${w}</span>`)
+          .join(' ');
+      });
+
+      $('wm').innerHTML = [...'QuicKcals'].map((c) => `<span class="w">${c}</span>`).join('');
+
+      const ICONS = {
+        light: '#fff',
+        dark: '#0f1417',
+      };
+      document.querySelectorAll('[data-icons]').forEach((el) => {
+        const c = ICONS[el.dataset.icons];
+        el.innerHTML = `
+          <svg width="18" height="12" viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1" fill="${c}"/><rect x="5" y="5.5" width="3" height="6.5" rx="1" fill="${c}"/><rect x="10" y="3" width="3" height="9" rx="1" fill="${c}"/><rect x="15" y="0" width="3" height="12" rx="1" fill="${c}"/></svg>
+          <svg width="16" height="12" viewBox="0 0 16 12"><path d="M8 11.5 5.6 9a3.4 3.4 0 0 1 4.8 0zM3.5 6.9a6.4 6.4 0 0 1 9 0l-1.5 1.5a4.3 4.3 0 0 0-6 0zM1.2 4.6a9.6 9.6 0 0 1 13.6 0L13.3 6.1a7.5 7.5 0 0 0-10.6 0z" fill="${c}"/></svg>
+          <svg width="27" height="13" viewBox="0 0 27 13"><rect x="0.5" y="0.5" width="23" height="12" rx="3.5" fill="none" stroke="${c}" opacity=".4"/><rect x="2" y="2" width="17" height="9" rx="2" fill="${c}"/><rect x="24.5" y="4.5" width="1.6" height="4" rx=".8" fill="${c}" opacity=".4"/></svg>`;
+      });
+
+      // The plate.
+      (() => {
+        const plate = $('plate');
+        const r = rng(7);
+        let html = '';
+        const leafCols = [['#7fbf3f', '#3e7a1c'], ['#9ccf55', '#4d8a24'], ['#5f9e2c', '#2f5e12'], ['#b7dd74', '#5e9a2a']];
+        for (let i = 0; i < 26; i++) {
+          const a = r() * Math.PI * 2, d = 20 + r() * 95;
+          const x = 120 + Math.cos(a) * d * 0.95 - 30, y = 175 + Math.sin(a) * d - 22;
+          const [c1, c2] = leafCols[i % 4];
+          html += `<div class="leaf" style="left:${x}px;top:${y}px;width:${58 + r() * 34}px;height:${36 + r() * 20}px;transform:rotate(${r() * 360}deg);background:radial-gradient(ellipse at 35% 35%,${c1},${c2});box-shadow:0 2px 4px rgba(0,0,0,.18)"></div>`;
+        }
+        for (let i = 0; i < 4; i++) html += `<div class="chk" style="left:${178 + i * 6}px;top:${80 + i * 34}px;transform:rotate(${-18 + i * 9}deg)"></div>`;
+        for (let i = 0; i < 3; i++) html += `<div class="avo" style="left:${70 + i * 30}px;top:${226 + i * 14}px;transform:rotate(${-30 + i * 22}deg)"></div>`;
+        [[70, 110], [104, 76], [150, 196], [238, 250], [206, 262], [60, 170]].forEach(([x, y]) => (html += `<div class="tom" style="left:${x}px;top:${y}px"></div>`));
+        for (let i = 0; i < 12; i++) html += `<div class="feta" style="left:${95 + r() * 110}px;top:${120 + r() * 110}px;transform:rotate(${r() * 90}deg)"></div>`;
+        plate.innerHTML = html;
+      })();
+
+      // Recognition boxes, in screen points.
+      const BOXES = [
+        { x: 190, y: 262, w: 150, h: 170, label: 'Chicken breast · 150g' },
+        { x: 84, y: 402, w: 134, h: 88, label: 'Avocado · ½' },
+        { x: 52, y: 250, w: 130, h: 130, label: 'Mixed leaves' },
+        { x: 210, y: 440, w: 104, h: 70, label: 'Cherry tomatoes · 6' },
+        { x: 134, y: 322, w: 90, h: 74, label: 'Feta · 30g' },
+      ];
+      $('boxes').innerHTML = BOXES.map((b) => `<div class="box" style="left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px"><span>${b.label}</span></div>`).join('');
+
+      const CAM_ROWS = [
+        ['Chicken breast', '150g', 248],
+        ['Avocado', 'half', 130],
+        ['Feta', '30g', 80],
+        ['Cherry tomatoes', '6', 18],
+        ['Mixed leaves', '60g', 10],
+      ];
+      $('camRows').innerHTML = CAM_ROWS.map(([n, q, k]) => `<div class="row">${n} <small>${q}</small><b>${k}</b></div>`).join('');
+      $('camMacros').innerHTML = ['P 52g', 'C 12g', 'F 26g'].map((m) => `<span style="background:#f1f4f2;padding:5px 10px;border-radius:999px">${m}</span>`).join('');
+
+      // Barcode bars.
+      (() => {
+        const r = rng(3);
+        let h = '';
+        for (let i = 0; i < 34; i++) {
+          const w = [1, 1, 2, 3][Math.floor(r() * 4)];
+          h += `<i style="width:${w}px;margin-right:${[1, 2, 2, 3][Math.floor(r() * 4)]}px"></i>`;
+        }
+        $('bars').insertAdjacentHTML('afterbegin', h);
+      })();
+
+      const SAY_ROWS = [
+        ['Poached eggs', '2 large', 143],
+        ['Sourdough', '1 slice', 180],
+        ['Butter', '5g', 36],
+      ];
+      $('sayRows').innerHTML = SAY_ROWS.map(([n, q, k]) => `<div class="row">${n} <small>${q}</small><b>${k}</b></div>`).join('');
+      $('wave').innerHTML = Array.from({ length: 14 }, () => '<i></i>').join('');
+
+      const MACROS = [
+        ['Protein', 112, 150, '#1f9d52'],
+        ['Carbs', 148, 200, '#f0b429'],
+        ['Fat', 54, 70, '#ef6f5e'],
+      ];
+      $('macros').innerHTML = MACROS.map(
+        ([n, v, max, c]) => `
+        <div>
+          <div style="display:flex;font-size:13.5px;font-weight:600"><span>${n}</span><span style="margin-left:auto;color:var(--muted)"><b class="mv" style="color:var(--ink)">0</b> / ${max}g</span></div>
+          <div style="margin-top:6px;height:8px;border-radius:999px;background:#eef2ef;overflow:hidden"><i class="mb" style="display:block;height:100%;width:0;background:${c};border-radius:999px"></i></div>
+        </div>`,
+      ).join('');
+
+      const MEALS = [
+        ['Porridge, banana, honey', 'saved', 410],
+        ['Eggs on sourdough', 'typed', 359],
+        ['Chicken salad', 'photo', 486],
+        ['Greek yoghurt 2%', 'barcode', 132],
+        ['Flat white', 'saved', 125],
+      ];
+      $('meals').innerHTML = MEALS.map(([n, how, k]) => `<div class="row meal" style="padding:13px 0">${n} <span class="tag" style="background:#f1f4f2;color:var(--muted)">${how}</span><b>${k}</b></div>`).join('');
+
+      // The weight chart: 28 noisy scale readings around a falling trend.
+      const CH = { w: 326, h: 230, min: 79.5, max: 85.5 };
+      const DAYS = 28;
+      const yOf = (kg) => CH.h - ((kg - CH.min) / (CH.max - CH.min)) * CH.h;
+      const xOf = (d) => (d / (DAYS + 8)) * CH.w;
+      const trendKg = (d) => 84.6 - (2.3 * d) / (DAYS - 1);
+      (() => {
+        const r = rng(11);
+        let s = '';
+        for (let i = 0; i <= 4; i++) {
+          const y = (CH.h / 4) * i;
+          s += `<line x1="0" x2="${CH.w}" y1="${y}" y2="${y}" stroke="#eef2ef" stroke-width="1"/>`;
+        }
+        s += `<line x1="0" x2="${CH.w}" y1="${yOf(80)}" y2="${yOf(80)}" stroke="#1f9d52" stroke-width="1.5" stroke-dasharray="4 5" opacity=".5"/>`;
+        s += `<text x="${CH.w}" y="${yOf(80) - 8}" text-anchor="end" font-size="12" font-weight="700" fill="#12602f" font-family="Inter">Goal 80 kg</text>`;
+        for (let d = 0; d < DAYS; d++) {
+          const noise = (r() - 0.5) * 1.5 + (d % 7 === 5 ? 0.7 : 0);
+          s += `<circle class="dot" cx="${xOf(d)}" cy="${yOf(trendKg(d) + noise)}" r="4" fill="#b8c4bd"/>`;
+        }
+        let path = '';
+        for (let d = 0; d < DAYS; d++) path += `${d ? 'L' : 'M'}${xOf(d).toFixed(1)} ${yOf(trendKg(d)).toFixed(1)} `;
+        s += `<path id="tline" d="${path}" fill="none" stroke="#1f9d52" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`;
+        s += `<path id="proj" d="M${xOf(DAYS - 1)} ${yOf(trendKg(DAYS - 1))} L${CH.w - 4} ${yOf(80.2)}" fill="none" stroke="#1f9d52" stroke-width="3" stroke-dasharray="2 7" stroke-linecap="round"/>`;
+        s += `<circle id="tend" cx="${xOf(DAYS - 1)}" cy="${yOf(trendKg(DAYS - 1))}" r="7" fill="#1f9d52" stroke="#fff" stroke-width="3"/>`;
+        $('chart').innerHTML = s;
+      })();
+
+      // The tiles.
+      const ICON = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="#2ec26b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+      const TILES = [
+        [ICON('<path d="M2 8.8a15 15 0 0 1 4.2-2.6M10.7 5.1A15 15 0 0 1 22 8.8M5 12.5a10 10 0 0 1 5.2-2.7M16.8 11a10 10 0 0 1 2.2 1.5M8.5 16a5 5 0 0 1 7 0M12 20h.01M2 2l20 20"/>'), 'Works offline', 'Logs on the Tube. Syncs when you surface.'],
+        [ICON('<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/>'), 'Keto & fasting', 'Net carbs and a timer that knows.'],
+        [ICON('<path d="M3 12h4l3-8 4 16 3-8h4"/>'), 'WHOOP', 'Burn measured, not guessed.'],
+        [ICON('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>'), 'Weekly report', 'A PDF, filed to your Drive.'],
+        [ICON('<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>'), 'Saved meals', 'Your porridge, re-logged in a tap.'],
+        [ICON('<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'), 'Yours alone', 'Never sold. Export it any time.'],
+      ];
+      $('tiles').innerHTML = TILES.map(
+        ([ic, h, t], i) => `<div class="tile" style="left:${80 + (i % 2) * 480}px;top:${520 + Math.floor(i / 2) * 340}px">${ic}<h3>${h}</h3><p>${t}</p></div>`,
+      ).join('');
+
+      /* ── Animation helpers ─────────────────────────────────────────── */
+
+      // Words rise out of a blur, one after another, and leave together.
+      function words(el, t, tin, tout, stagger = 0.075) {
+        const ws = el.querySelectorAll('.w');
+        const o = tout == null ? 0 : outCubic(p(t, tout, tout + 0.45));
+        ws.forEach((w, i) => {
+          const e = outExpo(p(t, tin + i * stagger, tin + i * stagger + 0.9));
+          const op = e * (1 - o);
+          w.style.opacity = op;
+          w.style.transform = `translateY(${(1 - e) * 70 - o * 40}px)`;
+          const b = (1 - e) * 16 + o * 12;
+          w.style.filter = b > 0.1 ? `blur(${b}px)` : 'none';
+        });
+      }
+
+      function show(el, on) {
+        el.style.display = on ? '' : 'none';
+        return on;
+      }
+
+      const SCR = 584 / 390;
+      document.querySelectorAll('.scr').forEach((s) => (s.style.transform = `scale(${SCR})`));
+
+      // Screen windows: [id, in, out]. Each one pushes in over the last.
+      const SCREENS = [
+        ['scrCam', -1, 12.5],
+        ['scrBar', 12.5, 15.0],
+        ['scrSay', 15.0, 17.3],
+        ['scrDash', 17.3, 21.5],
+        ['scrTrend', 21.5, 99],
+      ];
+
+      const CAPS = [
+        ['c1', 6.7, 9.5],
+        ['c2', 9.75, 12.25],
+        ['c3', 12.55, 14.75],
+        ['c4', 15.0, 17.05],
+        ['c5', 17.35, 21.25],
+        ['c6', 21.55, 23.85],
+        ['c7', 24.05, 26.0],
+      ];
+
+      /* ── seek(t): the whole frame, from nothing but t ──────────────── */
+
+      function seek(t) {
+        // Ambient glow drifts the whole time and swells for the phone.
+        const ga = $('glowA'), gb = $('glowB');
+        ga.style.left = `${-500 + Math.sin(t * 0.35) * 160}px`;
+        ga.style.top = `${900 + Math.cos(t * 0.27) * 220}px`;
+        gb.style.left = `${200 + Math.cos(t * 0.3) * 180}px`;
+        gb.style.top = `${-300 + Math.sin(t * 0.22) * 200}px`;
+        const glowAmt = 0.35 + 0.65 * p(t, 0.3, 2) - 0.4 * (p(t, 2.8, 3.3) - p(t, 6, 7)) + 0.3 * p(t, 30.4, 31.5);
+        ga.style.opacity = glowAmt;
+        gb.style.opacity = glowAmt * 0.8;
+
+        /* Scene 1 — the mark lands, the name spells itself out. */
+        if (show($('s1'), t < 3.4)) {
+          const e = outExpo(p(t, 0.15, 1.5));
+          const out = inCubic(p(t, 2.7, 3.3));
+          const m = document.querySelector('#s1 .mark');
+          m.style.opacity = e * (1 - out);
+          m.style.transform = `translateY(${(1 - e) * 60 - out * 120}px) scale(${lerp(0.55, 1, e) * (1 + out * 0.4)})`;
+          m.style.filter = `blur(${(1 - e) * 22 + out * 20}px) drop-shadow(0 0 ${40 * e}px rgba(46,194,107,.55))`;
+          $('wm').querySelectorAll('.w').forEach((c, i) => {
+            const ce = outExpo(p(t, 0.9 + i * 0.05, 1.8 + i * 0.05));
+            c.style.opacity = ce * (1 - out);
+            c.style.transform = `translateY(${(1 - ce) * 50 - out * 60}px)`;
+            c.style.filter = `blur(${(1 - ce) * 10 + out * 14}px)`;
+          });
+        }
+
+        /* Scene 2 — the promise. */
+        if (show($('s2'), t > 2.9 && t < 6.7)) {
+          const b = document.querySelectorAll('#s2 .big');
+          words(b[0], t, 3.05, 6.05);
+          words(b[1], t, 3.3, 6.05);
+          words(b[2], t, 4.3, 6.1);
+          words(b[3], t, 4.6, 6.15);
+          $('s2').style.transform = `scale(${1 + p(t, 3, 6.6) * 0.06})`;
+        }
+
+        /* Captions over the phone. */
+        const capsOn = show($('caps'), t > 6.5 && t < 26.6);
+        if (capsOn) {
+          CAPS.forEach(([id, a, b]) => {
+            const el = $(id);
+            if (show(el, t > a - 0.1 && t < b + 0.6)) {
+              el.querySelectorAll('[data-words]').forEach((w, j) => words(w, t, a + j * 0.22, b));
+            }
+          });
+        }
+
+        /* The phone: rises in, floats, drops away. */
+        const phoneOn = show($('phoneWrap'), t > 6.0 && t < 27);
+        if (phoneOn) {
+          const inE = outExpo(p(t, 6.1, 7.5));
+          const outE = inOut(p(t, 25.9, 26.8));
+          const float = Math.sin(t * 0.9) * 1;
+          const ph = $('phone');
+          const y = (1 - inE) * 1500 + outE * 1500 + Math.sin(t * 1.1) * 6;
+          const rx = (1 - inE) * 32 + outE * -20;
+          const ry = float * 3 + Math.sin(t * 0.55) * 2;
+          ph.style.transform = `translateY(${y}px) rotateX(${rx}deg) rotateY(${ry}deg) scale(${lerp(0.86, 1, inE) - outE * 0.1})`;
+
+          // Push transitions between screens.
+          SCREENS.forEach(([id, a, b], i) => {
+            const el = $(id);
+            const vis = t > a - 0.3 && t < b + 0.35;
+            if (!show(el, vis)) return;
+            const inp = a < 0 ? 1 : inOut(p(t, a - 0.3, a + 0.3));
+            const outp = inOut(p(t, b - 0.3, b + 0.3));
+            const x = (1 - inp) * 390 - outp * 120;
+            el.style.transform = `translateX(${x * SCR}px) scale(${SCR})`;
+            el.style.zIndex = i + 1;
+            el.style.filter = outp > 0.01 ? `brightness(${1 - outp * 0.35})` : 'none';
+          });
+          camera(t);
+          barcode(t);
+          sayIt(t);
+          dash(t);
+          trend(t);
+        }
+
+        /* Scene 7 — everything else. */
+        if (show($('s7'), t > 26.3 && t < 31)) {
+          const out = inCubic(p(t, 30.2, 30.75));
+          words(document.querySelector('#s7 h2'), t, 26.55, 30.2);
+          document.querySelectorAll('.tile').forEach((el, i) => {
+            const e = outBack(p(t, 26.9 + i * 0.13, 27.75 + i * 0.13));
+            const o = clamp(p(t, 26.9 + i * 0.13, 27.3 + i * 0.13));
+            el.style.opacity = o * (1 - out);
+            el.style.transform = `translateY(${(1 - e) * 120 + out * -60}px) scale(${lerp(0.82, 1, e) - out * 0.05})`;
+          });
+          const f = outExpo(p(t, 28.3, 29.3));
+          $('freeLine').style.opacity = f * (1 - out);
+          $('freeLine').style.transform = `translateY(${(1 - f) * 30}px)`;
+        }
+
+        /* Scene 8 — the end card. */
+        if (show($('s8'), t > 30.5)) {
+          const m = outExpo(p(t, 30.6, 31.8));
+          $('endMark').style.opacity = m;
+          $('endMark').style.transform = `translateY(${(1 - m) * 60}px) scale(${lerp(0.6, 1, m)})`;
+          $('endMark').style.filter = `blur(${(1 - m) * 18}px) drop-shadow(0 0 ${50 * m}px rgba(46,194,107,.5))`;
+          const seq = [['endWm', 30.9], ['endTag', 31.35], ['endBtn', 31.9], ['endSub', 32.2], ['endUrl', 32.5]];
+          seq.forEach(([id, a]) => {
+            const e = outExpo(p(t, a, a + 1));
+            const el = $(id);
+            el.style.opacity = e;
+            const base = id === 'endBtn' ? 'translateX(-50%) ' : '';
+            el.style.transform = `${base}translateY(${(1 - e) * 50}px)`;
+            el.style.filter = e < 0.99 ? `blur(${(1 - e) * 12}px)` : 'none';
+          });
+          // The button breathes once it has landed.
+          const breathe = t > 33 ? Math.sin((t - 33) * 3) * 0.02 : 0;
+          $('endBtn').style.transform += ` scale(${1 + breathe})`;
+        }
+      }
+
+      /* ── Screens ───────────────────────────────────────────────────── */
+
+      function camera(t) {
+        // Shutter at 8.0: the button squeezes, the screen flashes.
+        const press = p(t, 7.85, 8.0) - p(t, 8.0, 8.25);
+        $('shutter').style.transform = `scale(${1 - press * 0.12})`;
+        $('flash').style.opacity = 0.9 * (p(t, 7.98, 8.03) - p(t, 8.05, 8.45));
+        // The live view drifts until the shot, then holds still.
+        const hand = t < 8 ? 1 : 0;
+        const d = Math.min(t, 8);
+        $('camPhoto').style.transform = `translate(${Math.sin(d * 1.7) * 4 * hand}px, ${Math.cos(d * 1.3) * 5 * hand}px) scale(${1.04 - p(t, 8, 8.4) * 0.04})`;
+        // A green scan passes over the plate.
+        const s = inOut(p(t, 8.15, 9.1));
+        $('scan').style.top = `${lerp(-160, 600, s)}px`;
+        $('scan').style.opacity = s > 0 && s < 1 ? 1 : 0;
+        // Each item is found in turn.
+        document.querySelectorAll('.box').forEach((b, i) => {
+          const a = 8.45 + i * 0.17;
+          const e = outBack(p(t, a, a + 0.5));
+          const o = p(t, a, a + 0.2) * (1 - p(t, 9.75, 10.1));
+          b.style.opacity = o;
+          b.style.transform = `scale(${lerp(1.25, 1, e)})`;
+        });
+        // The result sheet.
+        const sh = outExpo(p(t, 9.8, 10.8));
+        $('sheet').style.transform = `translateY(${(1 - sh) * 600}px)`;
+        $('camTotal').textContent = fmt(486 * outCubic(p(t, 10.15, 11.2)));
+        document.querySelectorAll('#camRows .row').forEach((r, i) => {
+          const e = outExpo(p(t, 10.15 + i * 0.09, 10.8 + i * 0.09));
+          r.style.opacity = e;
+          r.style.transform = `translateY(${(1 - e) * 18}px)`;
+        });
+        // Tap "Add", and it's logged.
+        const tap = p(t, 11.55, 11.7) - p(t, 11.7, 11.9);
+        const btn = $('addBtn');
+        btn.style.transform = `scale(${1 - tap * 0.05})`;
+        const done = t > 11.72;
+        btn.textContent = done ? '✓  Logged to lunch' : 'Add to lunch';
+        btn.style.background = done ? '#12602f' : '';
+      }
+
+      function barcode(t) {
+        const pot = $('pot');
+        const settle = outCubic(p(t, 12.3, 13.1));
+        pot.style.transform = `translate(${Math.sin(t * 2) * 3 * (1 - p(t, 13.6, 13.8))}px, ${(1 - settle) * 30}px) rotate(${(1 - settle) * -4}deg)`;
+        // Finder corners close in on the barcode once it reads.
+        const lock = outBack(p(t, 13.7, 14.1));
+        const box = {
+          x: lerp(55, 115, lock), y: lerp(310, 344, lock),
+          w: lerp(280, 158, lock), h: lerp(170, 100, lock),
+        };
+        const vf = $('vf');
+        Object.assign(vf.style, { left: `${box.x}px`, top: `${box.y}px`, width: `${box.w}px`, height: `${box.h}px` });
+        const green = t > 13.72;
+        vf.querySelectorAll('i').forEach((i) => (i.style.borderColor = green ? '#2ec26b' : '#fff'));
+        const las = $('laser');
+        las.style.opacity = green ? 0 : 1;
+        las.style.top = `${box.h / 2 + Math.sin((t - 12.5) * 5) * (box.h / 2 - 16)}px`;
+        const c = outExpo(p(t, 13.95, 14.8));
+        $('pcard').style.transform = `translateY(${(1 - c) * 320}px)`;
+        $('pcard').style.opacity = clamp(c * 3);
+      }
+
+      function sayIt(t) {
+        const text = 'two poached eggs on sourdough';
+        const n = Math.floor(p(t, 15.25, 16.2) * text.length);
+        $('typed').textContent = text.slice(0, n);
+        $('caret').style.opacity = t < 16.3 ? (Math.floor(t * 2.5) % 2 === 0 || n < text.length ? 1 : 0) : 0;
+        const listening = t > 15.1 && t < 16.3;
+        const ring = $('ring');
+        const rp = ((t - 15.1) * 1.4) % 1;
+        ring.style.transform = `scale(${1 + rp * 0.8})`;
+        ring.style.opacity = listening ? 1 - rp : 0;
+        $('wave').querySelectorAll('i').forEach((b, i) => {
+          const h = listening ? 5 + Math.abs(Math.sin(t * 9 + i * 0.9) * Math.sin(t * 4.3 + i * 0.4)) * 20 : 4;
+          b.style.height = `${h}px`;
+          b.style.opacity = listening ? 1 : 0.3;
+        });
+        // A beat of "working it out", then the answer.
+        const sh = $('shim');
+        sh.style.opacity = p(t, 16.2, 16.3) * (1 - p(t, 16.5, 16.6));
+        sh.style.backgroundPosition = `${-((t * 300) % 200)}% 0`;
+        const c = outExpo(p(t, 16.5, 17.3));
+        const card = $('sayCard');
+        card.style.opacity = c;
+        card.style.transform = `translateY(${(1 - c) * 40}px) scale(${lerp(0.96, 1, c)})`;
+        $('sayTotal').textContent = fmt(359 * outCubic(p(t, 16.55, 17.2)));
+        document.querySelectorAll('#sayRows .row').forEach((r, i) => {
+          const e = outExpo(p(t, 16.6 + i * 0.09, 17.2 + i * 0.09));
+          r.style.opacity = e;
+          r.style.transform = `translateY(${(1 - e) * 14}px)`;
+        });
+      }
+
+      function dash(t) {
+        const k = outCubic(p(t, 17.55, 19.1));
+        $('dashK').textContent = fmt(1512 * k);
+        $('meter').style.width = `${72 * k}%`;
+        $('leftTag').textContent = `${fmt(2100 - 1512 * k)} left`;
+        document.querySelectorAll('#macros > div').forEach((m, i) => {
+          const e = outCubic(p(t, 17.8 + i * 0.12, 19.2 + i * 0.12));
+          const [, v, max] = MACROS[i];
+          m.querySelector('.mv').textContent = Math.round(v * e);
+          m.querySelector('.mb').style.width = `${(v / max) * 100 * e}%`;
+        });
+        document.querySelectorAll('.meal').forEach((r, i) => {
+          const e = outExpo(p(t, 18.1 + i * 0.12, 18.9 + i * 0.12));
+          r.style.opacity = e;
+          r.style.transform = `translateX(${(1 - e) * 40}px)`;
+        });
+        $('meals').style.opacity = p(t, 17.9, 18.2);
+      }
+
+      function trend(t) {
+        const dots = document.querySelectorAll('.dot');
+        dots.forEach((d, i) => {
+          const a = 21.8 + i * 0.03;
+          const e = outBack(p(t, a, a + 0.35));
+          d.setAttribute('r', 4 * e);
+          d.style.opacity = p(t, a, a + 0.15);
+        });
+        const line = $('tline');
+        const len = line.getTotalLength();
+        const lp = inOut(p(t, 22.5, 23.7));
+        line.style.strokeDasharray = `${len}`;
+        line.style.strokeDashoffset = `${len * (1 - lp)}`;
+        const pt = line.getPointAtLength(len * lp);
+        const end = $('tend');
+        end.setAttribute('cx', pt.x);
+        end.setAttribute('cy', pt.y);
+        end.style.opacity = p(t, 22.5, 22.7);
+        $('proj').style.opacity = p(t, 23.7, 24.2);
+        $('trendW').textContent = (84.6 - 2.3 * lp).toFixed(1);
+        $('trendTag').style.opacity = p(t, 23.6, 23.9);
+        // The learned burn replaces the formula's guess.
+        const b = inOut(p(t, 24.4, 25.3));
+        $('burnN').textContent = fmt(lerp(2450, 2318, b));
+        $('burnN').style.color = b > 0.02 ? `rgb(${lerp(15, 18, b)},${lerp(20, 96, b)},${lerp(23, 47, b)})` : '';
+        const bc = outExpo(p(t, 22.0, 23.0));
+        $('burn').style.opacity = bc;
+        $('burn').style.transform = `translateY(${(1 - bc) * 30}px)`;
+        const u = outBack(p(t, 25.3, 25.7));
+        $('updated').style.opacity = clamp(u);
+        $('updated').style.transform = `scale(${lerp(0.8, 1, u)})`;
+        $('updated').style.transformOrigin = 'left center';
+      }
+
+      /* ── Driving it ────────────────────────────────────────────────── */
+
+      window.DURATION = DURATION;
+      window.seek = seek;
+      const render = new URLSearchParams(location.search).has('render');
+
+      if (!render) {
+        // Preview: fit the stage to the window and play on a loop.
+        const fit = () => {
+          const s = Math.min(innerWidth / 1080, innerHeight / 1920);
+          const st = $('stage');
+          st.style.transform = `scale(${s})`;
+          st.style.left = `${(innerWidth - 1080 * s) / 2}px`;
+          st.style.top = `${(innerHeight - 1920 * s) / 2}px`;
+        };
+        addEventListener('resize', fit);
+        fit();
+        document.fonts.ready.then(() => {
+          const start = performance.now();
+          const tick = (now) => {
+            seek((((now - start) / 1000) % (DURATION + 1.5)));
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        });
+      }
+      seek(0);
+    </script>
+  </body>
+</html>
