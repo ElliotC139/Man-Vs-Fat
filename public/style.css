@@ -5515,6 +5515,10 @@ tr.has-tooltip:active {
   justify-content: center;
   background: rgba(8, 14, 11, 0.55);
   backdrop-filter: blur(2px);
+  animation: sheet-backdrop-in 0.2s var(--ease);
+}
+@keyframes sheet-backdrop-in {
+  from { background-color: rgba(8, 14, 11, 0); backdrop-filter: blur(0); }
 }
 .sheet-panel {
   width: 100%;
@@ -5528,18 +5532,29 @@ tr.has-tooltip:active {
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   background: var(--card);
   box-shadow: var(--shadow-lg);
-  animation: sheet-rise 0.22s var(--ease);
+  /* Up from the bottom edge it is attached to, which is what makes it read
+     as a sheet over the page rather than a card that appeared on it. */
+  animation: sheet-rise 0.34s var(--glide, var(--ease));
 }
 @keyframes sheet-rise {
-  from { transform: translateY(14px); opacity: 0; }
+  from { transform: translateY(48px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
+@keyframes sheet-pop {
+  from { transform: translateY(8px) scale(0.97); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
 @media (prefers-reduced-motion: reduce) {
+  .sheet,
   .sheet-panel { animation: none; }
 }
 @media (min-width: 720px) {
   .sheet { align-items: center; }
-  .sheet-panel { border-radius: var(--radius-lg); }
+  /* Centred as a dialog on a wide screen, so it settles in place instead. */
+  .sheet-panel {
+    border-radius: var(--radius-lg);
+    animation-name: sheet-pop;
+  }
 }
 .sheet-head {
   display: flex;
@@ -6863,6 +6878,133 @@ body.hide-entry-times .entry-time {
   .layout-move:active,
   .settings-section-head:active {
     transform: none;
+  }
+}
+
+/* ── Motion that says what just happened ────────────────────────────────────
+   Each of these is tied to a change the user caused, and each is over in a
+   third of a second. Same rule as the entrances above: nothing loops, and
+   nothing moves on its own. */
+
+/* A settled curve for things that travel: it arrives with a hint of weight
+   rather than the full bounce --spring gives a press. */
+:root {
+  --glide: cubic-bezier(0.25, 1.1, 0.4, 1);
+}
+
+/* Segmented controls: one thumb that slides to the chosen option — see
+   initSegmentedControls() in app.js. The buttons go transparent over it so
+   the thumb is the only "selected" surface. */
+.seg-track {
+  position: relative;
+  isolation: isolate;
+}
+.seg-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  border-radius: 9px;
+  background: var(--pill-active-bg);
+  box-shadow: var(--pill-active-shadow);
+  pointer-events: none;
+}
+.seg-track--ready .seg-thumb {
+  transition: transform 0.34s var(--glide), width 0.34s var(--glide), height 0.34s var(--glide);
+}
+.granularity-toggle .seg-thumb { border-radius: 6px; }
+.units-toggle .seg-thumb { border-radius: 8px; }
+.seg-track .stats-tab-btn--active,
+.seg-track .granularity-btn--active,
+.seg-track .units-btn--active {
+  background: transparent;
+  box-shadow: none;
+}
+/* None of the three ever cleared the shared button rule's shadow, so every
+   unselected tab wore it — which is why the Stats tabs looked like three
+   raised buttons rather than one control, and glowed green in dark mode. */
+.stats-tab-btn,
+.granularity-btn,
+.units-btn {
+  box-shadow: none;
+}
+@media (hover: hover) {
+  .stats-tab-btn:not(.stats-tab-btn--active):hover,
+  .granularity-btn:not(.granularity-btn--active):hover,
+  .units-btn:not(.units-btn--active):hover {
+    background: transparent;
+    color: var(--ink);
+  }
+}
+
+/* Stepping through days and weeks: the new one slides in from the side the
+   arrow pointed — see playStep() in app.js. The selectors carry the screen's
+   id because the Today cards' own entrance (#today-screen main > .card) would
+   otherwise out-rank a bare class and keep playing instead. */
+@keyframes step-in-back {
+  from { opacity: 0; transform: translateX(-18px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes step-in-forward {
+  from { opacity: 0; transform: translateX(18px); }
+  to { opacity: 1; transform: none; }
+}
+.step-in--back,
+#today-screen main > .step-in--back,
+#app-shell main .step-in--back {
+  animation: step-in-back 0.3s var(--glide) both;
+}
+.step-in--forward,
+#today-screen main > .step-in--forward,
+#app-shell main .step-in--forward {
+  animation: step-in-forward 0.3s var(--glide) both;
+}
+
+/* A deleted row folds away; the rows under it close up over the gap. The
+   height is pinned in px by collapseRows() first, because a height can't be
+   animated from auto. */
+.row--leaving {
+  height: 0 !important;
+  min-height: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  opacity: 0;
+  transform: translateX(28px);
+  overflow: hidden;
+  pointer-events: none;
+  transition:
+    height 0.24s var(--ease) 0.04s,
+    margin 0.24s var(--ease) 0.04s,
+    padding 0.24s var(--ease) 0.04s,
+    opacity 0.18s var(--ease),
+    transform 0.22s var(--ease);
+}
+
+/* Rows the list already had are redrawn still; only a new one comes in. */
+.entry-row--settled {
+  animation: none;
+}
+
+/* What still fits opens rather than appearing. */
+.what-now-body {
+  animation: section-open 0.24s var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seg-track--ready .seg-thumb,
+  .row--leaving {
+    transition: none;
+  }
+  .step-in--back,
+  .step-in--forward,
+  #today-screen main > .step-in--back,
+  #today-screen main > .step-in--forward,
+  #app-shell main .step-in--back,
+  #app-shell main .step-in--forward,
+  .what-now-body {
+    animation: none;
   }
 }
 

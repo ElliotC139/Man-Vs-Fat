@@ -337,16 +337,23 @@ photoCameraInput?.addEventListener("change", () => {
   showChosenPhoto();
 });
 
+// Which way the last arrow went, for loadWeek() to slide the new week in from
+// that side once it has drawn it. See playStep().
+let pendingWeekStep = null;
+
 weekPrevBtn.addEventListener("click", () => {
   weeksAgo += 1;
+  pendingWeekStep = "back";
   refreshCurrentView();
 });
 
 weekNextBtn.addEventListener("click", () => {
   if (weeksAgo === 0) return;
   weeksAgo -= 1;
+  pendingWeekStep = "forward";
   refreshCurrentView();
 });
+
 
 /**
  * Reloads whatever screen is in front of you after something changed.
@@ -382,7 +389,7 @@ async function loadWeek() {
 
   if (week.pendingEstimates > 0) {
     const plural = week.pendingEstimates > 1 ? "entries" : "entry";
-    pendingNoteEl.textContent = `${week.pendingEstimates} ${plural} couldn't be estimated and isn't counted yet — tap Edit to add kcal.`;
+    pendingNoteEl.textContent = `${week.pendingEstimates} ${plural} couldn't be estimated and isn't counted yet — tap the pencil on ${week.pendingEstimates > 1 ? "each" : "its"} row to add kcal.`;
     pendingNoteEl.hidden = false;
   } else {
     pendingNoteEl.hidden = true;
@@ -391,6 +398,10 @@ async function loadWeek() {
   renderFormGuide(week.dailyTotals ?? [], week.whoop?.dailyBurn ?? []);
   renderDailyTotals(week.dailyTotals ?? [], week.whoop?.dailyBurn ?? []);
   renderEntries(week.entries);
+  if (pendingWeekStep) {
+    playStep([weekRangeEl, document.querySelector("#app-shell .summary"), document.getElementById("entry-list")], pendingWeekStep);
+    pendingWeekStep = null;
+  }
   renderExercises(week.exercises ?? []);
   renderBudgetWidget(week);
   loadTeamTable();
@@ -1004,10 +1015,23 @@ function appendEntries(entries, container) {
   }
 }
 
+/**
+ * Entries this page has already drawn. A list is rebuilt from scratch after
+ * every change, and each row has an entrance — so logging one thing used to
+ * replay the entrance on all twenty rows above it, and the one that was new
+ * was the one thing you couldn't pick out. Rows that were already there are
+ * drawn settled; only a row appearing for the first time comes in.
+ */
+const seenEntryIds = new Set();
+
 function renderEntryRow(entry) {
   const row = document.createElement("div");
   row.className = "entry-row";
   row.dataset.id = entry.id;
+  // A row arriving because the arrows stepped to another day or week rides in
+  // with the slide instead (see playStep), rather than fading up inside it.
+  if (seenEntryIds.has(entry.id) || pendingDayStep || pendingWeekStep) row.classList.add("entry-row--settled");
+  seenEntryIds.add(entry.id);
 
   // While selecting, the row is a checkbox and nothing else: the Edit, repeat
   // and delete buttons are hidden, and the whole row is the target. Tapping a
@@ -1441,7 +1465,9 @@ function enterEditMode(row, entry) {
 async function deleteEntry(entry) {
   const name = entry.label ? `"${entry.label}"` : "this entry";
   if (!window.confirm(`Delete ${name}? There's no undo.`)) return;
+  const folding = collapseRows(document.querySelectorAll(`.entry-row[data-id="${entry.id}"]`));
   await fetch(`/api/entries/${entry.id}`, { method: "DELETE" });
+  await folding;
   refreshCurrentView();
 }
 
@@ -4149,7 +4175,7 @@ function renderExerciseRows(container, exercises, refresh) {
     // Auto-imported entries reappear on the next WHOOP sync since they're
     // matched by the workout's own id, not tracked as user-deleted.
     if (ex.fromWhoop) delBtn.title = "Auto-imported from WHOOP — will reappear on next sync";
-    delBtn.addEventListener("click", () => deleteExercise(ex.id, refresh));
+    delBtn.addEventListener("click", () => deleteExercise(ex.id, refresh, row));
 
     row.append(icon, label, kcal, editBtn, delBtn);
     container.appendChild(row);
@@ -4190,8 +4216,10 @@ function renderTodayExercise(exercises, isToday) {
   renderExerciseRows(todayExerciseListEl, list, loadToday);
 }
 
-async function deleteExercise(id, refresh) {
+async function deleteExercise(id, refresh, row) {
+  const folding = collapseRows(row ? [row] : []);
   await fetch(`/api/exercises/${id}`, { method: "DELETE" });
+  await folding;
   refresh();
 }
 
@@ -6338,6 +6366,7 @@ dayJumpInput.addEventListener("change", () => {
   // Picking today goes back to live-today rather than to a fixed key, so the
   // screen keeps updating as the day goes on.
   todayViewDate = value === todayDateKey() ? null : value;
+  if (currentTodayDate && value !== currentTodayDate) pendingDayStep = value < currentTodayDate ? "back" : "forward";
   ringIntroPending = true;
   haptic();
   loadToday();
@@ -6349,7 +6378,9 @@ weekJumpInput.addEventListener("change", () => {
   // Midday, so the date lands unambiguously inside the day picked whichever
   // side of a clock change it falls.
   const [y, m, d] = value.split("-").map(Number);
-  weeksAgo = weeksAgoFor(new Date(y, m - 1, d, 12, 0, 0, 0));
+  const target = weeksAgoFor(new Date(y, m - 1, d, 12, 0, 0, 0));
+  if (target !== weeksAgo) pendingWeekStep = target > weeksAgo ? "back" : "forward";
+  weeksAgo = target;
   haptic();
   loadWeek();
 });
@@ -10636,6 +10667,106 @@ function bumpValue(el) {
   el.classList.add("value-bump");
 }
 
+function prefersLessMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/**
+ * A thumb that slides to the chosen option in a segmented control — the Stats
+ * tabs, daily/weekly, the units switches.
+ *
+ * The chosen option used to light up in place, which says what is selected
+ * but not that it just changed; the thumb travelling from one to the other is
+ * the change. It is one element per control, positioned from the chosen
+ * button's own box, so it fits whatever widths the labels give the buttons.
+ * The code that picks an option still only toggles its class — a
+ * MutationObserver notices, so none of the three controls' handlers had to
+ * learn about this. A ResizeObserver covers the control appearing for the
+ * first time (it measures zero while its screen is hidden) and the window
+ * changing width.
+ */
+const SEGMENTED_CONTROLS = [
+  [".stats-tabs", ".stats-tab-btn--active"],
+  [".granularity-toggle", ".granularity-btn--active"],
+  [".units-toggle", ".units-btn--active"],
+];
+
+function syncSegmentThumb(track, activeSelector) {
+  const thumb = track.querySelector(":scope > .seg-thumb");
+  const active = track.querySelector(activeSelector);
+  if (!thumb || !active || track.offsetWidth === 0) return;
+  thumb.style.width = `${active.offsetWidth}px`;
+  thumb.style.height = `${active.offsetHeight}px`;
+  thumb.style.transform = `translate(${active.offsetLeft}px, ${active.offsetTop}px)`;
+  thumb.hidden = false;
+  // Placed without travelling the first time, so it doesn't fly in from the
+  // left edge every time a screen opens.
+  if (!track.classList.contains("seg-track--ready")) {
+    requestAnimationFrame(() => track.classList.add("seg-track--ready"));
+  }
+}
+
+function initSegmentedControls() {
+  // Runs once, below; the controls are all in the static markup.
+  for (const [trackSelector, activeSelector] of SEGMENTED_CONTROLS) {
+    for (const track of document.querySelectorAll(trackSelector)) {
+      if (track.querySelector(":scope > .seg-thumb")) continue;
+      const thumb = document.createElement("span");
+      thumb.className = "seg-thumb";
+      thumb.setAttribute("aria-hidden", "true");
+      thumb.hidden = true;
+      track.prepend(thumb);
+      track.classList.add("seg-track");
+      const sync = () => syncSegmentThumb(track, activeSelector);
+      if (typeof MutationObserver === "function") {
+        new MutationObserver(sync).observe(track, { subtree: true, attributes: true, attributeFilter: ["class"] });
+      }
+      if (typeof ResizeObserver === "function") new ResizeObserver(sync).observe(track);
+      sync();
+    }
+  }
+}
+initSegmentedControls();
+
+/**
+ * Stepping to the day or week before slides the new one in from the left, and
+ * the one after from the right — the header's date and the figures and list
+ * under it, which are the parts that change. It is the only cue that the
+ * arrows went the way you meant: two weeks of similar-looking days otherwise
+ * swap in place, and a mis-tap is indistinguishable from a tap.
+ *
+ * The class comes off again when the animation ends, because the Today cards
+ * also have an entrance of their own for when the screen is opened, and a
+ * leftover step class would stand in for it next time.
+ */
+function playStep(elements, dir) {
+  if (!dir || prefersLessMotion()) return;
+  for (const el of elements) {
+    if (!el || el.hidden) continue;
+    el.classList.remove("step-in--back", "step-in--forward");
+    void el.offsetWidth;
+    el.classList.add(`step-in--${dir}`);
+    el.addEventListener("animationend", () => el.classList.remove(`step-in--${dir}`), { once: true });
+  }
+}
+
+/**
+ * A deleted row folds away before the list is rebuilt without it, so the rows
+ * below close up over the gap rather than jumping. Resolves once the fold has
+ * played; the caller rebuilds the list after, which is what actually removes
+ * it (and puts it back, if the delete didn't go through).
+ */
+function collapseRows(rows) {
+  const list = [...rows].filter((row) => row.isConnected);
+  if (list.length === 0 || prefersLessMotion()) return Promise.resolve();
+  for (const row of list) {
+    row.style.height = `${row.offsetHeight}px`;
+  }
+  void document.body.offsetHeight;
+  for (const row of list) row.classList.add("row--leaving");
+  return new Promise((resolve) => setTimeout(resolve, 260));
+}
+
 function haptic(pattern = 12) {
   if (typeof navigator.vibrate !== "function") return;
   // Respect a system-level preference for less motion/feedback.
@@ -13573,10 +13704,14 @@ async function loadToday() {
     const res = await fetch(`/api/stats/today${query}`);
     if (!res.ok) throw new Error();
     renderToday(await res.json());
+    if (pendingDayStep) {
+      playStep([todayDateEl, document.querySelector("#today-screen .today-hero"), document.getElementById("today-entries-section"), todayExerciseSection], pendingDayStep);
+    }
   } catch {
     // Offline or a failed call: the banner already says so, and blanking the
     // screen would throw away the last good numbers for no gain.
   }
+  pendingDayStep = null;
   loadQuickAdd();
   loadWhatNow();
 }
@@ -13655,7 +13790,7 @@ function renderToday(data) {
 
   if (data.kcal.pendingEntries > 0) {
     const n = data.kcal.pendingEntries;
-    todayPending.textContent = `${n} ${n === 1 ? "entry" : "entries"} couldn't be estimated and isn't counted — tap Edit to add kcal.`;
+    todayPending.textContent = `${n} ${n === 1 ? "entry" : "entries"} couldn't be estimated and isn't counted — tap the pencil on ${n === 1 ? "its" : "each"} row to add kcal.`;
     todayPending.hidden = false;
   } else {
     todayPending.hidden = true;
@@ -13688,6 +13823,8 @@ let currentTodayDate = null;
 // Null means today. Set to a YYYY-MM-DD key while looking back at an earlier
 // day; the arrows mirror the week nav on the diary so the two read the same.
 let todayViewDate = null;
+// Which way the last step through the days went; see playStep().
+let pendingDayStep = null;
 // Whether the screen is showing today, which several captions depend on.
 let viewingToday = true;
 // "Tue 2 Sep" for the day on screen, for the log button to name it.
@@ -13759,6 +13896,8 @@ function loggingDate() {
 
 function goToDay(key) {
   if (!key) return;
+  // Keys are YYYY-MM-DD, so they compare as dates.
+  if (currentTodayDate) pendingDayStep = key < currentTodayDate ? "back" : "forward";
   todayViewDate = key;
   ringIntroPending = true;
   haptic();
@@ -13769,6 +13908,7 @@ dayPrevBtn.addEventListener("click", () => goToDay(dayPrevBtn.dataset.date));
 dayNextBtn.addEventListener("click", () => goToDay(dayNextBtn.dataset.date));
 dayBackToTodayBtn.addEventListener("click", () => {
   todayViewDate = null;
+  pendingDayStep = "forward";
   ringIntroPending = true;
   haptic();
   loadToday();
