@@ -261,12 +261,19 @@ async function iphone() {
   });
 }
 
+// The day's numbers are held back while the screen draws itself, so the
+// clip opens on Today with an empty ring, and the sweep starts on cue.
+const releaseFirst = await hold('**/api/stats/today**');
 await page.goto(BASE, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => document.styleSheets.length > 0 && document.body);
 await iphone();
+await wait(1.0, false);
 if (want('today')) clip('today');
 else dir = null;
-await wait(3.0);
+await wait(0.1);
+releaseFirst();
+mark('ring');
+await wait(2.6);
 
 // Typing dinner in, the estimate, the sheet, and the ring moving on.
 if (want('log')) clip('log');

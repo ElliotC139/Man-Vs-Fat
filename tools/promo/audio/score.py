@@ -7,7 +7,8 @@ a warm four-chord loop (Fmaj7 - G - Am7 - Cmaj9), quiet for the title cards,
 dropping into a full groove the moment the phone arrives, and resolving on
 one held chord under the end card.
 
-Timings come from ../timeline.js and ../capture/clips/markers.json, so the
+Timings come from ../timeline.js (run through node) and
+../capture/clips/markers.json, so the
 tap sounds land on the frame the finger touches the glass, the keyboard
 ticks with the typing, and the shimmer follows the ring.
 
@@ -15,7 +16,7 @@ Needs numpy and scipy.
 """
 
 import json
-import re
+import subprocess
 import wave
 from pathlib import Path
 
@@ -26,7 +27,14 @@ HERE = Path(__file__).resolve().parent
 PROMO = HERE.parent
 SR = 48000
 
-TL = json.loads(re.sub(r"^.*?=\s*", "", re.sub(r"//[^\n]*", "", (PROMO / "timeline.js").read_text()), flags=re.S).rstrip().rstrip(";"))
+# The schedule is computed in timeline.js; node evaluates it and hands it over.
+TL = json.loads(
+    subprocess.run(
+        ["node", "-e", "const T = require(process.argv[1]); console.log(JSON.stringify(T))", str(PROMO / "timeline.js")],
+        check=True, capture_output=True, text=True,
+    ).stdout
+)
+BEATS = TL["beats"]
 MARKERS = json.loads((PROMO / "capture" / "clips" / "markers.json").read_text())
 
 BEAT = 60 / TL["bpm"]
@@ -36,6 +44,9 @@ N = int(DUR * SR)
 DROP = TL["drop"]
 END = TL["endIn"]
 DRUMS_OUT = END
+# The music lifts for the last act, "It learns what you really burn", on the
+# bar that beat starts in.
+LIFT = next(b["start"] for b in BEATS if b["title"][0].startswith("It learns")) // BAR * BAR
 
 rng = np.random.default_rng(7)
 mix_l = np.zeros(N)
@@ -242,7 +253,7 @@ while t < END:
     step = BEAT / 2 if t < DROP else BEAT / 4
     _, voicing = chord_at(t)
     m = voicing[ARP[k % 8] % len(voicing)] + 12
-    lift = 1.25 if 28.0 <= t < 35.25 else 1.0
+    lift = 1.25 if LIFT <= t < TL['phoneOut'] else 1.0
     g = (0.06 if t < 4 else 0.08) if t < DROP else 0.13 * lift
     if not (5.75 <= t < DROP):  # a breath before the drop
         add(pluck(m, g), t, pan=0.35 * np.sin(k * 0.9))
@@ -252,14 +263,22 @@ while t < END:
     k += 1
 
 # Top line from the target scene on: longer notes, an octave up.
-for i, tt in enumerate(np.arange(28.0, 35.25, BEAT)):
+for i, tt in enumerate(np.arange(LIFT, TL['phoneOut'], BEAT)):
     _, voicing = chord_at(tt)
     add(pluck(voicing[[4, 3, 2, 3][i % 4]] + 12, 0.06, dur=0.6, bright=5000), tt, pan=0.5)
 
 # Drums and bass, from the drop until the end card.
 t = DROP
+# A breather: the drums sit out "It does the maths", where the screen holds
+# still, and come back as the ring moves.
+maths = next(i for i, b in enumerate(BEATS) if b["title"][0] == "It does")
+BREAK = (BEATS[maths]["start"], BEATS[maths + 1]["start"])
 while t < DRUMS_OUT - 1e-6:
     beat_in_bar = round((t % BAR) / BEAT) % 4
+    if BREAK[0] <= t < BREAK[1]:
+        add(hat(), t + BEAT / 2, 0.25, pan=0.3)
+        t += BEAT
+        continue
     add(kick(), t, 0.4)
     i = int(t * SR)
     dip = 1 - 0.55 * np.exp(-np.arange(min(int(BEAT * SR), N - i)) / SR / 0.11)
@@ -275,7 +294,7 @@ while t < DRUMS_OUT - 1e-6:
     t += BEAT
 
 # A fill into the target scene.
-for j, tt in enumerate(np.arange(27.0, 28.0, BEAT / 4)):
+for j, tt in enumerate(np.arange(LIFT - 1.0, LIFT, BEAT / 4)):
     add(clap() * 0.5, tt, 0.15 + 0.35 * j / 8, pan=0.1)
 
 # Risers into the drop and into the end card.
@@ -291,14 +310,24 @@ add(hp(rng.standard_normal(boom_n), 2000) * np.exp(-tb / 0.9), END, 0.1)
 
 # ── Sound effects, from the footage ───────────────────────────────────
 
-clips = {c["name"]: c for c in TL["clips"]}
 TOUCH = 0.12  # the finger lands this long after a tap is marked
+
+
+def time_of(clip, frame):
+    """When a frame of a recorded clip is on screen, or None if it's cut."""
+    for b in BEATS:
+        # A few frames of grace: a marker just before a beat's first frame
+        # (the ring's data landing) plays as the beat starts.
+        if b["clip"] == clip and b["from"] - 3 <= frame < b["to"]:
+            return b["playAt"] + max(0, frame - b["from"]) / 60
+    return None
+
+
 for name, marks in MARKERS.items():
-    c = clips.get(name)
-    if not c:
-        continue
     for mk in marks:
-        at = c["start"] + mk["frame"] / 60
+        at = time_of(name, mk["frame"])
+        if at is None:
+            continue
         if mk["what"].startswith("tap"):
             add(tap_sound(), at + TOUCH, 0.22, pan=0.1)
         elif mk["what"] == "key":
@@ -306,19 +335,25 @@ for name, marks in MARKERS.items():
         elif mk["what"] == "estimate":
             add(whoosh(0.35, up=True), at - 0.05, 0.12)
         elif mk["what"] == "ring":
-            add(shimmer(0.45, [72, 76, 79, 84]), at, 0.07, pan=-0.2)
+            # The first sweep is the long one, from empty.
+            if name == "today":
+                add(shimmer(1.4, [67, 72, 74, 76, 79, 81, 84]), at, 0.06, pan=-0.15)
+            else:
+                add(shimmer(0.45, [72, 76, 79, 84]), at, 0.07, pan=-0.2)
 
-# The ring's first sweep, in the first clip, and its re-sweep in the last.
-add(shimmer(1.4, [67, 72, 74, 76, 79, 81, 84]), clips["today"]["start"] + 0.05, 0.06, pan=-0.15)
-add(shimmer(1.4, [67, 72, 74, 76, 79, 81, 84]), clips["target"]["start"] + 0.25, 0.05, pan=-0.15)
+# Each new caption gets one soft bell as it arrives, so the ear knows a new
+# idea has started before the eye has read it.
+for i, b in enumerate(BEATS):
+    add(pluck([79, 81, 84, 86][i % 4] + 12, 0.05, dur=0.8, bright=3000), b["start"], pan=0.2)
 
 # The phone arriving and leaving.
 add(whoosh(0.9, up=True), TL["phoneIn"] - 0.1, 0.18)
 add(whoosh(0.8, up=False), TL["phoneOut"], 0.15)
 
-# Each tile lands on an eighth note, a rising run.
+# Each tile lands with a note, a rising run.
 for i, m in enumerate([72, 74, 76, 79, 81, 84]):
-    add(pluck(m + 12, 0.07, dur=0.5, bright=5000), TL["tilesIn"] + 0.5 + i * 0.25, pan=-0.3 + 0.12 * i)
+    at = TL["tilesIn"] + 1.0 + (i // 2) * 0.6 + (i % 2) * 0.12  # as promo.html lays them in
+    add(pluck(m + 12, 0.07, dur=0.5, bright=5000), at, pan=-0.3 + 0.12 * i)
 
 # ── Mix ───────────────────────────────────────────────────────────────
 
