@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <!-- Kept in step with VERSION in sw.js by hand; it is what a suggestion
          reports as the version somebody was on. -->
-    <meta name="app-version" content="v44" />
+    <meta name="app-version" content="v72" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <!--
       Never index this file.
@@ -128,9 +128,21 @@
               <!-- Burn, then eaten, then net: the three read down the card in
                    the order the sum is done, so the last line is visibly the
                    result of the two above it. -->
+              <!-- The cog sits on this caption because this figure is the
+                   thing it changes: what today is measured against. In the
+                   card's corner it needed a band of empty card reserved
+                   above the figures so the two didn't collide. -->
               <div class="today-stat">
                 <span id="today-burn" class="today-stat-value">—</span>
-                <span id="today-burn-caption" class="today-stat-caption">burned</span>
+                <span class="today-stat-caption-row">
+                  <span id="today-burn-caption" class="today-stat-caption">burned</span>
+                  <button
+                  type="button"
+                  id="burn-settings-btn"
+                  class="burn-settings-btn"
+                  aria-label="Change what today is measured against"
+                  ></button>
+                </span>
               </div>
               <div class="today-stat">
                 <span id="today-remaining" class="today-stat-value">—</span>
@@ -173,12 +185,6 @@
             <div id="nutrient-today-rows"></div>
             <p id="macro-today-note" class="macro-today-note" hidden></p>
           </div>
-          <button
-          type="button"
-          id="burn-settings-btn"
-          class="burn-settings-btn"
-          aria-label="Change what today is measured against"
-          ></button>
           <p id="today-pending" class="error" hidden></p>
         </section>
 
@@ -235,25 +241,6 @@
           <p id="what-now-note" class="muted what-now-note" hidden></p>
           <ul id="what-now-list" class="what-now-list"></ul>
           <p id="what-now-skipped" class="muted what-now-skipped" hidden></p>
-          </div>
-        </section>
-
-        <section id="today-insights-card" class="card" data-module="today:insights" data-module-name="Today so far" hidden>
-          <div class="section-header"><h2>Today so far</h2></div>
-          <ul id="today-insights" class="insights-list"></ul>
-        </section>
-
-        <section id="today-body-card" class="card" data-module="today:body" data-module-name="Recovery and sleep" hidden>
-          <div class="section-header"><h2>Body</h2></div>
-          <div class="balance-grid" id="today-body-grid">
-            <div class="balance-cell" id="today-recovery-cell" hidden>
-              <span id="today-recovery" class="balance-number">—</span>
-              <span class="balance-caption">recovery</span>
-            </div>
-            <div class="balance-cell" id="today-sleep-cell" hidden>
-              <span id="today-sleep" class="balance-number">—</span>
-              <span class="balance-caption">slept</span>
-            </div>
           </div>
         </section>
 
@@ -382,41 +369,6 @@
         </button>
         </section>
 
-        <section id="water-card" class="card water-card" data-module="today:water" data-module-name="Water">
-        <div class="water-head">
-        <span class="water-title">Water today</span>
-        <span id="water-total" class="water-total">0 ml</span>
-        </div>
-        <div class="water-buttons">
-        <button type="button" class="ghost-sm water-btn" data-water="250">+ Glass</button>
-        <button type="button" class="ghost-sm water-btn" data-water="500">+ Bottle</button>
-        <button type="button" class="ghost-sm water-btn" data-water="-250">Undo</button>
-        </div>
-        </section>
-
-        <!-- Free tier only, and only where a publisher id is configured. The
-             slot stays empty and hidden otherwise; nothing is loaded at all
-             for anyone paying. -->
-        <section id="ad-today" class="ad-slot" hidden>
-          <span class="ad-label">Ad</span>
-          <div id="ad-today-unit" class="ad-unit"></div>
-          <button type="button" class="link-btn ad-remove">Remove ads</button>
-        </section>
-
-        <section id="today-note-card" class="card today-note-card" data-module="today:note" data-module-name="Note">
-          <div class="section-header">
-            <h2>Note</h2>
-            <span id="today-note-status" class="muted today-note-status" hidden></span>
-          </div>
-          <textarea
-            id="today-note-input"
-            rows="2"
-            maxlength="500"
-            placeholder="Anything worth remembering — away with work, feeling rough"
-          ></textarea>
-          <button type="button" id="today-note-save" class="ghost-sm today-note-save" hidden>Save note</button>
-        </section>
-
         <section id="today-entries-section" data-module="today:entries" data-module-name="What you logged">
           <div class="section-header">
             <h2 id="today-entries-heading">Logged today</h2>
@@ -445,6 +397,68 @@
           </div>
           <div id="today-exercise-list"></div>
         </section>
+        <section id="today-insights-card" class="card" data-module="today:insights" data-module-name="Today so far" hidden>
+          <div class="section-header"><h2>Today so far</h2></div>
+          <ul id="today-insights" class="insights-list"></ul>
+        </section>
+
+        <section id="today-body-card" class="card" data-module="today:body" data-module-name="Recovery and sleep" hidden>
+          <div class="section-header"><h2>Body</h2></div>
+          <div class="balance-grid" id="today-body-grid">
+            <div class="balance-cell" id="today-recovery-cell" hidden>
+              <span id="today-recovery" class="balance-number">—</span>
+              <span class="balance-caption">recovery</span>
+            </div>
+            <div class="balance-cell" id="today-sleep-cell" hidden>
+              <span id="today-sleep" class="balance-number">—</span>
+              <span class="balance-caption">slept</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="water-card" class="card water-card" data-module="today:water" data-module-name="Water">
+        <!-- Undo lives beside the total it changes, as a small icon, rather
+             than as a third button the same size and colour as the two that
+             add — a row of three identical pills made taking one back look
+             like a way of drinking. -->
+        <div class="water-head">
+        <span class="water-title">Water today</span>
+        <span class="water-total-row">
+        <span id="water-total" class="water-total" aria-live="polite">0 ml</span>
+        <button type="button" id="water-undo" class="water-btn water-undo" data-water="-250" title="Take back a glass" aria-label="Take back a glass (250 ml)" disabled>
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+        </button>
+        </span>
+        </div>
+        <div class="water-buttons">
+        <button type="button" class="ghost-sm water-btn" data-water="250">+ Glass <span class="water-btn-ml">250 ml</span></button>
+        <button type="button" class="ghost-sm water-btn" data-water="500">+ Bottle <span class="water-btn-ml">500 ml</span></button>
+        </div>
+        </section>
+
+        <section id="today-note-card" class="card today-note-card" data-module="today:note" data-module-name="Note">
+          <div class="section-header">
+            <h2>Note</h2>
+            <span id="today-note-status" class="muted today-note-status" hidden></span>
+          </div>
+          <textarea
+            id="today-note-input"
+            rows="2"
+            maxlength="500"
+            placeholder="Anything worth remembering — away with work, feeling rough"
+          ></textarea>
+          <button type="button" id="today-note-save" class="ghost-sm today-note-save" hidden>Save note</button>
+        </section>
+
+        <!-- Free tier only, and only where a publisher id is configured. The
+             slot stays empty and hidden otherwise; nothing is loaded at all
+             for anyone paying. -->
+        <section id="ad-today" class="ad-slot" hidden>
+          <span class="ad-label">Ad</span>
+          <div id="ad-today-unit" class="ad-unit"></div>
+          <button type="button" class="link-btn ad-remove">Remove ads</button>
+        </section>
+
       </main>
     </div>
 
@@ -482,7 +496,7 @@
 
 
           <div class="summary-total"><span id="week-total">0</span> kcal this week</div>
-          <div class="muted"><span id="week-avg">0</span> kcal/day avg over <span id="days-logged">0</span> day(s) logged</div>
+          <div class="muted"><span id="week-avg">0</span> kcal/day avg over <span id="days-logged">0</span> <span id="days-logged-word">days</span> logged</div>
           <div id="week-net-summary" class="week-net-summary" hidden></div>
           <div id="daily-totals" class="day-totals"></div>
           <p id="pending-note" class="error" hidden></p>
@@ -1681,7 +1695,7 @@
         <button id="admin-back" type="button" class="library-back" aria-label="Back">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
         </button>
-        <h1>Admin</h1>
+        <h1 class="brand"><img src="/icons/mark-inverse.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Admin</span></h1>
         <button type="button" id="admin-refresh" class="ghost-sm admin-refresh">Refresh</button>
       </header>
       <main>
