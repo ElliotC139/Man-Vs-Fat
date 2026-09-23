@@ -1096,9 +1096,16 @@ function renderEntryRow(entry) {
 
   const actions = document.createElement("div");
   actions.className = "entry-actions";
+  // A pencil rather than the word, the same one the exercise rows already
+  // use. "Edit" was the widest of the three buttons, and on a phone the width
+  // it took came straight out of the food's name, which wrapped to two lines
+  // on nearly every row.
   const editBtn = document.createElement("button");
-  editBtn.textContent = "Edit";
+  editBtn.innerHTML = ICONS.pencil;
   editBtn.type = "button";
+  editBtn.className = "entry-action-icon";
+  editBtn.title = "Edit";
+  editBtn.setAttribute("aria-label", "Edit entry");
   editBtn.addEventListener("click", () => enterEditMode(row, entry));
   const repeatBtn = document.createElement("button");
   repeatBtn.innerHTML = ICONS.plus;
@@ -1110,7 +1117,7 @@ function renderEntryRow(entry) {
   const delBtn = document.createElement("button");
   delBtn.innerHTML = ICONS.x;
   delBtn.type = "button";
-  delBtn.className = "entry-action-icon";
+  delBtn.className = "entry-action-icon entry-action-icon--danger";
   delBtn.title = "Delete";
   delBtn.setAttribute("aria-label", "Delete entry");
   delBtn.addEventListener("click", () => deleteEntry(entry));
@@ -4135,9 +4142,10 @@ function renderExerciseRows(container, exercises, refresh) {
     editBtn.addEventListener("click", () => enterExerciseEditMode(row, ex, refresh));
 
     const delBtn = document.createElement("button");
-    delBtn.className = "exercise-del";
+    delBtn.className = "exercise-del exercise-del--danger";
     delBtn.innerHTML = ICONS.x;
     delBtn.type = "button";
+    delBtn.setAttribute("aria-label", "Delete exercise");
     // Auto-imported entries reappear on the next WHOOP sync since they're
     // matched by the workout's own id, not tracked as user-deleted.
     if (ex.fromWhoop) delBtn.title = "Auto-imported from WHOOP — will reappear on next sync";
@@ -10613,6 +10621,21 @@ applyTheme(localStorage.getItem(THEME_KEY) ?? "system");
 // A short buzz to confirm something landed, on the handful of actions where
 // the user is looking away from the screen. Android only in practice — iOS
 // Safari has no Vibration API — and silently absent everywhere else.
+/**
+ * A figure that has just changed because of something the user did gives a
+ * small pulse, so the eye finds what moved without having to compare it with
+ * what was there before. Restarted rather than queued: two quick taps on
+ * "+ Glass" should pulse twice, not once late. The CSS turns it off entirely
+ * for anyone who has asked for less motion.
+ */
+function bumpValue(el) {
+  if (!el) return;
+  el.classList.remove("value-bump");
+  // Reading layout here is what lets the same class restart the animation.
+  void el.offsetWidth;
+  el.classList.add("value-bump");
+}
+
 function haptic(pattern = 12) {
   if (typeof navigator.vibrate !== "function") return;
   // Respect a system-level preference for less motion/feedback.
@@ -11757,10 +11780,18 @@ suggestTargetBtn.addEventListener("click", async () => {
 // anyone asks of this data is "how much today".
 const waterCard = document.getElementById("water-card");
 const waterTotalEl = document.getElementById("water-total");
+const waterUndoBtn = document.getElementById("water-undo");
+let lastWaterMl = null;
 
 function renderWater(ml) {
   const litres = ml / 1000;
   waterTotalEl.textContent = ml >= 1000 ? `${litres.toFixed(litres >= 10 ? 0 : 1)} L` : `${ml} ml`;
+  // Nothing to take back from an empty day.
+  waterUndoBtn.disabled = ml <= 0;
+  // Only a change the user just made moves; the figure arriving on load
+  // doesn't.
+  if (lastWaterMl !== null && ml !== lastWaterMl) bumpValue(waterTotalEl);
+  lastWaterMl = ml;
 }
 
 async function loadWater() {

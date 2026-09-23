@@ -939,16 +939,19 @@ h2 {
    a narrow phone, so the row stays a single line. No min-width: 0 on the
    label — that would let it shrink past its longest word and break the text
    one character per line. */
+/* Three quiet icons rather than three outlined buttons. They are how you
+   correct a row, not what the row is for — the food and its figure are — so
+   they carry no border and no fill until a pointer or a thumb is on them. */
 .entry-actions {
   display: flex;
   flex-wrap: nowrap;
-  gap: 4px;
+  gap: 0;
   flex-shrink: 0;
-  margin-left: auto;
+  margin: -4px -6px -4px auto;
 }
 .entry-actions button.entry-action-icon {
-  width: 32px;
-  padding: 4px;
+  width: 34px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -956,13 +959,29 @@ h2 {
 
 .entry-actions button {
   width: auto;
-  min-height: 32px;
+  min-height: 34px;
   padding: 4px 10px;
   font-size: 0.85rem;
   background: transparent;
   color: var(--muted);
-  border: 1px solid var(--hairline);
+  border: 0;
+  border-radius: 999px;
   box-shadow: none;
+}
+.entry-actions button .icon {
+  width: 17px;
+  height: 17px;
+}
+@media (hover: hover) {
+  .entry-actions button:hover {
+    background: var(--bg);
+    color: var(--ink);
+  }
+  .entry-actions button.entry-action-icon--danger:hover,
+  .exercise-del.exercise-del--danger:hover {
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 9%, transparent);
+  }
 }
 
 /* ── Editing an entry ──
@@ -1325,14 +1344,21 @@ h2 {
     background: var(--action-soft-hover);
   }
 }
+/* The same row as a food entry — its own card, same padding, same edge — so
+   Today's "Logged" and "Exercise" read as two lists of one kind of thing.
+   It was a bare line on the page ground under a list of cards, which read as
+   a leftover rather than a section. */
 .exercise-entry {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--hairline);
+  gap: 12px;
+  padding: 11px 14px;
+  margin-bottom: 8px;
+  background: var(--card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  animation: fadeInUp 0.3s var(--ease);
 }
-.exercise-entry:last-child { border-bottom: none; }
 .exercise-icon {
   font-size: 1.1rem;
   flex-shrink: 0;
@@ -1350,13 +1376,38 @@ h2 {
 .exercise-kcal { font-weight: 700; color: var(--action-ink); font-size: 0.9rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .exercise-del {
   width: auto;
-  min-height: auto;
-  padding: 2px 8px;
-  font-size: 0.75rem;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 600;
   background: transparent;
-  border: 1px solid var(--hairline);
-  border-radius: 6px;
+  border: 0;
+  border-radius: 999px;
   color: var(--muted);
+}
+.exercise-del .icon {
+  width: 16px;
+  height: 16px;
+}
+/* The two lists on Today are sections rather than cards, so nothing gave them
+   the gap a card gets beneath it — the last row sat 8px off the next card,
+   closer to it than to its own heading. */
+#today-entries-section,
+#today-exercise-section {
+  margin-bottom: 18px;
+}
+.exercise-del + .exercise-del {
+  margin-left: -8px;
+}
+@media (hover: hover) {
+  .exercise-del:hover {
+    background: var(--bg);
+    color: var(--ink);
+  }
 }
 #exercise-list:empty::after {
   content: "No exercise logged this week.";
@@ -4070,8 +4121,17 @@ tr.has-tooltip:active {
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+.water-total-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 .water-total {
+  display: inline-block;
+  font-family: var(--font-heading);
+  font-size: 1.35rem;
   font-weight: 700;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--pitch-dark);
 }
@@ -4081,6 +4141,57 @@ tr.has-tooltip:active {
 }
 .water-buttons .water-btn {
   flex: 1 1 0;
+  min-height: 42px;
+  gap: 8px;
+}
+.water-btn-ml {
+  font-weight: 500;
+  font-size: 0.78rem;
+  opacity: 0.72;
+  font-variant-numeric: tabular-nums;
+}
+.water-undo {
+  width: 32px;
+  height: 32px;
+  min-height: 0;
+  margin: -6px -6px -6px 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+}
+.water-undo .icon {
+  width: 16px;
+  height: 16px;
+}
+@media (hover: hover) {
+  .water-undo:hover:not(:disabled) {
+    background: var(--bg);
+    color: var(--ink);
+  }
+}
+.water-undo:disabled {
+  opacity: 0.35;
+}
+
+/* ── A figure that just changed ─────────────────────────────────────────────
+   One quick pulse on the number the user's own tap moved — see bumpValue() in
+   app.js. Short enough to be over before the finger is off the glass, and
+   never on a figure that changed by itself. */
+.value-bump {
+  animation: value-bump 0.42s var(--spring);
+}
+@keyframes value-bump {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .value-bump { animation: none; }
 }
 
 /* ── Entry photos ── */
@@ -5296,6 +5407,95 @@ tr.has-tooltip:active {
 .today-empty {
   padding: 18px 0;
   text-align: center;
+}
+
+/* On a desktop the hero is a full-width card, and caption-left, figure-right
+   rows put "daily target" and "2,200" nine hundred pixels apart — a sum you
+   had to read with a ruler. Beside a bigger ring the three figures become
+   columns instead: figure over caption, read left to right in the order the
+   sum is done, each divided from the last by a hairline. */
+@media (min-width: 1024px) {
+  .today-hero-row {
+    gap: 12px;
+  }
+  .today-ring-wrap {
+    width: 152px;
+    height: 152px;
+    margin-right: 20px;
+  }
+  .today-hero-number {
+    font-size: 2.6rem;
+  }
+  .today-hero-side {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+  }
+  .today-stat {
+    flex: 1 1 0;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 8px;
+    padding: 6px 28px;
+    border-left: 1px solid var(--hairline);
+  }
+  .today-stat-value {
+    font-size: 2.1rem;
+  }
+  .today-stat-caption {
+    font-size: 0.85rem;
+  }
+
+  /* The log form, as a composer: the box you type in across the card, the
+     ways in as a row of compact tools under it, and the button at the end of
+     the sentence rather than a 1,000px green bar. On a phone the tools are
+     tiles because a thumb needs the target; a pointer doesn't. The photo pair
+     and the tools are inline-level so they share one line whenever both are
+     on, with no second layout to keep in step with the phone's. */
+  #entry-form .photo-field,
+  #entry-form .capture-row {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 8px 14px 0;
+    vertical-align: top;
+  }
+  #entry-form .photo-field .photo-label,
+  #entry-form .capture-btn {
+    flex-direction: row;
+    min-height: 40px;
+    padding: 8px 15px 8px 12px;
+    gap: 8px;
+    font-size: 0.86rem;
+    border-radius: 999px;
+    text-align: left;
+  }
+  #entry-form .capture-btn .icon,
+  #entry-form .photo-label .icon {
+    width: 18px;
+    height: 18px;
+  }
+  #submit-btn {
+    display: block;
+    width: auto;
+    min-width: 200px;
+    margin-left: auto;
+    padding: 0 28px;
+  }
+  #entry-form .plan-allowance {
+    text-align: right;
+  }
+
+  /* Same for the target proposal: two answers, not two banners. */
+  .target-review-card .target-review-body {
+    max-width: 72ch;
+  }
+  .target-review-card .target-review-actions button {
+    flex: 0 0 auto;
+    min-width: 170px;
+    padding: 0 22px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -6704,14 +6904,23 @@ body.hide-entry-times .entry-time {
 .today-hero--anchored {
   position: relative;
 }
+/* The cog rides on the first figure's caption — "daily target", "burned" —
+   because that figure is the thing it changes. It used to sit in the card's
+   corner, which needed a 22px band of empty card reserved above the figures
+   so the two didn't collide; the band was the emptiest thing on the screen. */
+.today-stat-caption-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
 .burn-settings-btn {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  /* 40px, not 34: the cog is the only control on this card and it was landing
-     a thumb's width from the figures. */
-  width: 40px;
-  min-height: 40px;
+  position: relative;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  min-height: 0;
+  margin: -6px 0;
   padding: 0;
   display: grid;
   place-items: center;
@@ -6719,21 +6928,25 @@ body.hide-entry-times .entry-time {
   box-shadow: none;
   color: var(--muted);
   border-radius: 999px;
+  transition: color 0.15s var(--ease), background 0.15s var(--ease), transform 0.3s var(--spring);
+}
+/* Drawn at 26px so it sits in a line of caption text, tapped at 44. */
+.burn-settings-btn::after {
+  content: "";
+  position: absolute;
+  inset: -9px;
 }
 .burn-settings-btn .icon {
-  width: 19px;
-  height: 19px;
+  width: 15px;
+  height: 15px;
 }
 .burn-settings-btn:hover,
 .burn-settings-btn:focus-visible {
-  color: var(--pitch);
+  color: var(--action-ink);
+  background: var(--action-soft);
 }
-/* The cog is absolutely positioned, so without a band reserved for it the
-   first stat's figure ran straight underneath — the top-right of the card had
-   a number and an icon fighting for the same corner. The row starts below it
-   instead. */
-.today-hero--anchored .today-hero-row {
-  margin-top: 22px;
+.burn-settings-btn:active {
+  transform: rotate(45deg) scale(0.92);
 }
 .burn-choices {
   display: flex;

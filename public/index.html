@@ -128,9 +128,21 @@
               <!-- Burn, then eaten, then net: the three read down the card in
                    the order the sum is done, so the last line is visibly the
                    result of the two above it. -->
+              <!-- The cog sits on this caption because this figure is the
+                   thing it changes: what today is measured against. In the
+                   card's corner it needed a band of empty card reserved
+                   above the figures so the two didn't collide. -->
               <div class="today-stat">
                 <span id="today-burn" class="today-stat-value">—</span>
-                <span id="today-burn-caption" class="today-stat-caption">burned</span>
+                <span class="today-stat-caption-row">
+                  <span id="today-burn-caption" class="today-stat-caption">burned</span>
+                  <button
+                  type="button"
+                  id="burn-settings-btn"
+                  class="burn-settings-btn"
+                  aria-label="Change what today is measured against"
+                  ></button>
+                </span>
               </div>
               <div class="today-stat">
                 <span id="today-remaining" class="today-stat-value">—</span>
@@ -173,12 +185,6 @@
             <div id="nutrient-today-rows"></div>
             <p id="macro-today-note" class="macro-today-note" hidden></p>
           </div>
-          <button
-          type="button"
-          id="burn-settings-btn"
-          class="burn-settings-btn"
-          aria-label="Change what today is measured against"
-          ></button>
           <p id="today-pending" class="error" hidden></p>
         </section>
 
@@ -411,14 +417,22 @@
         </section>
 
         <section id="water-card" class="card water-card" data-module="today:water" data-module-name="Water">
+        <!-- Undo lives beside the total it changes, as a small icon, rather
+             than as a third button the same size and colour as the two that
+             add — a row of three identical pills made taking one back look
+             like a way of drinking. -->
         <div class="water-head">
         <span class="water-title">Water today</span>
-        <span id="water-total" class="water-total">0 ml</span>
+        <span class="water-total-row">
+        <span id="water-total" class="water-total" aria-live="polite">0 ml</span>
+        <button type="button" id="water-undo" class="water-btn water-undo" data-water="-250" title="Take back a glass" aria-label="Take back a glass (250 ml)" disabled>
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+        </button>
+        </span>
         </div>
         <div class="water-buttons">
-        <button type="button" class="ghost-sm water-btn" data-water="250">+ Glass</button>
-        <button type="button" class="ghost-sm water-btn" data-water="500">+ Bottle</button>
-        <button type="button" class="ghost-sm water-btn" data-water="-250">Undo</button>
+        <button type="button" class="ghost-sm water-btn" data-water="250">+ Glass <span class="water-btn-ml">250 ml</span></button>
+        <button type="button" class="ghost-sm water-btn" data-water="500">+ Bottle <span class="water-btn-ml">500 ml</span></button>
         </div>
         </section>
 
