@@ -27,6 +27,20 @@
   --floodlight: #ffc53d;
   --gold: var(--amber);
 
+  /* What a button is made of. Separate from --pitch because --pitch is a
+     graphic colour — rings, bars, chart lines, where 3:1 is the bar — and a
+     button is text. White on the old --pitch-light→--pitch gradient measured
+     2.3–3.5:1, and --pitch text on white 3.5:1: every "Log it" and every
+     outlined button in the app was under AA. #15803d is the green the saved
+     tick already used for the same reason, and clears 5:1 with white.
+     --action-soft is the tonal fill for the quieter buttons, which is most of
+     them: a card of outlined green boxes is a card where nothing leads. */
+  --action: #15803d;
+  --action-hover: #136d35;
+  --action-ink: #15803d;
+  --action-soft: rgba(21, 128, 61, 0.1);
+  --action-soft-hover: rgba(21, 128, 61, 0.16);
+
   /* The desktop navigation rail. A token because body padding, the nav's
      own width and any future overlay all have to agree on it. */
   --rail: 204px;
@@ -547,23 +561,34 @@ select {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: 1.5px dashed var(--hairline);
-  border-radius: var(--radius-sm);
+  /* The same quiet well as the capture tiles below it: the camera and the
+     library are two more ways in, not a drop zone. */
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--bg);
   padding: 12px;
   margin-bottom: 12px;
   cursor: pointer;
-  font-weight: 500;
-  color: var(--muted);
-  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+  font-weight: 600;
+  color: var(--ink);
+  transition: transform 0.22s var(--spring), border-color 0.15s var(--ease), background 0.15s var(--ease);
 }
 
 .photo-label .icon {
-  font-size: 1.1rem;
+  width: 20px;
+  height: 20px;
+  color: var(--action-ink);
 }
 
+@media (hover: hover) {
+  .photo-label:hover {
+    border-color: color-mix(in srgb, var(--action-ink) 45%, var(--hairline));
+    background: var(--action-soft);
+  }
+}
 .photo-label:active {
-  border-color: var(--pitch);
-  background: rgba(31, 157, 82, 0.04);
+  transform: scale(0.97);
+  background: var(--action-soft);
 }
 
 .photo-label input[type="file"] {
@@ -609,34 +634,53 @@ button {
   font-weight: 600;
   border: none;
   border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, var(--pitch-light), var(--pitch));
+  /* Flat. The gradient and the green glow under it were doing what a colour
+     can do on its own, and the glow bled over whatever sat above the button —
+     see the weigh-in form, where it read as the boxes overlapping. The one
+     inset highlight is what keeps it from looking like a sticker. */
+  background: var(--action);
   color: white;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(31, 157, 82, 0.28);
-  transition: transform 0.25s var(--spring), box-shadow 0.12s var(--ease), opacity 0.12s var(--ease);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 1px 2px rgba(10, 50, 26, 0.22);
+  transition: transform 0.25s var(--spring), background-color 0.15s var(--ease), box-shadow 0.12s var(--ease), opacity 0.12s var(--ease);
+}
+
+/* :where() keeps this at one class's weight, so every icon button and row
+   below that sets its own transparent ground still wins over it — a bare
+   button:hover would have lit all of them up green under the pointer. */
+@media (hover: hover) {
+  :where(button):hover {
+    background-color: var(--action-hover);
+  }
 }
 
 button:active {
-  transform: scale(0.96);
-  box-shadow: 0 1px 4px rgba(31, 157, 82, 0.28);
+  transform: scale(0.97);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 button:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   box-shadow: none;
   transform: none;
+  cursor: default;
 }
 
 button.ghost {
   background: transparent;
-  color: var(--pitch);
-  border: 1.5px solid var(--pitch);
+  color: var(--action-ink);
+  border: 1.5px solid color-mix(in srgb, var(--action-ink) 55%, var(--hairline));
   margin-top: 8px;
   box-shadow: none;
 }
+@media (hover: hover) {
+  button.ghost:hover {
+    background: var(--action-soft);
+  }
+}
 
 button.ghost:active {
-  background: rgba(31, 157, 82, 0.08);
+  background: var(--action-soft-hover);
 }
 
 .button-link {
@@ -646,16 +690,19 @@ button.ghost:active {
   font-size: 1rem;
   font-weight: 600;
   border-radius: var(--radius-sm);
-  border: 1.5px solid var(--pitch);
-  color: var(--pitch);
+  border: 1.5px solid color-mix(in srgb, var(--action-ink) 55%, var(--hairline));
+  color: var(--action-ink);
   text-decoration: none;
   transition: background 0.12s var(--ease), color 0.12s var(--ease), transform 0.2s var(--spring);
 }
+@media (hover: hover) {
+  .button-link:hover {
+    background: var(--action-soft);
+  }
+}
 
 .button-link:active {
-  /* --pitch rather than --pitch-dark: the latter inverts to a pale green in
-     dark mode, which left white press text almost unreadable. */
-  background: var(--pitch);
+  background: var(--action);
   color: #fff;
   transform: scale(0.98);
 }
@@ -832,9 +879,9 @@ h2 {
 }
 
 .log-week-btn--active {
-  background: var(--pitch);
+  background: var(--action);
   color: white;
-  border-color: var(--pitch);
+  border-color: var(--action);
 }
 
 .week-select {
@@ -1088,7 +1135,7 @@ h2 {
   background: none;
   border: none;
   padding: 0;
-  color: var(--pitch);
+  color: var(--action-ink);
   font-weight: 600;
   font-size: 0.9rem;
   text-decoration: underline;
@@ -1254,19 +1301,29 @@ h2 {
   margin-bottom: 12px;
 }
 .section-header h2 { margin: 0; }
+/* The small secondary button, which is most of the app's buttons: Quick add,
+   Select, Copy a day, the water buttons, every "Show" on Admin. Tonal — a
+   soft fill, no outline — because a dozen green outlines on one screen gave
+   each of them the same weight as the one thing on it that mattered. */
 .ghost-sm {
   width: auto;
-  min-height: 32px;
-  padding: 4px 12px;
+  min-height: 34px;
+  padding: 5px 13px;
   font-size: 0.85rem;
-  background: transparent;
-  color: var(--pitch);
-  border: 1px solid var(--pitch);
-  border-radius: 8px;
+  background: var(--action-soft);
+  color: var(--action-ink);
+  border: 1px solid transparent;
+  border-radius: 999px;
   font-weight: 600;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+}
+@media (hover: hover) {
+  .ghost-sm:hover {
+    background: var(--action-soft-hover);
+  }
 }
 .exercise-entry {
   display: flex;
@@ -1290,7 +1347,7 @@ h2 {
 }
 .exercise-label { flex: 1; font-size: 0.95rem; }
 .exercise-time { display: inline-block; margin-top: 2px; font-size: 0.75rem; color: var(--muted); font-weight: 400; }
-.exercise-kcal { font-weight: 700; color: var(--pitch); font-size: 0.9rem; white-space: nowrap; }
+.exercise-kcal { font-weight: 700; color: var(--action-ink); font-size: 0.9rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .exercise-del {
   width: auto;
   min-height: auto;
@@ -1858,43 +1915,52 @@ tr.has-tooltip:active {
 .ft-in-row input { flex: 1; margin: 0; }
 
 /* ── Capture shortcuts (scan / search / speak) ── */
+/* One row, however many are switched on. Two-by-two left an odd one out on
+   a line of its own whenever three were on — which is the default — and a
+   dashed outline is the drawing for "drop a file here", which none of these
+   are. They are tools: a quiet well each, icon over label, so a row of four
+   still fits a 360px phone without dropping the words. */
 .capture-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 8px;
-  margin-bottom: 10px;
-}
-/* Four buttons don't fit across a 390px phone, so they go two-by-two rather
-   than shrinking until the labels clip. */
-.capture-row .capture-btn {
-  flex: 1 1 calc(50% - 4px);
-  min-width: 0;
-}
-@media (min-width: 560px) {
-  .capture-row .capture-btn { flex: 1 1 0; }
+  margin-bottom: 12px;
 }
 .capture-btn {
-  flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  background: transparent;
-  border: 2px dashed var(--hairline);
-  color: var(--pitch-dark);
-  font-size: 0.85rem;
-  padding: 10px 6px;
-  border-radius: 10px;
-  min-height: 44px;
+  gap: 5px;
+  min-width: 0;
+  min-height: 60px;
   width: auto;
+  padding: 9px 4px 8px;
+  background: var(--bg);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.1;
+  transition: transform 0.22s var(--spring), background 0.15s var(--ease), border-color 0.15s var(--ease);
 }
 .capture-btn .icon {
-  font-size: 1rem;
+  width: 21px;
+  height: 21px;
   flex-shrink: 0;
+  color: var(--action-ink);
 }
-.capture-btn:hover {
-  border-color: var(--pitch);
-  background: rgba(31, 157, 82, 0.04);
+@media (hover: hover) {
+  .capture-btn:hover {
+    border-color: color-mix(in srgb, var(--action-ink) 45%, var(--hairline));
+    background: var(--action-soft);
+  }
+}
+.capture-btn:active {
+  transform: scale(0.95);
+  background: var(--action-soft);
 }
 /* Listening is a state the user needs to see at a glance, so it goes solid
    and pulses rather than just changing its label. */
@@ -1993,7 +2059,7 @@ tr.has-tooltip:active {
   transition: transform 0.2s var(--spring), background 0.12s var(--ease);
 }
 .ghost-sm:active {
-  background: rgba(31, 157, 82, 0.08);
+  background: var(--action-soft-hover);
   transform: scale(0.96);
 }
 
@@ -2517,8 +2583,8 @@ tr.has-tooltip:active {
   align-self: flex-start;
   padding: 2px 8px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--pitch) 12%, transparent);
-  color: var(--pitch);
+  background: var(--action-soft);
+  color: var(--action-ink);
   font-size: 0.72rem;
   font-weight: 700;
 }
@@ -2557,7 +2623,7 @@ tr.has-tooltip:active {
 .referral-reward {
   font-size: 0.85rem;
   font-weight: 700;
-  color: var(--pitch);
+  color: var(--action-ink);
   font-variant-numeric: tabular-nums;
 }
 .referral-pitch {
@@ -3365,16 +3431,12 @@ tr.has-tooltip:active {
   margin-bottom: 14px;
 }
 
-@media (max-width: 380px) {
-  /* Three capture buttons plus their labels won't fit side by side on the
-     narrowest phones, so the labels go and the icons carry the meaning. */
+@media (max-width: 340px) {
+  /* Icon over label keeps the words on every phone down to 340px; below that
+     four tiles are 50px wide, and the icons carry the meaning alone. */
   .capture-btn {
     font-size: 0;
     gap: 0;
-    padding: 10px 4px;
-  }
-  .capture-btn .icon {
-    font-size: 1.1rem;
   }
 }
 
@@ -3473,8 +3535,10 @@ tr.has-tooltip:active {
   padding: 10px 12px;
   font-size: 0.95rem;
   font-weight: 600;
-  border-radius: var(--radius-sm);
-  border: 1.5px solid var(--pitch);
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: var(--action-soft);
+  color: var(--action-ink);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3607,6 +3671,12 @@ tr.has-tooltip:active {
   --brand: #124F2B;
   --pitch-deep: var(--brand);
   --floodlight: #e8a91f;
+  /* The filled button keeps its green (white on it is 5:1 either way); text
+     on the dark card needs the lighter one, 6.5:1 there. */
+  --action-hover: #18904a;
+  --action-ink: #35b96a;
+  --action-soft: rgba(53, 185, 106, 0.13);
+  --action-soft-hover: rgba(53, 185, 106, 0.2);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -3636,8 +3706,12 @@ tr.has-tooltip:active {
        light-mode value sits at almost the same luminance as the dark page and
        the scoreboard would dissolve into it. */
     --brand: #124F2B;
-  --pitch-deep: var(--brand);
+    --pitch-deep: var(--brand);
     --floodlight: #e8a91f;
+    --action-hover: #18904a;
+    --action-ink: #35b96a;
+    --action-soft: rgba(53, 185, 106, 0.13);
+    --action-soft-hover: rgba(53, 185, 106, 0.2);
   }
 }
 
@@ -3801,7 +3875,7 @@ tr.has-tooltip:active {
 /* Marks the two days a match week only half-owns. */
 .week-day-half {
   font-size: 0.72rem;
-  color: var(--pitch);
+  color: var(--action-ink);
   cursor: help;
 }
 .week-day-value {
@@ -3908,7 +3982,7 @@ tr.has-tooltip:active {
 /* Under your burn: the win. Solid pitch green, the one place the brand
    colour is allowed to be a fill rather than an accent. */
 .form-day--under {
-  background: var(--pitch);
+  background: var(--action);
   color: #fff;
 }
 /* Over: the floodlight amber. Not red — going over on one day is a result,
@@ -4490,53 +4564,96 @@ tr.has-tooltip:active {
   grid-auto-columns: 1fr;
   gap: 2px;
   padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
-  background: var(--pitch-deep);
-  box-shadow: 0 -6px 20px rgba(11, 58, 34, 0.22);
+  /* The page's own surface, frosted, rather than a second band of the brand
+     green. With green at the top and green at the bottom the content sat in
+     a frame heavier than anything inside it, and the selected tab — a
+     slightly lighter green on green — was the hardest thing on the screen to
+     read. The header owns the brand; the bar is furniture. */
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  -webkit-backdrop-filter: saturate(1.6) blur(16px);
+  backdrop-filter: saturate(1.6) blur(16px);
+  border-top: 1px solid var(--hairline);
+  box-shadow: 0 -8px 24px rgba(20, 30, 24, 0.06);
 }
 /* The shared button rule sets width:100%, a 48px floor, a green gradient and
    a glow — all four wrong here, and all four need overriding explicitly
    rather than hoping a later rule wins. */
 .tab-bar .tab-btn {
+  position: relative;
   width: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  padding: 8px 2px 6px;
+  gap: 4px;
+  padding: 4px 2px 5px;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
   box-shadow: none;
-  color: rgba(255, 255, 255, 0.62);
-  font-family: var(--font-heading);
+  color: var(--muted);
+  /* Inter, sentence case. The condensed capitals were a scoreboard face on
+     something that isn't a score, at a size where condensed stops being
+     legible — the same call Settings already makes for its headings. */
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   cursor: pointer;
-  transition: color 0.15s var(--ease), background 0.15s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.18s var(--ease);
+}
+/* The selected tab's pill, behind the icon — the one piece of the bar that
+   moves. It grows out from the icon's centre when a tab is chosen, so the
+   change of place registers even when you weren't looking at the bar. */
+.tab-bar .tab-btn::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 56px;
+  max-width: calc(100% - 4px);
+  height: 30px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pitch) 16%, transparent);
+  transform: translateX(-50%) scaleX(0.4);
+  opacity: 0;
+  transition: transform 0.32s var(--spring), opacity 0.18s var(--ease);
 }
 .tab-bar .tab-btn .icon {
+  position: relative;
   width: 21px;
   height: 21px;
+  margin: 4.5px 0;
   stroke-width: 1.9;
+  transition: transform 0.28s var(--spring);
 }
 .tab-bar .tab-btn span {
+  position: relative;
   line-height: 1;
-  /* "Settings" is wider than a fifth of a 360px screen; letting the label
-     shrink keeps all five on one row rather than wrapping the bar to two. */
-  font-size: clamp(0.58rem, 2.5vw, 0.72rem);
+  /* "Settings" is wider than a sixth of a 360px screen; letting the label
+     shrink keeps every tab on one row rather than wrapping the bar to two. */
+  font-size: clamp(0.62rem, 2.7vw, 0.72rem);
 }
 .tab-bar .tab-btn--active {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.14);
+  color: var(--pitch-dark);
+}
+.tab-bar .tab-btn--active::before {
+  transform: translateX(-50%) scaleX(1);
+  opacity: 1;
+}
+.tab-bar .tab-btn--active span {
+  font-weight: 700;
 }
 .tab-bar .tab-btn:active {
   transform: none;
 }
+.tab-bar .tab-btn:active .icon {
+  transform: scale(0.88);
+}
 .tab-bar .tab-btn:focus-visible {
-  outline: 2px solid #fff;
+  outline: 2px solid var(--pitch);
   outline-offset: -2px;
 }
 
@@ -4570,6 +4687,8 @@ tr.has-tooltip:active {
     width: min(560px, calc(100% - 32px));
     border-radius: var(--radius-lg);
     padding: 8px;
+    border: 1px solid var(--hairline);
+    box-shadow: var(--shadow-lg);
   }
   /* The selection bar follows it up and in, so the two stay stacked rather
      than the bar stretching the full width above a centred tab bar. */
@@ -4837,6 +4956,13 @@ tr.has-tooltip:active {
     flex-direction: column;
     gap: 3px;
     padding: 18px 10px 16px;
+    /* The rail is the brand's place on a desktop — the one thing always on
+       screen, with the wordmark at its head — so it keeps the green the phone
+       bar gave up. */
+    background: var(--pitch-deep);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border: 0;
     box-shadow: 4px 0 20px rgba(11, 58, 34, 0.14);
   }
 
@@ -4885,20 +5011,35 @@ tr.has-tooltip:active {
     letter-spacing: 0;
     font-size: 0.95rem;
     font-weight: 600;
+    color: rgba(255, 255, 255, 0.7);
+    transition: color 0.15s var(--ease), background 0.15s var(--ease);
+  }
+  /* The rail marks its selection with the whole row, so the phone's pill has
+     nothing to do here. */
+  .tab-bar .tab-btn::before {
+    display: none;
   }
   .tab-bar .tab-btn span {
-    font-size: 0.95rem;
+    font-size: 0.92rem;
   }
   .tab-bar .tab-btn .icon {
     width: 20px;
     height: 20px;
+    margin: 0;
   }
   .tab-bar .tab-btn:hover {
     background: rgba(255, 255, 255, 0.09);
     color: #fff;
   }
   .tab-bar .tab-btn--active {
+    color: #fff;
     background: rgba(255, 255, 255, 0.16);
+  }
+  .tab-bar .tab-btn--active span {
+    font-weight: 600;
+  }
+  .tab-bar .tab-btn:focus-visible {
+    outline-color: #fff;
   }
 
   /* The selection bar is centred on the window at 720px. With a rail taking
@@ -5723,13 +5864,13 @@ body.sheet-open { overflow: hidden; }
      feedback earlier was all about targets being hard to hit. */
   min-height: 40px;
   flex: 0 0 auto;
-  padding: 4px 14px;
+  padding: 4px 16px;
   font-size: 0.85rem;
   font-weight: 600;
-  background: transparent;
-  color: var(--pitch);
-  border: 1px solid var(--pitch);
-  border-radius: 8px;
+  background: var(--action-soft);
+  color: var(--action-ink);
+  border: 1px solid transparent;
+  border-radius: 999px;
   box-shadow: none;
   position: relative;
   overflow: hidden;
@@ -5812,7 +5953,7 @@ body.sheet-open { overflow: hidden; }
   white-space: nowrap;
 }
 .food-badge--yours {
-  background: var(--pitch);
+  background: var(--action);
   color: #fff;
 }
 .food-badge--menu {
