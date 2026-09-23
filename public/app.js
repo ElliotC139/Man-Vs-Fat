@@ -224,6 +224,7 @@ const scanManualInput = document.getElementById("scan-manual-input");
 
 
 const weekRangeEl = document.getElementById("week-range");
+const daysLoggedWordEl = document.getElementById("days-logged-word");
 const weekPrevBtn = document.getElementById("week-prev");
 const weekNextBtn = document.getElementById("week-next");
 const weekNoteEl = document.getElementById("week-note");
@@ -378,6 +379,7 @@ async function loadWeek() {
   weekTotalEl.textContent = (week.totalKcal ?? 0).toLocaleString();
   weekAvgEl.textContent = week.dailyAverage;
   daysLoggedEl.textContent = week.daysLogged;
+  daysLoggedWordEl.textContent = Number(week.daysLogged) === 1 ? "day" : "days";
   exportPdfEl.href = `/api/match-weeks/current/report.pdf?weeksAgo=${weeksAgo}`;
 
   weekNoteEl.hidden = weeksAgo === 0;
@@ -754,9 +756,14 @@ function renderDailyTotals(days, whoopDailyBurn) {
   let weekNetHasData = false;
 
   dailyTotalsEl.innerHTML = "";
+  const todayKey = todayDateKey();
   for (const day of days) {
     const row = document.createElement("div");
     row.className = day.isToday ? "day-total-row day-total-row--today" : "day-total-row";
+    // A day that hasn't happened yet has nothing to total. "0 kcal" beside
+    // it read as a day you didn't eat on — five of them, most of the week.
+    const future = !day.isToday && day.date > todayKey && !day.kcal;
+    if (future) row.classList.add("day-total-row--future");
 
     const label = document.createElement("span");
     label.className = "day-total-label";
@@ -776,7 +783,8 @@ function renderDailyTotals(days, whoopDailyBurn) {
 
     const kcal = document.createElement("span");
     kcal.className = "day-total-kcal";
-    kcal.textContent = day.pending ? `${day.kcal} kcal + pending` : `${day.kcal} kcal`;
+    const figure = `${(day.kcal ?? 0).toLocaleString()} kcal`;
+    kcal.textContent = future ? "—" : day.pending ? `${figure} + pending` : figure;
 
     // Net = eaten minus burned for that specific day — positive means a
     // surplus (ate more than burned), negative a deficit. Only shown once
@@ -5571,8 +5579,10 @@ function renderFoodRow(food) {
   // only half an answer when the last logging of it was two rashers, and it
   // is the half that decides whether re-logging it is right.
   const amount = describeAmount(food.quantity ?? 1, food.unitLabel);
-  const kcalLabel = food.kcal === null ? "" : ` · ${amount ? `${amount}, ` : ""}${food.kcal} kcal`;
-  metaEl.textContent = `${countLabel} · last ${lastLabel}${kcalLabel}`;
+  // The figure first: it is what you are deciding on, and at the end of the
+  // line it was the part that wrapped onto a line of its own.
+  const kcalLabel = food.kcal === null ? "" : `${amount ? `${amount}, ` : ""}${food.kcal} kcal · `;
+  metaEl.textContent = `${kcalLabel}${countLabel} · last ${lastLabel}`;
 
   const tagsEl = document.createElement("div");
   tagsEl.className = "food-tags";
@@ -5638,17 +5648,21 @@ function renderFoodRow(food) {
   const actions = document.createElement("div");
   actions.className = "food-actions";
 
+  // The same pencil as a diary row, and the one action worth a filled
+  // button — logging it — as a compact pill that says where it goes.
   const editBtn = document.createElement("button");
   editBtn.type = "button";
   editBtn.className = "food-edit-btn";
-  editBtn.textContent = "Edit";
+  editBtn.innerHTML = ICONS.pencil;
+  editBtn.title = "Edit";
   editBtn.setAttribute("aria-label", `Edit ${food.label}`);
   editBtn.addEventListener("click", () => openFoodEditor(row, food));
 
   const logBtn = document.createElement("button");
   logBtn.type = "button";
   logBtn.className = "food-log-btn";
-  logBtn.textContent = "+Today";
+  logBtn.innerHTML = `${ICONS.plus}<span>Today</span>`;
+  logBtn.setAttribute("aria-label", `Add ${food.label} to today`);
   logBtn.addEventListener("click", () => logFood(food));
 
   actions.append(editBtn, logBtn);
@@ -7273,8 +7287,10 @@ function renderWeighinRow(entry, prev) {
 
   const editBtn = document.createElement("button");
   editBtn.type = "button";
-  editBtn.className = "food-log-btn";
-  editBtn.textContent = "Edit";
+  editBtn.className = "exercise-del";
+  editBtn.innerHTML = ICONS.pencil;
+  editBtn.title = "Edit";
+  editBtn.setAttribute("aria-label", `Edit the weigh-in for ${dateEl.textContent}`);
   editBtn.addEventListener("click", () => {
     weighinDate.value = entry.date;
     weighinWeight.value = kgToDisplay(entry.weightKg);
@@ -7283,9 +7299,16 @@ function renderWeighinRow(entry, prev) {
 
   const delBtn = document.createElement("button");
   delBtn.type = "button";
-  delBtn.className = "exercise-del weighin-del";
-  delBtn.textContent = "Delete";
-  delBtn.addEventListener("click", () => deleteWeighIn(entry.date));
+  delBtn.className = "exercise-del exercise-del--danger weighin-del";
+  delBtn.innerHTML = ICONS.x;
+  delBtn.title = "Delete";
+  delBtn.setAttribute("aria-label", `Delete the weigh-in for ${dateEl.textContent}`);
+  // Asked first, like a diary entry: it was a word before, and a word is
+  // harder to hit by accident than a cross.
+  delBtn.addEventListener("click", () => {
+    if (!window.confirm(`Delete the weigh-in for ${dateEl.textContent} (${metaEl.textContent.split(" · ")[0]})?`)) return;
+    deleteWeighIn(entry.date);
+  });
 
   row.append(info, editBtn, delBtn);
   return row;

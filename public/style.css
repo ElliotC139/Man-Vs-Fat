@@ -15,13 +15,18 @@
   --brand-ink: #ffffff;
   --pitch-deep: var(--brand);
   --ink: #0f1417;
-  --muted: #6e7b74;
+  /* Was #6e7b74, which measured 4.4:1 on a card and 4.1:1 on the page — under
+     AA for the small captions it is mostly used for. This clears 4.5 on the
+     card, the page and the green-tinted panels, and reads as the same grey. */
+  --muted: #64716a;
   /* Pitch-marking white, warm-neutral. Not cream. */
   --bg: #f6f7f4;
   --card: #ffffff;
   --hairline: #e6ece8;
   --danger: #dc2626;
-  --amber: #b06f05;
+  /* Darkened from #b06f05 for the same reason: "3 AI estimates left" and
+     every "over" figure are text, and that one measured 4.1:1 on white. */
+  --amber: #9c6204;
   --amber-light: #f59e0b;
   /* The floodlight: "over", and the one warm note against all that green. */
   --floodlight: #ffc53d;
@@ -771,6 +776,14 @@ button.ghost:active {
 .day-total-label {
   color: var(--muted);
 }
+/* Days still to come: there, so the week reads as a week, but stepped back
+   behind the ones that have been played. */
+.day-total-row--future .day-total-label,
+.day-total-row--future .day-total-kcal {
+  color: var(--muted);
+  opacity: 0.6;
+  font-weight: 400;
+}
 
 .day-total-whoop {
   display: inline-block;
@@ -1208,8 +1221,8 @@ h2 {
    reading once — but not the pitch green, which in this app means "this is
    fine" and would read as a status rather than a deadline.
 
-   --muted measures 4.11:1 on --bg, which is below AA, so this uses the same
-   darker treatment the guides do rather than inheriting a known shortfall. */
+   Ink rather than --muted, which is fine for a caption but is still the
+   quieter of the two for a sentence someone should actually read. */
 .promo-note {
   margin-top: 10px;
   padding: 10px 12px;
@@ -1433,12 +1446,12 @@ h2 {
 .food-row {
   background: var(--card);
   border-radius: var(--radius-md);
-  padding: 11px 14px;
+  padding: 11px 14px 11px 10px;
   margin-bottom: 8px;
   box-shadow: var(--shadow-sm);
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 8px;
   animation: fadeInUp 0.3s var(--ease);
 }
 .food-star {
@@ -1452,9 +1465,19 @@ h2 {
   font-size: 1.3rem;
   line-height: 1;
 }
+/* The name on a line of its own, then the facts and the tags flowing after
+   each other: "+ tag" sits at the end of the facts whenever there's room for
+   it, instead of costing every row a third line. */
 .food-info {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+}
+.food-info > .food-label {
+  flex: 1 0 100%;
 }
 .food-label {
   font-size: 0.95rem;
@@ -1469,8 +1492,12 @@ h2 {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 6px;
+  margin-top: 2px;
   align-items: center;
+}
+/* On its own, "+ tag" lines its text up with the line above it. */
+.food-tag-add:first-child {
+  margin-left: -8px;
 }
 .food-tag-pill {
   display: inline-flex;
@@ -1492,15 +1519,24 @@ h2 {
   font-size: 0.85rem;
   line-height: 1.6;
 }
+/* An offer, not a tag: quiet until you want it. A dashed pill on every row
+   was a third line of chrome under every food in the library. */
 .food-tag-add {
   width: auto;
-  min-height: auto;
-  padding: 2px 8px;
+  min-height: 22px;
+  padding: 1px 8px;
   font-size: 0.72rem;
+  font-weight: 600;
   background: transparent;
-  border: 1px dashed var(--hairline);
+  border: 0;
   border-radius: 999px;
   color: var(--muted);
+}
+@media (hover: hover) {
+  .food-tag-add:hover {
+    background: var(--action-soft);
+    color: var(--action-ink);
+  }
 }
 .food-tag-input {
   width: 90px;
@@ -1510,13 +1546,55 @@ h2 {
   font-size: 0.72rem;
   border-radius: 999px;
 }
+/* Tonal, like the other small buttons. It is the row's one real action,
+   but it is also on every row, and a column of fourteen filled green pills
+   was louder than the foods they belonged to. */
 .food-log-btn {
   width: auto;
-  min-height: 32px;
-  padding: 4px 12px;
+  min-height: 34px;
+  padding: 4px 14px 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 0.85rem;
+  border-radius: 999px;
   flex-shrink: 0;
   align-self: center;
+  background: var(--action-soft);
+  color: var(--action-ink);
+  box-shadow: none;
+}
+@media (hover: hover) {
+  .food-log-btn:hover {
+    background: var(--action-soft-hover);
+  }
+}
+.food-log-btn .icon {
+  width: 16px;
+  height: 16px;
+}
+/* On a phone the word goes and the + carries it — the same + the diary rows
+   use for "add to today" — so the food's name gets the width back. */
+@media (max-width: 460px) {
+  .food-log-btn {
+    width: 36px;
+    height: 36px;
+    min-height: 0;
+    padding: 0;
+    justify-content: center;
+  }
+  .food-log-btn .icon {
+    width: 18px;
+    height: 18px;
+  }
+  .food-log-btn span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 #food-all-list:empty::after,
 #food-favorites-list:empty::after {
@@ -5876,20 +5954,27 @@ body.sheet-open { overflow: hidden; }
 }
 /* The shared button rule would make this full width, 48px tall and green. */
 .food-edit-btn {
-  width: auto;
+  width: 34px;
+  height: 34px;
   min-height: 0;
-  padding: 6px 10px;
-  border: 1px solid var(--hairline);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
   border-radius: 999px;
-  background: var(--card);
+  background: transparent;
   background-image: none;
   box-shadow: none;
   color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 600;
   cursor: pointer;
 }
-.food-edit-btn:hover { color: var(--pitch-dark); border-color: var(--pitch); }
+.food-edit-btn .icon {
+  width: 17px;
+  height: 17px;
+}
+@media (hover: hover) {
+  .food-edit-btn:hover { color: var(--ink); background: var(--bg); }
+}
 .food-edited {
   align-self: flex-start;
   margin-top: 2px;
@@ -7750,4 +7835,38 @@ body.hide-entry-times .entry-time {
   font-size: 0.86rem;
   font-weight: 600;
   color: var(--pitch-dark);
+}
+
+/* ── Titles and labels ─────────────────────────────────────────────────────
+   Two levels, used the same way everywhere. A card's title names the card and
+   is set in ink; a list's label sits on the page above rows of cards and is
+   muted, because the rows are what you read. Before this there were five
+   treatments for the same job — muted eyebrows, bold ink capitals on What
+   still fits and Water, sentence-case bold on Calorie balance and the
+   collapsible Stats cards — and which one a card got depended on when it was
+   written.
+
+   :where() keeps the h2 selectors at an element's weight, so Settings, which
+   sets its own headings in the body face, is untouched. */
+:where(.card) > h2,
+:where(.card) > .section-header h2,
+:where(.card) > .card-heading-row h2,
+:where(.card) > .card-header-row h2,
+.what-now-title,
+.water-title,
+.budget-title,
+.keto-title,
+.card-collapse-head .settings-section-title {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+/* The Insights card's title was inset 6px from the sentences under it. */
+#insights-card > h2 {
+  margin-left: 0;
+  margin-right: 0;
 }
