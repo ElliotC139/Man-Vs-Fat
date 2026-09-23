@@ -202,16 +202,58 @@ body {
 .library-toggle { right: 106px; }
 .library-back { left: 14px; }
 
-/* Desktop nav bar: replaces the corner icon buttons/back chevron at wide
-   widths (see the ≥1024px block below) — same four destinations, wired to
+/* Stats, Food, Settings and Admin are tabs, and a tab is somewhere you arrive
+   at from the bar along the bottom — every one of these arrows just went back
+   to Today, which the bar already does in the same place every time. A back
+   arrow on a screen with nowhere to go back to is the one control on a phone
+   that makes people wonder whether they are lost. The weekly review keeps
+   its arrow: that one really is a detail view of the week. */
+#stats-back,
+#settings-back,
+#food-library-back,
+#admin-back {
+  display: none;
+}
+
+/* An action in a header (Admin's Refresh) wears the same translucent chip as
+   the date arrows. As a ghost button it was pitch green on the brand green —
+   there, but only if you already knew where to look. */
+.banner .admin-refresh {
+  min-height: 34px;
+  padding: 4px 12px;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+.banner .admin-refresh:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+@media (max-width: 1023px) {
+  .banner .admin-refresh {
+    position: absolute;
+    top: calc(11px + env(safe-area-inset-top));
+    right: 12px;
+  }
+}
+
+/* The title on the screens that have one — Stats, Food, Settings, Admin and
+   the weekly review.
+
+   This rule spent two weeks inside a comment that was never closed (a line
+   introducing the desktop nav bar lost its last half, and its closing mark
+   with it). With it gone, those titles fell back to the browser's own 2em h1,
+   and the wordmark inside them scaled up to 43px: a phone header that was a
+   fifth of the screen and said "Settings". It is back, deliberately without
+   the uppercase it used to carry — the titles are set in the wordmark's face
+   now, and that face is never capitalised. */
 .banner h1 {
   margin: 0;
-  padding: 0 84px;
-  font-size: clamp(1.05rem, 4.6vw, 1.3rem);
+  /* Clears the review screen's back arrow on the left and keeps the title
+     centred by reserving the same on the right. */
+  padding: 0 52px;
+  font-size: 1.05rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  line-height: 1.15;
+  line-height: 1.2;
 }
 
 /* On the diary the hierarchy inverts, deliberately: you open that screen to
@@ -304,6 +346,15 @@ body {
   height: 46px;
   margin-block: -10px;
   flex-shrink: 0;
+}
+/* Beside a page title rather than the wordmark, the mark is a badge on the
+   title, not the name of the app — at 46px it was twice the title's height
+   and reached down into the touchline. Same overflow arithmetic as above:
+   half the difference between the mark and the line it sits on. */
+.banner:not(.banner--fixture) h1 .brand-mark {
+  width: 32px;
+  height: 32px;
+  margin-block: -3px;
 }
 
 /* The wordmark. "Quic" carries the weight and everything after it steps back:

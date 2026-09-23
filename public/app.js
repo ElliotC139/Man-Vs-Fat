@@ -9591,6 +9591,23 @@ const LAYOUT_SCREENS = [
 let defaultLayout = new Map();
 /** screen → { order: string[], hidden: string[] }, as the user arranged it. */
 let layoutChoice = {};
+/**
+ * Where each card that is NOT movable belongs, relative to the ones that are.
+ *
+ * The offline banner, the fasting and target-review cards and the "you're
+ * looking at an earlier day" note carry no data-module, because nobody should
+ * be able to hide them. But they share a parent with cards that do, and
+ * applying a layout rebuilds that parent's order by moving the modules to the
+ * front one after another — which quietly pushed every one of these to the
+ * bottom of the screen. The banner saying you are offline was under the
+ * exercise list; so was the note that stands in for the log form on a past
+ * day, a whole screen away from where the form had been.
+ *
+ * So each is pinned either to the start of its parent (if it came before any
+ * module in the markup) or to the module that follows it, and put back there
+ * after every arrangement. Anything after the last module stays at the end.
+ */
+let layoutAnchors = [];
 
 /**
  * The order the markup declares, read once and kept.
@@ -9602,10 +9619,37 @@ let layoutChoice = {};
  */
 function readDefaultLayout() {
   if (defaultLayout.size > 0) return;
+  const parents = new Set();
   for (const el of document.querySelectorAll("[data-module]")) {
     const [screen] = el.dataset.module.split(":");
     if (!defaultLayout.has(screen)) defaultLayout.set(screen, []);
     defaultLayout.get(screen).push({ key: el.dataset.module, name: el.dataset.moduleName ?? el.dataset.module });
+    parents.add(el.parentElement);
+  }
+  for (const parent of parents) {
+    let pending = [];
+    let seenModule = false;
+    for (const child of parent.children) {
+      if (child.matches("[data-module]")) {
+        for (const el of pending) layoutAnchors.push(seenModule ? { el, before: child } : { el, start: parent });
+        pending = [];
+        seenModule = true;
+      } else {
+        pending.push(child);
+      }
+    }
+    for (const el of pending) layoutAnchors.push({ el, end: parent });
+  }
+}
+
+function restoreLayoutAnchors() {
+  // Pinned-to-the-start cards go in reverse so they keep their own order.
+  for (const anchor of [...layoutAnchors].reverse()) {
+    if (anchor.start) anchor.start.prepend(anchor.el);
+  }
+  for (const anchor of layoutAnchors) {
+    if (anchor.before) anchor.before.before(anchor.el);
+    else if (anchor.end) anchor.end.append(anchor.el);
   }
 }
 
@@ -9635,6 +9679,7 @@ function applyLayout() {
       previous = el;
     }
   }
+  restoreLayoutAnchors();
 }
 
 function loadLayout() {

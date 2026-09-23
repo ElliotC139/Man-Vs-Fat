@@ -238,25 +238,6 @@
           </div>
         </section>
 
-        <section id="today-insights-card" class="card" data-module="today:insights" data-module-name="Today so far" hidden>
-          <div class="section-header"><h2>Today so far</h2></div>
-          <ul id="today-insights" class="insights-list"></ul>
-        </section>
-
-        <section id="today-body-card" class="card" data-module="today:body" data-module-name="Recovery and sleep" hidden>
-          <div class="section-header"><h2>Body</h2></div>
-          <div class="balance-grid" id="today-body-grid">
-            <div class="balance-cell" id="today-recovery-cell" hidden>
-              <span id="today-recovery" class="balance-number">—</span>
-              <span class="balance-caption">recovery</span>
-            </div>
-            <div class="balance-cell" id="today-sleep-cell" hidden>
-              <span id="today-sleep" class="balance-number">—</span>
-              <span class="balance-caption">slept</span>
-            </div>
-          </div>
-        </section>
-
         <section id="day-past-note" class="card day-past-note" hidden>
           <p class="muted">You're looking at an earlier day. Anything you log goes on that day.</p>
           <button type="button" id="day-back-to-today" class="ghost-sm">Back to today</button>
@@ -382,41 +363,6 @@
         </button>
         </section>
 
-        <section id="water-card" class="card water-card" data-module="today:water" data-module-name="Water">
-        <div class="water-head">
-        <span class="water-title">Water today</span>
-        <span id="water-total" class="water-total">0 ml</span>
-        </div>
-        <div class="water-buttons">
-        <button type="button" class="ghost-sm water-btn" data-water="250">+ Glass</button>
-        <button type="button" class="ghost-sm water-btn" data-water="500">+ Bottle</button>
-        <button type="button" class="ghost-sm water-btn" data-water="-250">Undo</button>
-        </div>
-        </section>
-
-        <!-- Free tier only, and only where a publisher id is configured. The
-             slot stays empty and hidden otherwise; nothing is loaded at all
-             for anyone paying. -->
-        <section id="ad-today" class="ad-slot" hidden>
-          <span class="ad-label">Ad</span>
-          <div id="ad-today-unit" class="ad-unit"></div>
-          <button type="button" class="link-btn ad-remove">Remove ads</button>
-        </section>
-
-        <section id="today-note-card" class="card today-note-card" data-module="today:note" data-module-name="Note">
-          <div class="section-header">
-            <h2>Note</h2>
-            <span id="today-note-status" class="muted today-note-status" hidden></span>
-          </div>
-          <textarea
-            id="today-note-input"
-            rows="2"
-            maxlength="500"
-            placeholder="Anything worth remembering — away with work, feeling rough"
-          ></textarea>
-          <button type="button" id="today-note-save" class="ghost-sm today-note-save" hidden>Save note</button>
-        </section>
-
         <section id="today-entries-section" data-module="today:entries" data-module-name="What you logged">
           <div class="section-header">
             <h2 id="today-entries-heading">Logged today</h2>
@@ -445,6 +391,60 @@
           </div>
           <div id="today-exercise-list"></div>
         </section>
+        <section id="today-insights-card" class="card" data-module="today:insights" data-module-name="Today so far" hidden>
+          <div class="section-header"><h2>Today so far</h2></div>
+          <ul id="today-insights" class="insights-list"></ul>
+        </section>
+
+        <section id="today-body-card" class="card" data-module="today:body" data-module-name="Recovery and sleep" hidden>
+          <div class="section-header"><h2>Body</h2></div>
+          <div class="balance-grid" id="today-body-grid">
+            <div class="balance-cell" id="today-recovery-cell" hidden>
+              <span id="today-recovery" class="balance-number">—</span>
+              <span class="balance-caption">recovery</span>
+            </div>
+            <div class="balance-cell" id="today-sleep-cell" hidden>
+              <span id="today-sleep" class="balance-number">—</span>
+              <span class="balance-caption">slept</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="water-card" class="card water-card" data-module="today:water" data-module-name="Water">
+        <div class="water-head">
+        <span class="water-title">Water today</span>
+        <span id="water-total" class="water-total">0 ml</span>
+        </div>
+        <div class="water-buttons">
+        <button type="button" class="ghost-sm water-btn" data-water="250">+ Glass</button>
+        <button type="button" class="ghost-sm water-btn" data-water="500">+ Bottle</button>
+        <button type="button" class="ghost-sm water-btn" data-water="-250">Undo</button>
+        </div>
+        </section>
+
+        <section id="today-note-card" class="card today-note-card" data-module="today:note" data-module-name="Note">
+          <div class="section-header">
+            <h2>Note</h2>
+            <span id="today-note-status" class="muted today-note-status" hidden></span>
+          </div>
+          <textarea
+            id="today-note-input"
+            rows="2"
+            maxlength="500"
+            placeholder="Anything worth remembering — away with work, feeling rough"
+          ></textarea>
+          <button type="button" id="today-note-save" class="ghost-sm today-note-save" hidden>Save note</button>
+        </section>
+
+        <!-- Free tier only, and only where a publisher id is configured. The
+             slot stays empty and hidden otherwise; nothing is loaded at all
+             for anyone paying. -->
+        <section id="ad-today" class="ad-slot" hidden>
+          <span class="ad-label">Ad</span>
+          <div id="ad-today-unit" class="ad-unit"></div>
+          <button type="button" class="link-btn ad-remove">Remove ads</button>
+        </section>
+
       </main>
     </div>
 
@@ -1681,7 +1681,7 @@
         <button id="admin-back" type="button" class="library-back" aria-label="Back">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
         </button>
-        <h1>Admin</h1>
+        <h1 class="brand"><img src="/icons/mark-inverse.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Admin</span></h1>
         <button type="button" id="admin-refresh" class="ghost-sm admin-refresh">Refresh</button>
       </header>
       <main>
