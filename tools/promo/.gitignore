@@ -1,0 +1,7 @@
+# Recorded app frames: 200MB+, and rebuilt in two minutes by capture.mjs.
+# markers.json is kept — score.py times the sound effects from it.
+capture/clips/*/
+capture/.cache/
+out/score.wav
+out/still-*.png
+out/render.log

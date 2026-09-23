@@ -1,0 +1,203 @@
+{
+ "today": [],
+ "log": [
+  {
+   "frame": 0,
+   "what": "tap #text"
+  },
+  {
+   "frame": 19,
+   "what": "key"
+  },
+  {
+   "frame": 22,
+   "what": "key"
+  },
+  {
+   "frame": 25,
+   "what": "key"
+  },
+  {
+   "frame": 28,
+   "what": "key"
+  },
+  {
+   "frame": 31,
+   "what": "key"
+  },
+  {
+   "frame": 34,
+   "what": "key"
+  },
+  {
+   "frame": 37,
+   "what": "key"
+  },
+  {
+   "frame": 40,
+   "what": "key"
+  },
+  {
+   "frame": 43,
+   "what": "key"
+  },
+  {
+   "frame": 46,
+   "what": "key"
+  },
+  {
+   "frame": 49,
+   "what": "key"
+  },
+  {
+   "frame": 52,
+   "what": "key"
+  },
+  {
+   "frame": 55,
+   "what": "key"
+  },
+  {
+   "frame": 58,
+   "what": "key"
+  },
+  {
+   "frame": 61,
+   "what": "key"
+  },
+  {
+   "frame": 64,
+   "what": "key"
+  },
+  {
+   "frame": 67,
+   "what": "key"
+  },
+  {
+   "frame": 70,
+   "what": "key"
+  },
+  {
+   "frame": 73,
+   "what": "key"
+  },
+  {
+   "frame": 76,
+   "what": "key"
+  },
+  {
+   "frame": 79,
+   "what": "key"
+  },
+  {
+   "frame": 82,
+   "what": "key"
+  },
+  {
+   "frame": 85,
+   "what": "key"
+  },
+  {
+   "frame": 88,
+   "what": "key"
+  },
+  {
+   "frame": 91,
+   "what": "key"
+  },
+  {
+   "frame": 94,
+   "what": "key"
+  },
+  {
+   "frame": 97,
+   "what": "key"
+  },
+  {
+   "frame": 100,
+   "what": "key"
+  },
+  {
+   "frame": 103,
+   "what": "key"
+  },
+  {
+   "frame": 106,
+   "what": "key"
+  },
+  {
+   "frame": 109,
+   "what": "key"
+  },
+  {
+   "frame": 112,
+   "what": "key"
+  },
+  {
+   "frame": 115,
+   "what": "key"
+  },
+  {
+   "frame": 118,
+   "what": "key"
+  },
+  {
+   "frame": 121,
+   "what": "key"
+  },
+  {
+   "frame": 124,
+   "what": "key"
+  },
+  {
+   "frame": 148,
+   "what": "tap #submit-btn"
+  },
+  {
+   "frame": 215,
+   "what": "estimate"
+  },
+  {
+   "frame": 329,
+   "what": "tap #confirm-save"
+  },
+  {
+   "frame": 378,
+   "what": "ring"
+  }
+ ],
+ "diary": [
+  {
+   "frame": 0,
+   "what": "tap #tab-bar [data-nav=\"week\"]"
+  },
+  {
+   "frame": 28,
+   "what": "loaded"
+  }
+ ],
+ "stats": [
+  {
+   "frame": 0,
+   "what": "tap #tab-bar [data-nav=\"stats\"]"
+  },
+  {
+   "frame": 28,
+   "what": "loaded"
+  }
+ ],
+ "target": [
+  {
+   "frame": 0,
+   "what": "tap #tab-bar [data-nav=\"today\"]"
+  },
+  {
+   "frame": 211,
+   "what": "tap #target-review-accept"
+  },
+  {
+   "frame": 308,
+   "what": "ring"
+  }
+ ]
+}
