@@ -4551,17 +4551,20 @@ tr.has-tooltip:active {
 .settings-fieldset--danger legend {
   color: var(--danger);
 }
+/* A fixed red rather than --danger: in dark mode --danger is the light red
+   that reads as text on a dark ground, and white on it measures 2.8:1. This
+   is 4.8:1 in both themes. */
 .danger-btn {
   width: 100%;
-  background: var(--danger);
+  background: #dc2626;
   color: #fff;
   border: none;
-  /* The shared button rule glows green; on a delete button that reads as
-     reassurance, which is the opposite of what this one is. */
-  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 2px rgba(80, 10, 10, 0.25);
 }
-.danger-btn:hover {
-  filter: brightness(0.94);
+@media (hover: hover) {
+  .danger-btn:hover {
+    background: #c42020;
+  }
 }
 
 .settings-legal,
@@ -8052,3 +8055,93 @@ h2 .cell-icon {
    target it turns the floodlight, as before (.today-ring-fill--over). */
 .today-ring-stop-a { stop-color: var(--pitch-light); }
 .today-ring-stop-b { stop-color: var(--action); }
+
+/* ── The app's own dialog ──────────────────────────────────────────────────
+   See appConfirm() in app.js. On a phone it rises from the bottom with its
+   buttons stacked where the thumb already is, like the app's other sheets; on
+   anything wider it settles in the middle with the buttons side by side.
+   Above every sheet (70) and the toast (80), since it can be asked from
+   inside either. */
+.app-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+  background: rgba(8, 14, 11, 0.5);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: sheet-backdrop-in 0.2s var(--ease);
+}
+.app-dialog-panel {
+  width: 100%;
+  max-width: 420px;
+  padding: 22px 20px 14px;
+  border-radius: 24px;
+  background: var(--card);
+  box-shadow: var(--shadow-lg);
+  animation: sheet-rise 0.32s var(--glide, var(--ease));
+}
+.app-dialog-title {
+  display: block;
+  margin: 0 0 6px;
+  font-family: var(--font-body);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.app-dialog-body {
+  margin: 0 0 16px;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.app-dialog-input {
+  margin-bottom: 16px;
+}
+.app-dialog-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.app-dialog-actions button {
+  margin: 0;
+}
+/* The way out is quiet: a neutral fill, not a second green outline arguing
+   with the action. */
+.app-dialog .app-dialog-cancel {
+  background: var(--surface-2);
+  border: 0;
+  color: var(--ink);
+}
+@media (hover: hover) {
+  .app-dialog .app-dialog-cancel:hover {
+    background: color-mix(in srgb, var(--ink) 8%, var(--surface-2));
+  }
+}
+@media (min-width: 560px) {
+  .app-dialog {
+    align-items: center;
+  }
+  .app-dialog-panel {
+    padding: 24px 24px 20px;
+    animation-name: sheet-pop;
+  }
+  .app-dialog-actions {
+    flex-direction: row-reverse;
+  }
+  .app-dialog-actions button {
+    flex: 1 1 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-dialog,
+  .app-dialog-panel {
+    animation: none;
+  }
+}

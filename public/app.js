@@ -691,14 +691,14 @@ teamSwitchBtn.addEventListener("click", () => {
   loadTeamTable();
 });
 
-teamLeaveBtn.addEventListener("click", () => {
+teamLeaveBtn.addEventListener("click", async () => {
   const team = myTeams.find((t) => t.id === currentTeamId);
   if (!team) return;
   const last = team.memberCount === 1;
-  const question = last
-    ? `Delete ${team.name}? You're the only one in it, so it goes for good.`
-    : `Leave ${team.name}?`;
-  if (!window.confirm(question)) return;
+  const ok = await appConfirm(last
+    ? { title: `Delete ${team.name}?`, body: "You're the only one in it, so it goes for good.", confirmLabel: "Delete team", danger: true }
+    : { title: `Leave ${team.name}?`, body: "You can rejoin with the team's code.", confirmLabel: "Leave", danger: true });
+  if (!ok) return;
 
   teamRequest(
     `/api/teams/${team.id}/members/${currentUser.id}`,
@@ -1515,16 +1515,21 @@ function enterEditMode(row, entry) {
  *
  * The × sits between "Edit" and "+" in a row of three small buttons on a
  * phone, and a mis-tap threw away a logged meal with no undo and no way to
- * find out what it had been. Same window.confirm the other destructive
- * actions in this app use — leaving the team, deleting a saved meal, wiping
- * an account — rather than a fifth way of asking the same question.
+ * find out what it had been. The same dialog the other destructive actions
+ * in this app use — leaving the team, deleting a saved meal, wiping an
+ * account — rather than a fifth way of asking the same question.
  *
  * Named, because "Delete this entry?" tells you nothing about which one your
  * thumb actually landed on.
  */
 async function deleteEntry(entry) {
-  const name = entry.label ? `"${entry.label}"` : "this entry";
-  if (!window.confirm(`Delete ${name}? There's no undo.`)) return;
+  const ok = await appConfirm({
+    title: entry.label ? `Delete “${entry.label}”?` : "Delete this entry?",
+    body: "It comes off the day's total. There's no undo.",
+    confirmLabel: "Delete",
+    danger: true,
+  });
+  if (!ok) return;
   const folding = collapseRows(document.querySelectorAll(`.entry-row[data-id="${entry.id}"]`));
   await fetch(`/api/entries/${entry.id}`, { method: "DELETE" });
   await folding;
@@ -2947,8 +2952,14 @@ function renderPlanGrid(data) {
   reset.className = "ghost-sm admin-plan-reset";
   reset.textContent = "Put every tier back to the defaults";
   reset.hidden = !edited;
-  reset.addEventListener("click", () => {
-    if (!window.confirm("Undo every tier change and go back to what the app ships with?")) return;
+  reset.addEventListener("click", async () => {
+    const ok = await appConfirm({
+      title: "Put every tier back?",
+      body: "Every change made here is undone, and each plan goes back to what the app ships with.",
+      confirmLabel: "Reset tiers",
+      danger: true,
+    });
+    if (!ok) return;
     savePlanChange("/reset", {});
   });
   adminPlansEl.appendChild(reset);
@@ -6382,6 +6393,150 @@ function setModalOpen(modal, open) {
   }
 }
 
+// ── Dialogs ─────────────────────────────────────────────────────────────────
+//
+// Every question the app asks — delete this? leave the team? how many
+// portions? — used to be the browser's own confirm() or prompt(). On an
+// installed iPhone app those are grey system alerts headed with the site's
+// address, with buttons that say OK; on a desktop they freeze the whole tab.
+// They were the least finished-looking thing in the app, at exactly the
+// moments it was asking somebody to be careful.
+//
+// This is one dialog, built once and reused, in the same language as the
+// app's own sheets: a title that names the thing, a line of consequence, and
+// buttons that say what they do ("Delete", not "OK"). It returns a promise, so
+// a call site reads the way it did with confirm():
+//
+//   if (!(await appConfirm({ title: "Delete it?", confirmLabel: "Delete", danger: true }))) return;
+//
+// Escape, the backdrop and Cancel all mean no. Focus goes into the dialog and
+// comes back to whatever opened it, and Tab stays inside while it is open.
+const appDialogEl = document.createElement("div");
+appDialogEl.className = "app-dialog";
+appDialogEl.hidden = true;
+appDialogEl.innerHTML = `
+  <div class="app-dialog-panel" role="alertdialog" aria-modal="true" aria-labelledby="app-dialog-title" aria-describedby="app-dialog-body">
+    <h2 id="app-dialog-title" class="app-dialog-title"></h2>
+    <p id="app-dialog-body" class="app-dialog-body"></p>
+    <input id="app-dialog-input" class="app-dialog-input" type="text" autocomplete="off" hidden />
+    <div class="app-dialog-actions">
+      <button type="button" class="app-dialog-confirm"></button>
+      <button type="button" class="ghost app-dialog-cancel"></button>
+    </div>
+  </div>`;
+document.body.appendChild(appDialogEl);
+const appDialogTitle = appDialogEl.querySelector(".app-dialog-title");
+const appDialogBody = appDialogEl.querySelector(".app-dialog-body");
+const appDialogInput = appDialogEl.querySelector(".app-dialog-input");
+const appDialogConfirm = appDialogEl.querySelector(".app-dialog-confirm");
+const appDialogCancel = appDialogEl.querySelector(".app-dialog-cancel");
+let appDialogSettle = null;
+let appDialogReturnFocus = null;
+
+function closeAppDialog(confirmed) {
+  if (!appDialogSettle) return;
+  const settle = appDialogSettle;
+  appDialogSettle = null;
+  const value = appDialogInput.hidden ? null : appDialogInput.value;
+  setModalOpen(appDialogEl, false);
+  if (appDialogReturnFocus && typeof appDialogReturnFocus.focus === "function" && appDialogReturnFocus.isConnected) {
+    appDialogReturnFocus.focus({ preventScroll: true });
+  }
+  appDialogReturnFocus = null;
+  settle({ confirmed, value });
+}
+
+/**
+ * Opens the dialog. Resolves to { confirmed, value } — value is the text
+ * typed, when there is a field. A second call while one is open answers the
+ * first with "no" rather than stacking two dialogs.
+ */
+function openAppDialog({
+  title,
+  body = "",
+  confirmLabel = "OK",
+  cancelLabel = "Cancel",
+  danger = false,
+  input = null,
+}) {
+  if (appDialogSettle) closeAppDialog(false);
+  appDialogReturnFocus = document.activeElement;
+  appDialogTitle.textContent = title;
+  appDialogBody.textContent = body;
+  appDialogBody.hidden = !body;
+  appDialogConfirm.textContent = confirmLabel;
+  appDialogConfirm.classList.toggle("danger-btn", danger);
+  appDialogCancel.textContent = cancelLabel ?? "";
+  appDialogCancel.hidden = cancelLabel === null;
+  appDialogInput.hidden = !input;
+  if (input) {
+    appDialogInput.value = input.value ?? "";
+    appDialogInput.placeholder = input.placeholder ?? "";
+    appDialogInput.inputMode = input.inputMode ?? "text";
+    appDialogInput.readOnly = Boolean(input.readOnly);
+    appDialogInput.setAttribute("aria-label", input.label ?? title);
+  }
+  setModalOpen(appDialogEl, true);
+  haptic(8);
+  return new Promise((resolve) => {
+    appDialogSettle = resolve;
+    requestAnimationFrame(() => {
+      if (input) {
+        appDialogInput.focus();
+        appDialogInput.select();
+      } else if (danger && cancelLabel !== null) {
+        // A stray Enter on a destructive question should be the safe answer.
+        appDialogCancel.focus();
+      } else {
+        appDialogConfirm.focus();
+      }
+    });
+  });
+}
+
+/** confirm(), in the app's own voice. Resolves to true or false. */
+async function appConfirm(options) {
+  const { confirmed } = await openAppDialog(options);
+  return confirmed;
+}
+
+/** prompt(), in the app's own voice. Resolves to the text, or null if cancelled. */
+async function appPrompt({ value = "", placeholder = "", inputMode = "text", label, ...options }) {
+  const { confirmed, value: typed } = await openAppDialog({ ...options, input: { value, placeholder, inputMode, label } });
+  return confirmed ? typed : null;
+}
+
+appDialogConfirm.addEventListener("click", () => closeAppDialog(true));
+appDialogCancel.addEventListener("click", () => closeAppDialog(false));
+appDialogEl.addEventListener("click", (event) => {
+  if (event.target === appDialogEl) closeAppDialog(false);
+});
+appDialogInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    closeAppDialog(true);
+  }
+});
+appDialogEl.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    closeAppDialog(false);
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const focusables = [appDialogInput, appDialogConfirm, appDialogCancel].filter((el) => !el.hidden);
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+});
+
 // ── Jumping to a date ───────────────────────────────────────────────────────
 //
 // The arrows are fine for "yesterday" and useless for "the Tuesday before
@@ -7357,8 +7512,14 @@ function renderWeighinRow(entry, prev) {
   delBtn.setAttribute("aria-label", `Delete the weigh-in for ${dateEl.textContent}`);
   // Asked first, like a diary entry: it was a word before, and a word is
   // harder to hit by accident than a cross.
-  delBtn.addEventListener("click", () => {
-    if (!window.confirm(`Delete the weigh-in for ${dateEl.textContent} (${metaEl.textContent.split(" · ")[0]})?`)) return;
+  delBtn.addEventListener("click", async () => {
+    const ok = await appConfirm({
+      title: `Delete the weigh-in for ${dateEl.textContent}?`,
+      body: `${metaEl.textContent.split(" · ")[0]} comes off the trend line.`,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
     deleteWeighIn(entry.date);
   });
 
@@ -7888,7 +8049,14 @@ async function quickLogFood(food) {
 async function logSavedMeal(meal) {
   let servings = 1;
   if (meal.kind === "recipe") {
-    const answer = window.prompt(`How many portions of ${meal.name}?`, "1");
+    const answer = await appPrompt({
+      title: `How many portions of ${meal.name}?`,
+      body: "Halves are fine — 0.5 for half a portion.",
+      value: "1",
+      inputMode: "decimal",
+      label: "Portions",
+      confirmLabel: "Log it",
+    });
     if (answer === null) return null;
     servings = Number(answer);
     if (!Number.isFinite(servings) || servings <= 0) {
@@ -8103,7 +8271,13 @@ function renderMealRow(meal) {
 }
 
 async function deleteMeal(meal) {
-  if (!window.confirm(`Delete "${meal.name}"? Entries already logged from it stay in your diary.`)) return;
+  const ok = await appConfirm({
+    title: `Delete “${meal.name}”?`,
+    body: "Entries already logged from it stay in your diary.",
+    confirmLabel: "Delete meal",
+    danger: true,
+  });
+  if (!ok) return;
   try {
     const res = await fetch(`/api/meals/${meal.id}`, { method: "DELETE" });
     if (!res.ok) throw new Error();
@@ -11342,9 +11516,16 @@ function buildUnitSelect(label, current, onChange) {
 
   render(typeof current === "string" && current.trim() ? current.trim().toLowerCase() : null);
 
-  select.addEventListener("change", () => {
+  select.addEventListener("change", async () => {
     if (select.value === CUSTOM_UNIT_VALUE) {
-      const typed = window.prompt("What is one of these? (e.g. wedge, scoop, jar)", custom ?? "");
+      const typed = await appPrompt({
+        title: "What is one of these?",
+        body: "A word for one of them — wedge, scoop, jar.",
+        value: custom ?? "",
+        placeholder: "e.g. scoop",
+        label: "Unit",
+        confirmLabel: "Use it",
+      });
       const clean = typeof typed === "string" ? typed.trim().toLowerCase().slice(0, 20) : "";
       // Cancelled or blank leaves the unit exactly as it was, rather than
       // quietly clearing it because a dialog was dismissed.
@@ -12660,8 +12841,14 @@ async function copyShareLink(url) {
   } catch {
     // Clipboard access is refused often enough (an insecure origin, a locked
     // down browser) that failing silently would look like nothing happened.
-    showToast("Couldn't copy — the link is in the address bar");
-    window.prompt("Copy this link", url);
+    await appPrompt({
+      title: "Copy this link",
+      body: "Your browser wouldn't let the app copy it, so here it is to copy yourself. It works for 14 days.",
+      value: url,
+      label: "Link",
+      confirmLabel: "Done",
+      cancelLabel: null,
+    });
   }
 }
 
@@ -12987,7 +13174,13 @@ settingsPasswordSave.addEventListener("click", async () => {
 });
 
 logoutEverywhereBtn.addEventListener("click", async () => {
-  if (!window.confirm("Sign out on every device, including this one?")) return;
+  const ok = await appConfirm({
+    title: "Sign out everywhere?",
+    body: "Every device signed in to this account is signed out, including this one.",
+    confirmLabel: "Sign out everywhere",
+    danger: true,
+  });
+  if (!ok) return;
   await fetch("/api/auth/logout-everywhere", { method: "POST" });
   window.location.reload();
 });
@@ -13007,9 +13200,13 @@ deleteAccountBtn.addEventListener("click", async () => {
     deleteError.hidden = false;
     return;
   }
-  if (!window.confirm("This deletes every entry, weigh-in, measurement and photo. There is no undo. Continue?")) {
-    return;
-  }
+  const ok = await appConfirm({
+    title: "Delete your account?",
+    body: "Every entry, weigh-in, measurement and photo goes with it. There is no undo.",
+    confirmLabel: "Delete everything",
+    danger: true,
+  });
+  if (!ok) return;
 
   try {
     const res = await fetch("/api/auth/me", {
