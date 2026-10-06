@@ -10649,11 +10649,22 @@ const themeButtons = {
   dark: document.getElementById("theme-dark"),
 };
 
+// The two theme-color metas follow the device's setting by media query. An
+// explicit choice in Settings has to pin both to the same colour, or a phone
+// set to dark with the app set to light shows a dark status bar over a light
+// header.
+const THEME_COLOURS = { light: "#176B3A", dark: "#124F2B" };
+const themeColourMetas = [...document.querySelectorAll('meta[name="theme-color"]')];
+
 function applyTheme(theme) {
   if (theme === "system") {
     delete document.documentElement.dataset.theme;
   } else {
     document.documentElement.dataset.theme = theme;
+  }
+  for (const meta of themeColourMetas) {
+    const own = meta.media.includes("dark") ? THEME_COLOURS.dark : THEME_COLOURS.light;
+    meta.content = theme === "system" ? own : THEME_COLOURS[theme];
   }
   for (const [name, button] of Object.entries(themeButtons)) {
     button.classList.toggle("meal-kind-btn--active", name === theme);

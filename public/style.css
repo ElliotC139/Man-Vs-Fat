@@ -19,10 +19,20 @@
      AA for the small captions it is mostly used for. This clears 4.5 on the
      card, the page and the green-tinted panels, and reads as the same grey. */
   --muted: #64716a;
-  /* Pitch-marking white, warm-neutral. Not cream. */
-  --bg: #f6f7f4;
+  /* Pitch-marking white, warm-neutral. Not cream. A step deeper than it was
+     (#f6f7f4) so a white card separates from it by tone rather than needing a
+     drawn edge; every text colour on it still clears AA (muted 4.7:1). */
+  --bg: #f3f5f2;
   --card: #ffffff;
-  --hairline: #e6ece8;
+  --hairline: #e4e9e5;
+  /* Surfaces inside a card: tiles, wells, filled fields. */
+  --surface-2: #f3f5f2;
+  --field: #f3f5f2;
+  --field-border: #e3e8e4;
+  /* A card's edge is a whisper and its lift is two soft shadows — one tight,
+     one wide — which is what reads as a surface rather than a drawn box. */
+  --card-border: rgba(15, 30, 22, 0.06);
+  --shadow-card: 0 1px 2px rgba(15, 30, 22, 0.04), 0 6px 20px -6px rgba(15, 30, 22, 0.08);
   --danger: #dc2626;
   /* Darkened from #b06f05 for the same reason: "3 AI estimates left" and
      every "over" figure are text, and that one measured 4.1:1 on white. */
@@ -52,7 +62,8 @@
 
   --radius-sm: 10px;
   --radius-md: 14px;
-  --radius-lg: 22px;
+  --radius-lg: 20px;
+  --radius-field: 12px;
 
   --shadow-sm: 0 1px 2px rgba(20, 30, 24, 0.06);
   --shadow-md: 0 4px 14px rgba(20, 30, 24, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.6);
@@ -69,13 +80,18 @@
   --font-heading: "Barlow Condensed", "Oswald", "Arial Narrow", -apple-system, BlinkMacSystemFont, sans-serif;
   /* The logo's own face, for the wordmark and nothing else. */
   --font-brand: "Montserrat", "Avenir Next", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Everything that is read rather than glanced at: body copy, and every
+     title. Barlow Condensed is kept for display figures — the scoreboard
+     numbers it was chosen for — and stops being the voice of every heading,
+     caption and day label, which is what made screens read as a template. */
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
   /* The raised "selected" pill shared by the stats tabs, the daily/weekly
      toggle and the units switch. A token because all three were the same
      hardcoded white gradient, which stayed white in dark mode. */
-  --pill-active-bg: linear-gradient(160deg, #ffffff, #eefbf3);
-  --pill-active-ink: var(--pitch-dark);
-  --pill-active-shadow: 0 2px 6px rgba(18, 96, 47, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --pill-active-bg: #ffffff;
+  --pill-active-ink: var(--ink);
+  --pill-active-shadow: 0 1px 3px rgba(15, 30, 22, 0.12), 0 1px 1px rgba(15, 30, 22, 0.04);
 
   /* The tooltip is a deliberate inversion of the page, so it can't just use
      --ink for its ground: in dark mode that's near-white, and the white text
@@ -86,6 +102,18 @@
 
 * {
   box-sizing: border-box;
+}
+
+/* A tap on a phone should feel like the app's own press state, not the
+   browser's grey flash; and touch-action stops a quick second tap on a
+   button from being read as the start of a double-tap zoom. */
+button,
+a,
+label,
+summary,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 /* Author rules like `.settings-field { display: flex }` share specificity
@@ -106,13 +134,14 @@
   }
 }
 
-.banner h1,
-h2,
+/* Barlow Condensed for display figures only — see --font-body. */
 .summary-total,
-.balance-number,
-.budget-title,
-.auth-title {
+.balance-number {
   font-family: var(--font-heading);
+}
+.banner h1,
+.auth-title {
+  font-family: var(--font-brand);
 }
 
 /* Barlow Condensed runs narrow and short next to Poppins, so headings and
@@ -155,7 +184,7 @@ html {
 
 body {
   margin: 0;
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-body);
   background: var(--bg);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
@@ -508,11 +537,11 @@ main {
    for the one thing per screen that is the point of it. */
 .card {
   background: var(--card);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--card-border);
   border-radius: var(--radius-lg);
   padding: 18px;
-  margin-bottom: 16px;
-  box-shadow: var(--shadow-sm);
+  margin-bottom: 14px;
+  box-shadow: var(--shadow-card);
   animation: fadeInUp 0.35s var(--ease);
 }
 
@@ -533,23 +562,40 @@ input[type="search"],
 select {
   width: 100%;
   font-size: 1rem;
-  padding: 10px 12px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
+  padding: 11px 14px;
+  /* Filled rather than outlined: a field is a well in the card, not a second
+     box drawn inside the first. It lifts to the card's own white when you
+     are in it, so where the caret is never needs looking for. */
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-field);
   font-family: inherit;
   margin-bottom: 12px;
   resize: vertical;
-  background: var(--card);
+  background: var(--field);
   color: var(--ink);
-  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), background-color 0.15s var(--ease);
+}
+textarea {
+  line-height: 1.45;
+}
+/* A comfortable thumb height for single-line fields, at zero specificity so
+   the compact ones (a tag being typed, a plan picker in a table row) keep
+   whatever height their own class gives them. */
+:where(input[type="text"], input[type="number"], input[type="password"], input[type="time"], input[type="date"], input[type="search"], input[type="email"], select) {
+  min-height: 46px;
+}
+::placeholder {
+  color: var(--muted);
+  opacity: 0.85;
 }
 
 textarea:focus,
 input:focus,
 select:focus {
   outline: none;
-  border-color: var(--pitch);
-  box-shadow: 0 0 0 3px rgba(31, 157, 82, 0.15);
+  background-color: var(--card);
+  border-color: color-mix(in srgb, var(--action-ink) 70%, transparent);
+  box-shadow: 0 0 0 4px var(--action-soft);
 }
 
 /* The clear button WebKit draws in a search box is its own blue — the one
@@ -846,13 +892,20 @@ button.ghost:active {
    little green bar that used to sit in front of every one of these is gone:
    it encoded nothing, it just repeated the brand colour eleven times down
    the page. That was the one accessory to take off before leaving. */
+/* A section's heading, on the page above what it heads: "Logged today",
+   "Food diary", "All foods". Set like a heading rather than a label — the
+   tracked-out condensed capitals it was read as a scoreboard caption, and
+   there were a dozen of them on one screen. Card titles have their own,
+   smaller rule; see "Titles and labels" at the end of this file. */
 h2 {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin: 0 6px 10px;
+  font-family: var(--font-body);
+  font-size: 1.08rem;
+  font-weight: 700;
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  margin: 0 4px 10px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -869,12 +922,12 @@ h2 {
      and baseline alignment hung it below the row. */
   align-items: center;
   gap: 8px;
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-weight: 600;
   font-size: 0.95rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
   margin: 14px 6px 6px;
   padding-bottom: 5px;
@@ -958,14 +1011,15 @@ h2 {
 }
 
 .entry-kcal {
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-weight: 600;
-  font-size: 1.05rem;
+  font-size: 0.92rem;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
   /* The provenance badge sits inside this cell, so it must never be split
      onto its own line away from the number it describes. */
   white-space: nowrap;
+  letter-spacing: -0.01em;
 }
 
 /* Icon-sized actions fit beside even a long label and a provenance badge on
@@ -1049,11 +1103,12 @@ h2 {
 .entry-edit-field--third { grid-column: span 2; }
 
 .entry-edit-caption {
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--muted);
+  font-family: var(--font-body);
 }
 
 .entry-edit-field input,
@@ -1209,12 +1264,13 @@ h2 {
   margin: 0 0 14px;
 }
 .settings-fieldset legend {
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 600;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  text-transform: none;
+  letter-spacing: 0;
   padding: 0 4px;
+  font-family: var(--font-body);
 }
 .settings-row {
   display: flex;
@@ -1276,11 +1332,6 @@ h2 {
   justify-content: space-between;
   align-items: baseline;
   margin-bottom: 12px;
-}
-.budget-title {
-  font-weight: 800;
-  font-size: 1.02rem;
-  letter-spacing: -0.01em;
 }
 .balance-grid {
   display: grid;
@@ -1973,12 +2024,13 @@ tr.has-tooltip:active {
 }
 .breakdown-table th {
   text-align: left;
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--muted);
   padding: 0 10px 8px;
+  font-family: var(--font-body);
 }
 .breakdown-table td {
   padding: 9px 10px;
@@ -2020,11 +2072,12 @@ tr.has-tooltip:active {
 .stat-hero-caption {
   display: block;
   margin-top: 4px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--muted);
+  font-family: var(--font-body);
 }
 .stat-hero--good .stat-hero-number { color: var(--pitch-dark); }
 .stat-hero--fair .stat-hero-number { color: var(--amber); }
@@ -2394,11 +2447,12 @@ tr.has-tooltip:active {
 .weight-hero-caption {
   display: block;
   margin-top: 6px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--muted);
+  font-family: var(--font-body);
 }
 .weight-hero-note {
   display: block;
@@ -2504,11 +2558,6 @@ tr.has-tooltip:active {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 10px;
-}
-.quick-add-title {
-  font-family: var(--font-heading);
-  font-weight: 700;
-  font-size: 0.95rem;
 }
 .quick-add-chips {
   display: flex;
@@ -2625,9 +2674,10 @@ tr.has-tooltip:active {
   gap: 12px;
 }
 .plan-name {
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-weight: 700;
-  font-size: 1.05rem;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
 }
 .plan-price {
   font-size: 0.85rem;
@@ -2769,9 +2819,10 @@ tr.has-tooltip:active {
 }
 .referral-title {
   margin: 0;
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-weight: 700;
-  font-size: 1.05rem;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
 }
 .referral-reward {
   font-size: 0.85rem;
@@ -2840,10 +2891,12 @@ tr.has-tooltip:active {
   color: var(--ink);
 }
 .referral-stat-label {
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 0.72rem;
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--muted);
+  font-family: var(--font-body);
+  font-weight: 500;
 }
 
 /* The line on the sign-in card naming who invited them. */
@@ -3741,11 +3794,12 @@ tr.has-tooltip:active {
 }
 .review-section h3 {
   margin: 0 0 6px;
-  font-family: var(--font-heading);
-  font-size: 0.82rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  text-transform: none;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  font-weight: 700;
 }
 .review-section ul {
   margin: 0;
@@ -3803,9 +3857,14 @@ tr.has-tooltip:active {
   --pitch-dark: #7fe3a8;
   --ink: #e8ecea;
   --muted: #9aa5a0;
-  --bg: #121614;
-  --card: #1b211e;
-  --hairline: #2c342f;
+  --bg: #111513;
+  --card: #1a201d;
+  --hairline: #2a322d;
+  --surface-2: #222925;
+  --field: #222925;
+  --field-border: #2f3833;
+  --card-border: rgba(255, 255, 255, 0.05);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35);
   --danger: #f87171;
   --amber: #fbbf24;
   --amber-light: #fcd34d;
@@ -3813,9 +3872,9 @@ tr.has-tooltip:active {
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
   --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.55);
-  --pill-active-bg: linear-gradient(160deg, #2f3a34, #24312a);
-  --pill-active-ink: #9fe9bf;
-  --pill-active-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --pill-active-bg: #2e3732;
+  --pill-active-ink: var(--ink);
+  --pill-active-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   --tooltip-bg: #f2f5f3;
   --tooltip-ink: #14181a;
   /* The header ground has to stay clearly above the page in dark mode; the
@@ -3839,9 +3898,14 @@ tr.has-tooltip:active {
     --pitch-dark: #7fe3a8;
     --ink: #e8ecea;
     --muted: #9aa5a0;
-    --bg: #121614;
-    --card: #1b211e;
-    --hairline: #2c342f;
+    --bg: #111513;
+    --card: #1a201d;
+    --hairline: #2a322d;
+    --surface-2: #222925;
+    --field: #222925;
+    --field-border: #2f3833;
+    --card-border: rgba(255, 255, 255, 0.05);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35);
     --danger: #f87171;
     --amber: #fbbf24;
     --amber-light: #fcd34d;
@@ -3850,9 +3914,9 @@ tr.has-tooltip:active {
     --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
     --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.55);
 
-    --pill-active-bg: linear-gradient(160deg, #2f3a34, #24312a);
-    --pill-active-ink: #9fe9bf;
-    --pill-active-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    --pill-active-bg: #2e3732;
+    --pill-active-ink: var(--ink);
+    --pill-active-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
     --tooltip-bg: #f2f5f3;
     --tooltip-ink: #14181a;
     /* The header ground has to stay clearly above the page in dark mode; the
@@ -4085,12 +4149,12 @@ tr.has-tooltip:active {
   margin-bottom: 10px;
 }
 .form-guide-title {
-  font-family: var(--font-heading);
-  font-size: 0.9rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: 0.98rem;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: -0.01em;
+  color: var(--ink);
 }
 .form-guide-record {
   font-family: var(--font-heading);
@@ -4215,13 +4279,6 @@ tr.has-tooltip:active {
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-}
-.water-title {
-  font-family: var(--font-heading);
-  font-size: 1.05rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 .water-total-row {
   display: inline-flex;
@@ -5466,11 +5523,12 @@ tr.has-tooltip:active {
   font-variant-numeric: tabular-nums;
 }
 .today-hero-unit {
-  font-size: 0.7rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  text-transform: none;
   color: var(--muted);
+  font-family: var(--font-body);
 }
 .today-hero-side {
   flex: 1 1 auto;
@@ -5668,9 +5726,11 @@ tr.has-tooltip:active {
 }
 .sheet-title {
   margin: 0;
-  font-family: var(--font-heading);
-  font-size: 1.4rem;
-  letter-spacing: 0.01em;
+  font-family: var(--font-body);
+  font-size: 1.2rem;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  color: var(--ink);
 }
 /* Says where the figures came from, because "from the packet" and "AI
    estimate" deserve different amounts of scrutiny. */
@@ -5718,10 +5778,12 @@ tr.has-tooltip:active {
   flex-direction: column;
   gap: 3px;
   margin: 0;
-  font-size: 0.74rem;
+  font-size: 0.78rem;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-body);
+  font-weight: 600;
 }
 .confirm-item input { margin-bottom: 0; }
 .confirm-label { flex: 1 1 auto; min-width: 0; }
@@ -5733,10 +5795,12 @@ tr.has-tooltip:active {
   flex-direction: column;
   gap: 3px;
   margin: 0;
-  font-size: 0.74rem;
+  font-size: 0.78rem;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-body);
+  font-weight: 600;
 }
 .confirm-kcal {
   width: 100%;
@@ -5797,10 +5861,12 @@ tr.has-tooltip:active {
   flex-direction: column;
   gap: 3px;
   margin: 0;
-  font-size: 0.74rem;
+  font-size: 0.78rem;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-body);
+  font-weight: 600;
 }
 .confirm-macro-field input {
   font-variant-numeric: tabular-nums;
@@ -6023,10 +6089,12 @@ body.sheet-open { overflow: hidden; }
   flex-direction: column;
   gap: 3px;
   margin: 0;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-body);
+  font-weight: 600;
 }
 .food-editor-field--wide { grid-column: 1 / -1; }
 .food-editor-field input {
@@ -6088,14 +6156,6 @@ body.sheet-open { overflow: hidden; }
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-}
-.what-now-title {
-  font-family: var(--font-heading);
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink);
 }
 .what-now-chevron {
   display: grid;
@@ -6331,11 +6391,11 @@ body.modal-open {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-family: var(--font-heading);
-  font-size: 1.1rem;
+  font-family: var(--font-body);
+  font-size: 1.12rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: -0.015em;
+  text-transform: none;
 }
 /* Undoes the global button rule for the icon-only close. */
 .share-close-btn {
@@ -6398,11 +6458,11 @@ body.modal-open {
    a single scroll. */
 .settings-group {
   margin: 22px 0 10px;
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-size: 0.85rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--muted);
 }
 .settings-group:first-of-type {
@@ -6711,11 +6771,12 @@ body.modal-open {
   justify-content: space-between;
   gap: 12px;
   margin: 16px 2px 6px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--muted);
+  font-family: var(--font-body);
 }
 .meal-group-heading:first-child {
   margin-top: 4px;
@@ -6820,11 +6881,6 @@ body.hide-entry-times .entry-time {
   gap: 8px;
   min-height: 34px;
   padding: 0;
-}
-.card-collapse-head .settings-section-title {
-  font-family: var(--font-heading);
-  font-size: 1.05rem;
-  font-weight: 700;
 }
 .card-collapse-body {
   padding: 12px 0 0;
@@ -7364,14 +7420,6 @@ body.hide-entry-times .entry-time {
   justify-content: space-between;
   gap: 12px;
 }
-.keto-title {
-  font-family: var(--font-heading);
-  font-weight: 700;
-  font-size: 0.95rem;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
 .keto-note {
   font-size: 0.8rem;
   color: var(--muted);
@@ -7745,11 +7793,12 @@ body.hide-entry-times .entry-time {
 }
 .roadmap-group {
   margin: 12px 0 2px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--muted);
+  font-family: var(--font-body);
 }
 .roadmap-group:first-child { margin-top: 0; }
 .roadmap-item {
@@ -7890,18 +7939,21 @@ body.hide-entry-times .entry-time {
 }
 
 /* ── Titles and labels ─────────────────────────────────────────────────────
-   Two levels, used the same way everywhere. A card's title names the card and
-   is set in ink; a list's label sits on the page above rows of cards and is
-   muted, because the rows are what you read. Before this there were five
-   treatments for the same job — muted eyebrows, bold ink capitals on What
-   still fits and Water, sentence-case bold on Calorie balance and the
-   collapsible Stats cards — and which one a card got depended on when it was
-   written.
+   Three levels, used the same way everywhere, all in the body face and all in
+   sentence case:
+
+     a section heading on the page ("Logged today")   h2, 1.08rem / 700
+     a card's title ("What still fits", "Water")      1rem / 650-ish (600)
+     a caption under a figure ("current weight")      0.8rem / 600, muted
+
+   Before this there were five treatments for the same job, nearly all of them
+   Barlow Condensed in tracked capitals — a scoreboard caption repeated a dozen
+   times down every screen. Barlow is kept for the figures themselves.
 
    :where() keeps the h2 selectors at an element's weight, so Settings, which
-   sets its own headings in the body face, is untouched — and they are scoped
-   to the app's screens, because the privacy and terms pages share this
-   stylesheet and put their own headings in a .card. */
+   sets its own headings, is untouched — and they are scoped to the app's
+   screens, because the privacy and terms pages share this stylesheet and put
+   their own headings in a .card. */
 :where([id$="-screen"], #app-shell) :where(.card) > h2,
 :where([id$="-screen"], #app-shell) :where(.card) > .section-header h2,
 :where([id$="-screen"], #app-shell) :where(.card) > .card-heading-row h2,
@@ -7910,13 +7962,15 @@ body.hide-entry-times .entry-time {
 .water-title,
 .budget-title,
 .keto-title,
+.quick-add-title,
+.target-review-title,
 .card-collapse-head .settings-section-title {
-  font-family: var(--font-heading);
-  font-size: 0.95rem;
+  font-family: var(--font-body);
+  font-size: 1rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  line-height: 1.2;
-  text-transform: uppercase;
+  letter-spacing: -0.012em;
+  line-height: 1.25;
+  text-transform: none;
   color: var(--ink);
 }
 /* The Insights card's title was inset 6px from the sentences under it. */

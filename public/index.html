@@ -36,7 +36,10 @@
     <!-- Lets "Add to Home Screen" open as a standalone full-screen app
          (no address bar/tabs) instead of a browser bookmark. -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#176B3A" />
+    <meta name="theme-color" content="#176B3A" media="(prefers-color-scheme: light)" />
+    <!-- The dark header ground, so the status bar matches it rather than
+         sitting a brighter green above a darker one. -->
+    <meta name="theme-color" content="#124F2B" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="QuicKcals" />
