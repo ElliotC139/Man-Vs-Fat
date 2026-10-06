@@ -28,7 +28,35 @@ const ICONS = {
   note: icon('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z"/><path d="M14 3v6h6"/>'),
   chevronDown: icon('<polyline points="6 9 12 15 18 9"/>'),
   chevronUp: icon('<polyline points="18 15 12 9 6 15"/>'),
+  utensils: icon('<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>'),
+  heartPulse: icon('<path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/><path d="M3.2 12H9l.5-1 2 4.5 2-7 1.5 3.5h5.3"/>'),
+  bookmark: icon('<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z"/>'),
 };
+
+/**
+ * An empty list, said as a small composed block — an icon in a well, a line
+ * saying what isn't there, and a line saying how it gets there — rather than
+ * a lone grey sentence where the content would be.
+ */
+function emptyState(iconSvg, title, body) {
+  const wrap = document.createElement("div");
+  wrap.className = "empty-block";
+  const mark = document.createElement("span");
+  mark.className = "empty-block-icon";
+  mark.setAttribute("aria-hidden", "true");
+  mark.innerHTML = iconSvg;
+  const heading = document.createElement("p");
+  heading.className = "empty-block-title";
+  heading.textContent = title;
+  wrap.append(mark, heading);
+  if (body) {
+    const text = document.createElement("p");
+    text.className = "empty-block-body";
+    text.textContent = body;
+    wrap.appendChild(text);
+  }
+  return wrap;
+}
 
 const authScreen = document.getElementById("auth-screen");
 const appShell = document.getElementById("app-shell");
@@ -875,7 +903,7 @@ function renderEntries(entries) {
 
     const headingKcal = document.createElement("span");
     headingKcal.className = "day-heading-kcal";
-    headingKcal.textContent = dayPending ? `${dayKcal} kcal + pending` : `${dayKcal} kcal`;
+    headingKcal.textContent = dayPending ? `${dayKcal.toLocaleString()} kcal + pending` : `${dayKcal.toLocaleString()} kcal`;
 
     // A note belongs to the calendar day, so it hangs off the day heading
     // rather than off any one meal. The button carries the note's presence as
@@ -900,7 +928,12 @@ function renderEntries(entries) {
     group.appendChild(noteText);
     applyDayNote(group, dayKeyIso);
 
-    appendEntries(dayEntries, group);
+    // The day's rows sit in one card of their own, under the heading, rather
+    // than as a stack of separate cards — they are one list.
+    const rows = document.createElement("div");
+    rows.className = "entry-rows";
+    appendEntries(dayEntries, rows);
+    group.appendChild(rows);
 
     entryListEl.appendChild(group);
   }
@@ -12073,7 +12106,10 @@ function toggleDayNoteEditor(group, dayIso, button) {
   });
 
   editor.append(textarea, saveBtn);
-  group.appendChild(editor);
+  // Under the heading it belongs to, above the day's rows.
+  const rows = group.querySelector(".entry-rows");
+  if (rows) group.insertBefore(editor, rows);
+  else group.appendChild(editor);
   textarea.focus();
 }
 
@@ -14440,10 +14476,11 @@ function renderTodayEntries(entries) {
   todaySelectToggle.hidden = entries.length === 0;
 
   if (entries.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "muted today-empty";
-    empty.textContent = viewingToday ? "Nothing logged yet today." : "Nothing was logged that day.";
-    todayEntryList.appendChild(empty);
+    todayEntryList.appendChild(emptyState(
+      ICONS.utensils,
+      viewingToday ? "Nothing logged yet today" : "Nothing was logged that day",
+      viewingToday ? "Type what you ate above, or pick from Quick add — it lands here." : "Anything you log now goes on this day.",
+    ));
     return;
   }
   // Reuses the diary's own row, so editing, repeating, deleting and the
