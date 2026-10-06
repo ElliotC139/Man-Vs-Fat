@@ -11495,8 +11495,9 @@ function buildUnitSelect(label, current, onChange) {
     const none = document.createElement("option");
     none.value = "";
     // "×" is what an entry with no unit already reads as on its row, so the
-    // option that produces that reads the same.
-    none.textContent = "×  (just a number)";
+    // option that produces that reads the same. Short, because the picker is
+    // half a row wide and "(just a number)" was cut off at "(just a n".
+    none.textContent = "× no unit";
     select.appendChild(none);
 
     for (const unit of suggestUnits(label(), selected ?? custom)) {

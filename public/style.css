@@ -2942,8 +2942,8 @@ tr.has-tooltip:active {
   letter-spacing: 0.04em;
   padding: 2px 6px;
   border-radius: 999px;
-  background: var(--pill-active-bg);
-  color: var(--pill-active-ink);
+  background: var(--action-soft);
+  color: var(--action-ink);
 }
 
 /* ── Suggestions, in the admin card ───────────────────────────────────────*/
@@ -3175,8 +3175,8 @@ tr.has-tooltip:active {
   letter-spacing: 0.04em;
   padding: 2px 7px;
   border-radius: 999px;
-  background: var(--pill-active-bg);
-  color: var(--pill-active-ink);
+  background: var(--action-soft);
+  color: var(--action-ink);
 }
 /* A problem is the one worth spotting in a list of ideas. */
 .suggestion-kind--problem {
@@ -5599,18 +5599,19 @@ tr.has-tooltip:active {
 .sheet-panel {
   width: 100%;
   max-width: 560px;
-  max-height: 88vh;
+  max-height: 90vh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  gap: 14px;
+  padding: 28px 20px calc(20px + env(safe-area-inset-bottom));
+  border-radius: 26px 26px 0 0;
   background: var(--card);
   box-shadow: var(--shadow-lg);
   /* Up from the bottom edge it is attached to, which is what makes it read
      as a sheet over the page rather than a card that appeared on it. */
   animation: sheet-rise 0.34s var(--glide, var(--ease));
+  position: relative;
 }
 @keyframes sheet-rise {
   from { transform: translateY(48px); opacity: 0; }
@@ -5654,8 +5655,8 @@ tr.has-tooltip:active {
   flex: none;
   padding: 3px 9px;
   border-radius: 999px;
-  background: var(--pill-active-bg);
-  color: var(--pill-active-ink);
+  background: var(--action-soft);
+  color: var(--action-ink);
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -5986,8 +5987,8 @@ body.sheet-open { overflow: hidden; }
   margin-top: 2px;
   padding: 1px 7px;
   border-radius: 999px;
-  background: var(--pill-active-bg);
-  color: var(--pill-active-ink);
+  background: var(--action-soft);
+  color: var(--action-ink);
   font-size: 0.66rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -6273,14 +6274,17 @@ body.sheet-open { overflow: hidden; }
   inset: 0;
   z-index: 60;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  padding: 16px;
-  background: rgba(7, 20, 13, 0.72);
+  padding: 12px 0 0;
+  background: rgba(8, 14, 11, 0.5);
   overflow-y: auto;
   /* Without this, scrolling past the end of the panel hands the gesture to the
      page underneath and the background slides around behind the modal. */
   overscroll-behavior: contain;
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: sheet-backdrop-in 0.2s var(--ease);
 }
 /* Belt and braces with the above: the body itself is frozen for as long as any
    modal is open, so nothing behind it can move even where scroll chaining is
@@ -6294,14 +6298,16 @@ body.modal-open {
 }
 .share-panel {
   width: 100%;
-  max-width: 420px;
+  max-width: 560px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: 14px;
+  padding: 28px 20px calc(20px + env(safe-area-inset-bottom));
   background: var(--card);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  border-radius: 26px 26px 0 0;
+  box-shadow: var(--shadow-lg);
+  position: relative;
+  animation: sheet-rise 0.34s var(--glide, var(--ease));
 }
 .share-panel-head {
   display: flex;
@@ -6315,12 +6321,17 @@ body.modal-open {
 }
 /* Undoes the global button rule for the icon-only close. */
 .share-close-btn {
-  width: auto;
-  min-height: 36px;
-  padding: 0 6px;
-  background: none;
+  width: 34px;
+  min-height: 0;
+  padding: 0;
+  background: var(--surface-2);
   box-shadow: none;
   color: var(--muted);
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  flex: none;
 }
 .share-preview {
   border-radius: var(--radius-sm);
@@ -8144,4 +8155,80 @@ h2 .cell-icon {
   .app-dialog-panel {
     animation: none;
   }
+}
+
+/* ── One kind of sheet ─────────────────────────────────────────────────────
+   The confirm sheet, "just a number", saving a meal, a shared link, the daily
+   target picker and the share card were two families — bottom sheets with no
+   handle and muted grey titles, and centred cards with a bare × — that
+   happened to sit on the same page. They are one now: on a phone each rises
+   from the bottom with a handle at its top, a title in the body face, a round
+   close where there is one, and a quiet neutral way out under the action; on
+   anything wider each settles in the middle as a dialog. */
+.sheet-panel::before,
+.share-panel::before {
+  content: "";
+  position: absolute;
+  top: 9px;
+  left: 50%;
+  width: 38px;
+  height: 5px;
+  margin-left: -19px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 16%, transparent);
+  pointer-events: none;
+}
+.sheet-actions .ghost,
+.share-panel button.ghost {
+  margin-top: 0;
+  background: var(--surface-2);
+  border: 0;
+  color: var(--ink);
+}
+@media (hover: hover) {
+  .sheet-actions .ghost:hover,
+  .share-panel button.ghost:hover {
+    background: color-mix(in srgb, var(--ink) 8%, var(--surface-2));
+  }
+  .share-close-btn:hover {
+    color: var(--ink);
+    background: color-mix(in srgb, var(--ink) 8%, var(--surface-2));
+  }
+}
+.share-panel-head {
+  align-items: center;
+  gap: 12px;
+}
+@media (min-width: 720px) {
+  .share-modal {
+    align-items: center;
+    padding: 16px;
+  }
+  .share-panel {
+    max-width: 440px;
+    padding: 24px;
+    border-radius: 24px;
+    animation-name: sheet-pop;
+  }
+  .sheet-panel {
+    padding: 24px;
+    border-radius: 24px;
+  }
+  .sheet-panel::before,
+  .share-panel::before {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .share-modal,
+  .share-panel {
+    animation: none;
+  }
+}
+
+/* A field inside a tinted well (a confirm-sheet item, the quick-add drawer, a
+   burn-estimate panel) takes the card's own white, or it is the same grey as
+   the well it sits in and only its outline shows. */
+:where(.confirm-item, .quick-add, .estimate-fields, .food-editor) :is(input, select, textarea):not(:focus) {
+  background-color: var(--card);
 }
