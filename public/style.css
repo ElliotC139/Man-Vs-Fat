@@ -8768,3 +8768,135 @@ h2 .cell-icon {
 #onboarding-screen .settings-field:has(#onboarding-sex) {
   flex-basis: 100%;
 }
+
+/* ── First-load skeletons ──────────────────────────────────────────────────
+   The shape of what's coming, in a tint of the ink so it reads on a card in
+   either theme, with a slow sweep across it. Reduced motion stills the sweep
+   (the global rule caps every animation) and leaves the shapes. */
+:root {
+  --skeleton: color-mix(in srgb, var(--ink) 7%, transparent);
+  --skeleton-hi: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+@keyframes skeleton-sweep {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+.skeleton-line,
+.screen--loading :is(#today-kcal, .today-stat-value, .today-stat-caption, #week-range, #week-total, .summary-total + .muted, #water-total) {
+  background: linear-gradient(90deg, var(--skeleton) 25%, var(--skeleton-hi) 50%, var(--skeleton) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-sweep 1.6s ease-in-out infinite;
+  border-radius: 6px;
+}
+/* Figures that haven't arrived: the box they'll sit in, not a zero. */
+.screen--loading :is(#today-kcal, .today-stat-value, .today-stat-caption, #week-range, #week-total, .summary-total + .muted, #water-total) {
+  color: transparent !important;
+  user-select: none;
+}
+.screen--loading #week-range {
+  min-width: 9em;
+}
+.screen--loading .summary-total + .muted {
+  display: inline-block;
+  min-width: 16em;
+}
+.screen--loading .today-stat-caption {
+  min-width: 5.5em;
+}
+.screen--loading .today-ring-fill {
+  opacity: 0;
+}
+.screen--loading .burn-settings-btn {
+  visibility: hidden;
+}
+/* The banner's own figures sit on green, so their placeholder is white. */
+.screen--loading .banner #week-range {
+  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.16) 25%, rgba(255, 255, 255, 0.26) 50%, rgba(255, 255, 255, 0.16) 75%);
+}
+
+.skeleton-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 15px 16px;
+  position: relative;
+}
+.skeleton-row + .skeleton-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  height: 1px;
+  background: var(--hairline);
+}
+.skeleton-line {
+  display: block;
+  height: 12px;
+}
+.skeleton-line--title {
+  width: 58%;
+}
+.skeleton-line--meta {
+  width: 34%;
+  height: 10px;
+}
+.skeleton-row:nth-child(3n+2) .skeleton-line--title { width: 44%; }
+.skeleton-row:nth-child(3n) .skeleton-line--title { width: 66%; }
+
+/* A day of the week: label, bar, figure — the real row's three columns. */
+.skeleton-row--bar {
+  display: grid;
+  grid-template-columns: 4.6rem minmax(0, 1fr) 5.2rem;
+  align-items: center;
+  column-gap: 12px;
+  padding: 9px 8px;
+}
+.skeleton-row--bar + .skeleton-row--bar::before {
+  display: none;
+}
+.skeleton-row--bar .skeleton-line {
+  height: 10px;
+}
+.skeleton-row--bar .skeleton-line:last-child {
+  width: 70%;
+  justify-self: end;
+}
+.skeleton-line--bar {
+  height: 8px !important;
+  border-radius: 999px;
+}
+
+/* The week's diary has no card of its own until a day group gives it one, so
+   its placeholder rows bring their own. */
+#entry-list > .skeleton-row:first-child {
+  margin-top: 6px;
+}
+#entry-list:has(> .skeleton-row) {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+#entry-list:has(> .skeleton-row) > .skeleton-row:first-child {
+  margin-top: 0;
+}
+
+/* Held back until /api/plan has answered — see loadPlan. */
+.plan-pending :is(.photo-field, #measurement-toggle, #open-review-btn, #progress-photos-card .photo-label) {
+  display: none !important;
+}
+
+.screen--loading #today-kcal {
+  display: inline-block;
+  min-width: 2.4em;
+}
+.screen--loading .today-stat-value {
+  display: inline-block;
+  min-width: 3.4em;
+}
+.screen--loading #week-total {
+  display: inline-block;
+  min-width: 2.6em;
+}

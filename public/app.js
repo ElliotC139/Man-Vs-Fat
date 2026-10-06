@@ -59,6 +59,64 @@ function emptyState(iconSvg, title, body) {
   return wrap;
 }
 
+/**
+ * First-load placeholders.
+ *
+ * Before a screen's data arrives it used to show what an empty account
+ * looks like — "Nothing logged yet this week", "0 kcal over 0 days", a ring
+ * drawn full — and then swap it for the real thing a moment later. That is
+ * the screen telling you something false and then correcting itself. A
+ * skeleton says "coming" instead: the shape of the rows, no claims.
+ *
+ * Only the first load of each screen. Stepping between days or weeks keeps
+ * the last numbers on screen until the next ones land, which reads as the
+ * same screen updating rather than a new one loading.
+ */
+function skeletonRows(count, variant = "") {
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < count; i++) {
+    const row = document.createElement("div");
+    row.className = variant ? `skeleton-row skeleton-row--${variant}` : "skeleton-row";
+    row.setAttribute("aria-hidden", "true");
+    row.innerHTML = variant === "bar"
+      ? '<span class="skeleton-line"></span><span class="skeleton-line skeleton-line--bar"></span><span class="skeleton-line"></span>'
+      : '<span class="skeleton-line skeleton-line--title"></span><span class="skeleton-line skeleton-line--meta"></span>';
+    frag.appendChild(row);
+  }
+  return frag;
+}
+
+function clearSkeletons(root) {
+  for (const row of root?.querySelectorAll(".skeleton-row") ?? []) row.remove();
+}
+
+/** A screen's first load is over, whether it worked or not. */
+function settleFirstLoad(screen) {
+  if (!screen?.classList.contains("screen--loading")) return;
+  screen.classList.remove("screen--loading");
+  screen.removeAttribute("aria-busy");
+  clearSkeletons(screen);
+}
+
+for (const [screenId, lists] of [
+  ["today-screen", [["today-entry-list", 3]]],
+  ["app-shell", [["daily-totals", 7, "bar"], ["exercise-list", 1], ["entry-list", 3]]],
+]) {
+  const screen = document.getElementById(screenId);
+  screen?.classList.add("screen--loading");
+  screen?.setAttribute("aria-busy", "true");
+  for (const [listId, count, variant] of lists) {
+    document.getElementById(listId)?.append(skeletonRows(count, variant));
+  }
+}
+// Controls a plan can withhold stay out of sight until the plan is known, so
+// a free account doesn't watch "Take a photo" appear and then vanish.
+document.documentElement.classList.add("plan-pending");
+
+// Food has no screen-wide figures to hold back, only its two lists.
+document.getElementById("food-all-list")?.append(skeletonRows(4));
+document.getElementById("meal-list")?.append(skeletonRows(1));
+
 const authScreen = document.getElementById("auth-screen");
 const appShell = document.getElementById("app-shell");
 const todayScreen = document.getElementById("today-screen");
@@ -420,6 +478,14 @@ function refreshCurrentView() {
 }
 
 async function loadWeek() {
+  try {
+    await loadWeekData();
+  } finally {
+    settleFirstLoad(appShell);
+  }
+}
+
+async function loadWeekData() {
   const res = await fetch(`/api/match-weeks/current?weeksAgo=${weeksAgo}`);
   const week = await res.json();
 
@@ -1808,6 +1874,10 @@ async function loadPlan() {
     planCardEl.hidden = true;
     planAllowanceEl.hidden = true;
   }
+  // Until now the controls a plan can hold back were held back for everyone
+  // (see "plan-pending" in style.css); from here applyPlanGates has the say,
+  // or, if the plan couldn't be read, nothing is held back at all.
+  document.documentElement.classList.remove("plan-pending");
 }
 
 function renderPlan() {
@@ -5643,6 +5713,7 @@ async function loadFoods(query) {
     const foods = await res.json();
     renderFoodLibrary(foods);
   } catch {
+    clearSkeletons(foodAllList);
     foodLibraryError.textContent = "Couldn't load your foods — please try again.";
     foodLibraryError.hidden = false;
   }
@@ -14174,6 +14245,7 @@ async function loadToday() {
     // Offline or a failed call: the banner already says so, and blanking the
     // screen would throw away the last good numbers for no gain.
   }
+  settleFirstLoad(todayScreen);
   pendingDayStep = null;
   loadQuickAdd();
   loadWhatNow();
@@ -14208,6 +14280,14 @@ function renderDayLabel(label, isToday) {
   }
   todayDateEl.append(day, rest);
 }
+
+// Today's date is known before the server answers, so the header says it
+// from the start instead of sitting blank. Same shape as the server's label;
+// the server's own replaces it the moment it lands.
+renderDayLabel(
+  new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(new Date()),
+  true,
+);
 
 function renderToday(data) {
   renderDayLabel(data.label, data.isToday !== false);
