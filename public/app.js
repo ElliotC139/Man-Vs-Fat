@@ -31,6 +31,7 @@ const ICONS = {
   utensils: icon('<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>'),
   heartPulse: icon('<path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/><path d="M3.2 12H9l.5-1 2 4.5 2-7 1.5 3.5h5.3"/>'),
   bookmark: icon('<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z"/>'),
+  lock: icon('<rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>'),
 };
 
 /**
@@ -171,6 +172,7 @@ const statAvgWeeklyChangeCaption = document.getElementById("stat-avg-weekly-chan
 const statAvgWorkouts = document.getElementById("stat-avg-workouts");
 const statAvgRecovery = document.getElementById("stat-avg-recovery");
 const statAvgSleep = document.getElementById("stat-avg-sleep");
+const averagesCard = document.getElementById("averages-card");
 const averagesWindow = document.getElementById("averages-window");
 const streakCard = document.getElementById("streak-card");
 const streakCurrent = document.getElementById("streak-current");
@@ -797,12 +799,43 @@ function renderFormGuide(days, whoopDailyBurn) {
   formGuideEl.hidden = false;
 }
 
+/**
+ * The week, a day to a row, each with a bar.
+ *
+ * A column of seven figures has to be read; seven bars against the same
+ * scale are seen. The tick in each track is what that day was measured
+ * against — WHOOP's burn where there is one, otherwise the target or the
+ * estimate — so a bar that runs past its tick is a day over, without the
+ * row having to say so in words.
+ */
+let dailyTotalsWeekKey = null;
+
 function renderDailyTotals(days, whoopDailyBurn) {
   const burnByDate = new Map((whoopDailyBurn ?? []).map((b) => [b.date, b]));
+  const reference = dailyReference();
   let weekNet = 0;
   let weekNetHasData = false;
 
+  const measured = (day) => {
+    const burn = burnByDate.get(day.date);
+    return !burn?.future && burn?.kcalWeighted != null ? burn.kcalWeighted : null;
+  };
+  // One scale for the whole week, with a little headroom so the longest bar
+  // and the furthest tick never sit hard against the end of the track.
+  const scale = Math.max(
+    1,
+    ...days.map((d) => d.kcal ?? 0),
+    ...days.map((d) => measured(d) ?? 0),
+    reference?.kcal ?? 0,
+  ) * 1.08;
+
   dailyTotalsEl.innerHTML = "";
+  // The bars grow in when a week arrives, not every time the same week is
+  // redrawn after an edit — that would be the whole chart replaying to say
+  // one row moved.
+  const weekKey = days[0]?.date ?? "";
+  dailyTotalsEl.classList.toggle("day-totals--still", weekKey === dailyTotalsWeekKey);
+  dailyTotalsWeekKey = weekKey;
   const todayKey = todayDateKey();
   for (const day of days) {
     const row = document.createElement("div");
@@ -814,42 +847,67 @@ function renderDailyTotals(days, whoopDailyBurn) {
 
     const label = document.createElement("span");
     label.className = "day-total-label";
-    label.textContent = day.isToday ? `Today · ${day.label}` : day.label;
+    label.textContent = day.isToday ? "Today" : day.label;
+    if (day.isToday) label.title = day.label;
 
     const burn = burnByDate.get(day.date);
-    // Future days only carry a trailing-average projection (folded into the
-    // weekly total), not a real measurement — showing it here would read as
-    // "this already happened," so it's hidden until the day arrives.
-    if (!burn?.future && burn?.kcalWeighted != null) {
-      const whoopLine = document.createElement("span");
-      whoopLine.className = "day-total-whoop";
-      whoopLine.innerHTML = `${ICONS.flame} ${burn.kcalWeighted.toLocaleString()} kcal${burn.estimated ? " (est.)" : ""} WHOOP`;
-      label.appendChild(document.createElement("br"));
-      label.appendChild(whoopLine);
+    const measuredBurn = measured(day);
+    const against = measuredBurn ?? reference?.kcal ?? null;
+
+    const track = document.createElement("span");
+    track.className = "day-total-track";
+    track.setAttribute("aria-hidden", "true");
+    if (!future && day.kcal > 0) {
+      const fill = document.createElement("span");
+      fill.className = "day-total-fill";
+      // Over is settled the moment it happens; under isn't until the day is
+      // done — the same rule the form guide uses, so the two never disagree.
+      if (against != null && day.kcal > against) fill.classList.add("day-total-fill--over");
+      fill.style.setProperty("--fill", String(Math.min(1, day.kcal / scale)));
+      track.appendChild(fill);
+    }
+    if (!future && against != null) {
+      const tick = document.createElement("span");
+      tick.className = "day-total-tick";
+      tick.style.setProperty("--at", String(Math.min(1, against / scale)));
+      track.appendChild(tick);
     }
 
     const kcal = document.createElement("span");
     kcal.className = "day-total-kcal";
-    const figure = `${(day.kcal ?? 0).toLocaleString()} kcal`;
-    kcal.textContent = future ? "—" : day.pending ? `${figure} + pending` : figure;
-
-    // Net = eaten minus burned for that specific day — positive means a
-    // surplus (ate more than burned), negative a deficit. Only shown once
-    // a real or projected burn figure exists for the day.
-    if (!burn?.future && burn?.kcalWeighted != null) {
-      const net = day.kcal - burn.kcalWeighted;
-      weekNet += net;
-      weekNetHasData = true;
-
-      const netLine = document.createElement("span");
-      netLine.className = net > 0 ? "day-total-net day-total-net--over" : net < 0 ? "day-total-net day-total-net--under" : "day-total-net";
-      const sign = net > 0 ? "+" : net < 0 ? "−" : "";
-      netLine.textContent = `${sign}${Math.abs(net).toLocaleString()} kcal net`;
-      kcal.appendChild(document.createElement("br"));
-      kcal.appendChild(netLine);
+    if (!future) {
+      kcal.textContent = (day.kcal ?? 0).toLocaleString();
+      const unit = document.createElement("span");
+      unit.className = "day-total-unit";
+      unit.textContent = " kcal";
+      kcal.appendChild(unit);
     }
 
-    row.append(label, kcal);
+    row.append(label, track, kcal);
+
+    // Future days only carry a trailing-average projection (folded into the
+    // weekly total), not a real measurement — showing it here would read as
+    // "this already happened," so it's hidden until the day arrives.
+    const meta = [];
+    if (day.pending) meta.push('<span class="day-total-pending">+ pending estimate</span>');
+    if (measuredBurn != null) {
+      meta.push(`<span class="day-total-whoop">${ICONS.flame} ${measuredBurn.toLocaleString()}${burn.estimated ? " (est.)" : ""} burned</span>`);
+      // Net = eaten minus burned for that specific day — positive means a
+      // surplus (ate more than burned), negative a deficit.
+      const net = day.kcal - measuredBurn;
+      weekNet += net;
+      weekNetHasData = true;
+      const sign = net > 0 ? "+" : net < 0 ? "−" : "";
+      const tone = net > 0 ? " day-total-net--over" : net < 0 ? " day-total-net--under" : "";
+      meta.push(`<span class="day-total-net${tone}">${sign}${Math.abs(net).toLocaleString()} net</span>`);
+    }
+    if (meta.length > 0) {
+      const line = document.createElement("span");
+      line.className = "day-total-meta";
+      line.innerHTML = meta.join("");
+      row.appendChild(line);
+    }
+
     dailyTotalsEl.appendChild(row);
   }
 
@@ -1693,6 +1751,22 @@ function applyPlanGates(plan) {
   const allowed = (name) => plan[name] !== false;
 
   const hide = (el, ok) => { if (el) el.hidden = !ok; };
+  const gate = (el, ok) => {
+    if (!el) return;
+    el.hidden = !ok;
+    let note = el.nextElementSibling?.classList.contains("plan-gate") ? el.nextElementSibling : null;
+    if (ok) {
+      note?.remove();
+      return;
+    }
+    if (note) return;
+    note = document.createElement("button");
+    note.type = "button";
+    note.className = "plan-gate";
+    note.innerHTML = `${ICONS.lock}<span>See plans</span>`;
+    note.addEventListener("click", () => openSettingsSection(planCardEl));
+    el.after(note);
+  };
 
   // Logging by photo. The user's own log-method preference also hides this
   // (see applyLogMethods), so read both rather than fighting over one flag.
@@ -1708,9 +1782,11 @@ function applyPlanGates(plan) {
   const ketoRow = ketoOnBtn?.closest(".settings-field");
   hide(ketoRow, allowed("keto"));
 
-  // Records: the history stays, the "add" goes.
-  hide(measurementToggle, allowed("measurements"));
-  hide(progressPhotoInput?.closest(".photo-label"), allowed("progressPhotos"));
+  // Records: the history stays, the "add" goes — and in its place a way to
+  // the plans, so a card that can't take a new record says why rather than
+  // just being a tip with nothing to do.
+  gate(measurementToggle, allowed("measurements"));
+  gate(progressPhotoInput?.closest(".photo-label"), allowed("progressPhotos"));
 
   // Purely computed, so nothing of the user's is behind it.
   hide(document.getElementById("eating-window-card"), allowed("eatingWindow"));
@@ -3187,8 +3263,7 @@ function fillAdFor(tab) {
 
 for (const button of document.querySelectorAll(".ad-remove")) {
   button.addEventListener("click", () => {
-    navTo("settings");
-    planCardEl.scrollIntoView({ behavior: "smooth", block: "center" });
+    openSettingsSection(planCardEl);
   });
 }
 
@@ -3793,6 +3868,26 @@ function buildSettingsNav() {
   selectSettingsPane(window.matchMedia("(min-width: 1024px)").matches ? 0 : null);
 }
 
+/**
+ * Go to Settings with the section holding `el` open and on screen.
+ *
+ * For buttons elsewhere in the app that stand in for a setting — "Connect
+ * WHOOP" on the Recovery tab — so they land on the thing itself rather than
+ * on the top of a list you then have to search.
+ */
+function openSettingsSection(el) {
+  navTo("settings");
+  buildSettingsNav();
+  const pane = el.closest(".settings-pane");
+  if (pane) selectSettingsPane(Number(pane.dataset.pane));
+  const section = el.closest("[data-settings-section]");
+  const head = section?.querySelector(":scope > .settings-section-head");
+  if (head && head.getAttribute("aria-expanded") !== "true") head.click();
+  requestAnimationFrame(() => {
+    (section ?? el).scrollIntoView({ block: "start", behavior: prefersLessMotion() ? "auto" : "smooth" });
+  });
+}
+
 /** Show one settings group, or null for the list of them. */
 function selectSettingsPane(index) {
   const card = document.getElementById("settings-card");
@@ -4371,7 +4466,9 @@ function renderBudgetWidget(week) {
   }
   budgetWidget.hidden = false;
 
-  budgetSourceLabel.textContent = sourceLabel ? `· ${sourceLabel}` : "";
+  budgetSourceLabel.textContent = sourceLabel
+    ? `vs ${sourceLabel === "WHOOP" ? "WHOOP burn" : sourceLabel === "estimated" ? "estimated burn" : sourceLabel}`
+    : "";
   balanceInTotal.textContent = caloriesIn.toLocaleString();
   balanceOutTotal.textContent = caloriesOut.toLocaleString();
   balanceOutCaption.textContent = comparedAgainst === "target" ? "target so far" : "kcal out";
@@ -6107,10 +6204,40 @@ async function loadWhoopRecent() {
   }
 }
 
+/**
+ * The Recovery tab with nothing in it yet.
+ *
+ * Says what would be here and gives the one button that gets it there,
+ * rather than a sentence telling you to go and find a setting. Connected but
+ * empty is a different state — the first sync hasn't landed — and asking
+ * somebody to connect what they already have would send them in a circle.
+ */
+function renderWhoopPrompt(connected) {
+  const block = connected
+    ? emptyState(
+        ICONS.heartPulse,
+        "Waiting on the first sync",
+        "WHOOP is connected. Recovery and sleep show up here once the first sync comes through.",
+      )
+    : emptyState(
+        ICONS.heartPulse,
+        "Recovery and sleep live here",
+        "Connect WHOOP and each morning's recovery and last night's sleep sit beside what you ate.",
+      );
+  const action = document.createElement("button");
+  action.type = "button";
+  action.className = "ghost-sm empty-block-action";
+  action.textContent = connected ? "Tracker settings" : "Connect WHOOP";
+  action.addEventListener("click", () => openSettingsSection(whoopConnectBtn));
+  block.appendChild(action);
+  whoopStatsPrompt.replaceChildren(block);
+}
+
 function renderWhoopStats(data) {
   const days = data.connected ? (data.days ?? []) : [];
   if (days.length === 0) {
     whoopStatsCard.hidden = true;
+    renderWhoopPrompt(Boolean(data.connected));
     whoopStatsPrompt.hidden = false;
     return;
   }
@@ -6154,12 +6281,16 @@ async function loadStatsSummary() {
 }
 
 /**
- * The Averages card. Every figure is either a real number or an em dash —
- * nothing is filled in with a zero that would read as a measurement.
+ * The Averages card. Every figure is a real number — nothing is filled in
+ * with a zero that would read as a measurement. A figure there's no data for
+ * takes its tile with it: four dashes in a grid read as a broken screen, not
+ * as "connect a tracker for this", and the Recovery tab already says that.
  */
 function renderAverages(averages, avgKcalPerDay) {
   const set = (el, value) => {
     el.textContent = value ?? "—";
+    const cell = el.closest(".balance-cell");
+    if (cell) cell.hidden = value === null || value === undefined;
   };
   const num = (value) => (value === null || value === undefined ? null : value.toLocaleString());
 
@@ -6213,6 +6344,12 @@ function renderAverages(averages, avgKcalPerDay) {
   set(statAvgWorkouts, averages.workoutsPerWeek === null || averages.workoutsPerWeek === undefined ? null : String(averages.workoutsPerWeek));
   set(statAvgRecovery, averages.recovery === null || averages.recovery === undefined ? null : `${averages.recovery}%`);
   set(statAvgSleep, averages.sleepMinutes === null || averages.sleepMinutes === undefined ? null : formatSleep(averages.sleepMinutes));
+
+  // A grid with every tile gone goes too, and the card with it when there's
+  // nothing to average yet.
+  const grids = [...averagesCard.querySelectorAll(".balance-grid")];
+  for (const grid of grids) grid.hidden = [...grid.children].every((cell) => cell.hidden);
+  averagesCard.hidden = grids.every((grid) => grid.hidden);
 }
 
 function renderStatsSummary(data) {
@@ -7076,6 +7213,17 @@ function renderWeeklyBreakdown(data) {
   breakdownCaloriesBody.innerHTML = "";
   breakdownRecoveryBody.innerHTML = "";
 
+  // The weeks before anything was ever logged aren't empty weeks, they're
+  // weeks before you started — a dozen rows of dashes under the real ones.
+  // Each table starts from its own first week with data; a gap after that
+  // stays, stepped back, because a week off is worth seeing.
+  const firstWith = (has) => {
+    const i = weeks.findIndex(has);
+    return i === -1 ? weeks.length : i;
+  };
+  const firstCalories = firstWith((w) => w.avgKcalPerDay !== null || w.workoutCount > 0);
+  const firstRecovery = firstWith((w) => w.avgRecovery !== null || w.avgSleepMinutes !== null);
+
   for (let i = weeks.length - 1; i >= 0; i--) {
     const week = weeks[i];
 
@@ -7098,14 +7246,20 @@ function renderWeeklyBreakdown(data) {
     workouts.textContent = String(week.workoutCount);
     const kcalDetail =
       week.avgKcalPerDay !== null ? `Logged on ${formatDaysLogged(week.daysWithEntries)} of 7 days` : undefined;
-    appendBreakdownRow(breakdownCaloriesBody, week, [kcal, workouts], "calories", kcalDetail);
+    if (i >= firstCalories) {
+      const row = appendBreakdownRow(breakdownCaloriesBody, week, [kcal, workouts], "calories", kcalDetail);
+      if (week.avgKcalPerDay === null && !week.workoutCount) row.classList.add("breakdown-row--empty");
+    }
 
     // ── Recovery ──
     const recovery = document.createElement("td");
     recovery.textContent = week.avgRecovery !== null ? `${week.avgRecovery}%` : "—";
     const sleep = document.createElement("td");
     sleep.textContent = week.avgSleepMinutes !== null ? formatSleep(week.avgSleepMinutes) : "—";
-    appendBreakdownRow(breakdownRecoveryBody, week, [recovery, sleep], "recovery");
+    if (i >= firstRecovery) {
+      const row = appendBreakdownRow(breakdownRecoveryBody, week, [recovery, sleep], "recovery");
+      if (week.avgRecovery === null && week.avgSleepMinutes === null) row.classList.add("breakdown-row--empty");
+    }
   }
 }
 
@@ -7179,6 +7333,7 @@ function appendBreakdownRow(tbody, week, cells, kind, extraDetail) {
       detailCell.innerHTML = '<p class="muted breakdown-detail-loading">Couldn’t load those days.</p>';
     }
   });
+  return row;
 }
 
 /** Which column each table's drill-down shows, and how to render it. */

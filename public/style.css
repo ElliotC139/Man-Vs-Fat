@@ -465,6 +465,17 @@ main {
   animation: fadeInUp 0.35s var(--ease);
 }
 
+/* Wells inside a card — tiles, tracks, tags, toggles — were painted with
+   the page colour. In light mode that is the same grey as --surface-2; in
+   dark it is darker than the card, so every tile read as a hole punched
+   through it. Inside a surface, "the background" means the raised well. */
+:where([id$="-screen"], #app-shell) .card,
+.sheet-panel,
+.share-panel,
+.app-dialog-panel {
+  --bg: var(--surface-2);
+}
+
 label {
   display: block;
   font-weight: 600;
@@ -720,6 +731,27 @@ button.ghost:active {
   color: var(--ink);
   line-height: 1.05;
 }
+/* The figure is the headline; "kcal this week" is its caption, set in the
+   reading face beside it rather than shouting in the display face too. */
+#app-shell .summary-total {
+  font-family: var(--font-body);
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: -0.005em;
+}
+#app-shell .summary-total #week-total {
+  font-family: var(--font-heading);
+  font-size: 2.7rem;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1;
+  letter-spacing: -0.01em;
+  margin-right: 2px;
+}
+#app-shell .summary-total + .muted {
+  margin-top: 4px;
+}
 
 .week-net-summary {
   margin-top: 8px;
@@ -735,71 +767,138 @@ button.ghost:active {
 }
 
 .day-totals {
-  margin-top: 12px;
+  margin-top: 16px;
   text-align: left;
-}
-
-.day-total-row {
   display: flex;
-  justify-content: space-between;
-  font-size: 0.85rem;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--hairline);
+  flex-direction: column;
+  gap: 2px;
 }
 
-.day-total-row:last-child {
-  border-bottom: none;
+/* Label, bar, figure — the same three columns on every row, so seven bars
+   share one baseline and can be compared at a glance. */
+.day-total-row {
+  display: grid;
+  grid-template-columns: 4.6rem minmax(0, 1fr) 5.2rem;
+  align-items: center;
+  column-gap: 12px;
+  padding: 7px 8px;
+  border-radius: 10px;
+  font-size: 0.86rem;
 }
 
 .day-total-row--today {
-  background: var(--bg);
-  border-bottom: none;
-  border-radius: 8px;
-  padding: 6px 8px;
-  margin: 2px 0;
+  background: var(--action-soft);
 }
 
 .day-total-label {
+  color: var(--ink);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.day-total-track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+.day-total-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--fill, 0) * 100%);
+  min-width: 8px;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--pitch-light), var(--action));
+  transform-origin: left center;
+  animation: day-bar-grow 0.6s var(--glide) both;
+}
+.day-total-fill--over {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--floodlight) 70%, #fff), var(--floodlight));
+}
+/* What the day was measured against: burn, target or estimate. */
+.day-total-tick {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  left: calc(var(--at, 0) * 100%);
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--ink);
+  opacity: 0.28;
+}
+.day-totals--still .day-total-fill {
+  animation: none;
+}
+@keyframes day-bar-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+.day-total-kcal {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.day-total-unit {
+  font-size: 0.78em;
+  font-weight: 500;
   color: var(--muted);
 }
+
 /* Days still to come: there, so the week reads as a week, but stepped back
    behind the ones that have been played. */
-.day-total-row--future .day-total-label,
-.day-total-row--future .day-total-kcal {
+.day-total-row--future .day-total-label {
   color: var(--muted);
-  opacity: 0.6;
+  opacity: 0.7;
   font-weight: 400;
 }
-
-.day-total-whoop {
-  display: inline-block;
-  font-size: 0.75rem;
-  color: var(--muted);
-  font-weight: 400;
-  margin-top: 2px;
-}
-
-.day-total-net {
-  display: inline-block;
-  font-size: 0.75rem;
-  font-weight: 600;
-  margin-top: 2px;
-  color: var(--muted);
-}
-.day-total-net--under {
-  color: var(--pitch-dark);
-}
-.day-total-net--over {
-  color: var(--danger);
+.day-total-row--future .day-total-track {
+  background: color-mix(in srgb, var(--ink) 3.5%, transparent);
 }
 
 .day-total-row--today .day-total-label,
 .day-total-row--today .day-total-kcal {
-  color: var(--pitch-dark);
+  color: var(--action-ink);
   font-weight: 700;
 }
+.day-total-row--today .day-total-track {
+  background: color-mix(in srgb, var(--action) 14%, transparent);
+}
 
-.day-total-kcal {
+.day-total-meta {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin-top: 4px;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+.day-total-whoop {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.day-total-whoop .icon {
+  width: 12px;
+  height: 12px;
+}
+.day-total-net {
+  font-weight: 600;
+  color: var(--muted);
+}
+.day-total-net--under {
+  color: var(--action-ink);
+}
+.day-total-net--over {
+  color: var(--danger);
+}
+.day-total-pending {
+  color: var(--amber);
   font-weight: 600;
 }
 
@@ -1250,8 +1349,19 @@ h2 {
 .budget-header {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
+  gap: 10px;
   margin-bottom: 12px;
+}
+/* What the balance is measured against, as a quiet tag. */
+#budget-source-label:not(:empty) {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
 .balance-grid {
   display: grid;
@@ -1277,8 +1387,8 @@ h2 {
 }
 .balance-cell {
   text-align: center;
-  background: var(--bg);
-  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border-radius: 14px;
   /* Was 16px 8px around a 1.55rem figure. Four of these stacked two-up made
      a card taller than the chart underneath it, for numbers nobody reads one
      at a time — they are scanned as a set. Smaller tile, same set. */
@@ -1287,7 +1397,7 @@ h2 {
 }
 .balance-number {
   display: block;
-  font-size: 1.25rem;
+  font-size: 1.32rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
@@ -1300,23 +1410,17 @@ h2 {
   margin-top: 2px;
   font-weight: 500;
 }
-.balance-cell--loss {
-  background: rgba(31, 157, 82, 0.12);
-}
+/* The tiles stay one neutral surface and the figure carries the verdict.
+   A wall of tinted boxes made every number look like a warning or a prize;
+   colour on the number alone says the same thing once. */
 .balance-cell--loss .balance-number {
-  color: var(--pitch-dark);
-}
-.balance-cell--gain {
-  background: rgba(220, 38, 38, 0.08);
+  color: var(--action-ink);
 }
 .balance-cell--gain .balance-number {
   color: var(--danger);
 }
-.balance-cell--accent {
-  background: rgba(217, 119, 6, 0.12);
-}
 .balance-cell--accent .balance-number {
-  color: var(--amber);
+  color: var(--ink);
 }
 
 /* ── Exercise section ── */
@@ -4086,14 +4190,12 @@ tr.has-tooltip:active {
   color: var(--ink);
 }
 .form-guide-record {
-  font-family: var(--font-heading);
-  font-size: 0.95rem;
+  font-size: 0.84rem;
   font-weight: 600;
-  letter-spacing: 0.03em;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
-.form-guide-record--good { color: var(--pitch-dark); }
+.form-guide-record--good { color: var(--action-ink); }
 .form-guide-record--bad { color: var(--amber); }
 
 .form-guide-days {
@@ -4110,20 +4212,19 @@ tr.has-tooltip:active {
   max-width: 400px;
 }
 .form-day {
-  aspect-ratio: 1;
-  border-radius: 8px;
+  position: relative;
+  height: 38px;
+  border-radius: 11px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-heading);
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-size: 0.8rem;
+  font-weight: 700;
   cursor: pointer;
   transition: transform 0.2s var(--spring), box-shadow 0.15s var(--ease);
 }
 .form-day:active { transform: scale(0.92); }
-.form-day.tooltip-active { box-shadow: 0 0 0 2px var(--pitch); }
+.form-day.tooltip-active { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--action); }
 
 /* Under your burn: the win. Solid pitch green, the one place the brand
    colour is allowed to be a fill rather than an accent. */
@@ -4139,23 +4240,32 @@ tr.has-tooltip:active {
 }
 /* Logged, but no burn data to judge it against yet. */
 .form-day--logged {
-  background: rgba(31, 157, 82, 0.14);
-  color: var(--pitch-dark);
+  background: var(--action-soft-hover);
+  color: var(--action-ink);
 }
 /* Not yet played. */
 .form-day--none {
-  background: var(--bg);
+  background: var(--surface-2);
   color: var(--muted);
-  box-shadow: inset 0 0 0 1px var(--hairline);
 }
-.form-day--today {
-  box-shadow: inset 0 0 0 2px var(--ink);
-}
-.form-day--today.tooltip-active {
-  box-shadow: inset 0 0 0 2px var(--ink), 0 0 0 2px var(--pitch);
+/* Today is marked under the day rather than round it, so its colour still
+   reads as the result and not as a frame. */
+.form-day--today::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--ink);
 }
 .form-day-letter {
   line-height: 1;
+}
+.form-guide-days {
+  padding-bottom: 8px;
 }
 
 /* ── Deficit streak ── */
@@ -4165,8 +4275,8 @@ tr.has-tooltip:active {
   gap: 10px;
 }
 .streak-cell {
-  background: var(--bg);
-  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  border-radius: 14px;
   padding: 14px 12px;
   text-align: center;
 }
@@ -7879,8 +7989,10 @@ body.hide-entry-times .entry-time {
   text-transform: none;
   color: var(--ink);
 }
-/* The Insights card's title was inset 6px from the sentences under it. */
-#insights-card > h2 {
+/* A card's own title sits on the card's edge, in line with what's under
+   it. The 4px side inset on h2 is for section titles out on the page, where
+   it lines them up with the card corners below. */
+:where([id$="-screen"], #app-shell) :where(.card) > h2 {
   margin-left: 0;
   margin-right: 0;
 }
@@ -8231,4 +8343,53 @@ h2 .cell-icon {
    the well it sits in and only its outline shows. */
 :where(.confirm-item, .quick-add, .estimate-fields, .food-editor) :is(input, select, textarea):not(:focus) {
   background-color: var(--card);
+}
+
+.empty-block-action {
+  margin-top: 10px;
+}
+
+/* A week off, after you'd started: kept in the table, stepped back. */
+.breakdown-row--empty td:not(.breakdown-toggle-cell) {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+/* Where a plan holds back the "add", a quiet way to the plans instead. */
+.plan-gate {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  box-shadow: none;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.plan-gate .icon {
+  width: 14px;
+  height: 14px;
+}
+@media (hover: hover) {
+  .plan-gate:hover {
+    background: var(--action-soft);
+    color: var(--action-ink);
+  }
+}
+#progress-photos-card > .plan-gate {
+  margin-top: 4px;
+}
+/* Somewhere a link into Settings lands: a little air above it rather than
+   the top edge hard against the screen. */
+#plan-card,
+[data-settings-section] {
+  scroll-margin-top: 16px;
 }
