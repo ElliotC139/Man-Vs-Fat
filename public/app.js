@@ -338,6 +338,25 @@ photoCameraInput?.addEventListener("change", () => {
   showChosenPhoto();
 });
 
+/**
+ * The week's title in the header: the dates, and under them which week it is
+ * relative to this one — the dates alone don't say whether you are looking at
+ * last week or the one before it.
+ */
+function renderWeekRange(rangeLabel) {
+  weekRangeEl.textContent = "";
+  const main = document.createElement("span");
+  main.className = "week-range-main";
+  main.textContent = rangeLabel;
+  const sub = document.createElement("span");
+  sub.className = "week-range-sub";
+  sub.textContent = weeksAgo === 0 ? "This week" : weeksAgo === 1 ? "Last week" : `${weeksAgo} weeks ago`;
+  weekRangeEl.append(main, sub);
+  // The form guide's own heading said "This week" whichever week it showed.
+  if (formGuideTitleEl) formGuideTitleEl.textContent = weeksAgo === 0 ? "This week" : "That week";
+}
+const formGuideTitleEl = document.querySelector("#form-guide .form-guide-title");
+
 // Which way the last arrow went, for loadWeek() to slide the new week in from
 // that side once it has drawn it. See playStep().
 let pendingWeekStep = null;
@@ -374,10 +393,10 @@ async function loadWeek() {
 
   // Server-formatted in the app's timezone — see weekRangeLabel in
   // routes/matchWeeks.ts for why the browser can't be trusted to do this.
-  weekRangeEl.textContent = week.rangeLabel;
+  renderWeekRange(week.rangeLabel);
   weekNextBtn.disabled = weeksAgo === 0;
   weekTotalEl.textContent = (week.totalKcal ?? 0).toLocaleString();
-  weekAvgEl.textContent = week.dailyAverage;
+  weekAvgEl.textContent = Number.isFinite(Number(week.dailyAverage)) ? Number(week.dailyAverage).toLocaleString() : week.dailyAverage;
   daysLoggedEl.textContent = week.daysLogged;
   daysLoggedWordEl.textContent = Number(week.daysLogged) === 1 ? "day" : "days";
   exportPdfEl.href = `/api/match-weeks/current/report.pdf?weeksAgo=${weeksAgo}`;
@@ -13768,8 +13787,13 @@ function renderDayLabel(label, isToday) {
 
   if (space === -1) {
     day.textContent = label;
+  } else if (isToday === true) {
+    // "Today" over the whole date, weekday included: the header has a second
+    // line now, and the weekday is what "today" is usually checked against.
+    day.textContent = "Today";
+    rest.textContent = ` ${label}`;
   } else {
-    day.textContent = isToday === true ? "Today" : label.slice(0, space);
+    day.textContent = label.slice(0, space);
     rest.textContent = ` ${label.slice(space + 1)}`;
   }
   todayDateEl.append(day, rest);
