@@ -928,11 +928,17 @@ h2 {
   color: var(--ink);
   text-transform: none;
   letter-spacing: -0.015em;
-  line-height: 1.25;
   margin: 0 4px 10px;
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Tighter leading for the app's titles only. The legal pages share this
+   stylesheet and set their headings inside running prose, where the prose's
+   own line-height is the right one. */
+:where(body:has(#app-shell)) h2 {
+  line-height: 1.25;
 }
 
 .day-group {
@@ -7508,8 +7514,10 @@ body.hide-entry-times .entry-time {
    Present only when there is something to answer, so it can afford to look
    like an interruption rather than another permanent card. */
 .target-review-card {
-  border: 1px solid var(--pitch);
-  background: rgba(31, 157, 82, 0.05);
+  border: 1px solid color-mix(in srgb, var(--action) 50%, var(--card-border));
+  /* Tinted over the card colour, not over whatever is behind it: a
+     translucent wash let the darker page through in dark mode. */
+  background: color-mix(in srgb, var(--action) 6%, var(--card));
 }
 .target-review-title {
   font-size: 1rem;
@@ -8730,6 +8738,9 @@ h2 .cell-icon {
    not an outline drawn on the page. */
 #settings-screen .settings-section {
   margin: 0;
+  /* The head and body carry the padding; the desktop rule's own 18px 20px
+     on the section doubled it. */
+  padding: 0;
   background: var(--card);
   border: 1px solid var(--card-border);
   border-radius: 16px;
@@ -8899,4 +8910,79 @@ h2 .cell-icon {
 .screen--loading #week-total {
   display: inline-block;
   min-width: 2.6em;
+}
+
+/* My week's sections: air between the exercise list and the diary heading,
+   so "Food diary" reads as the start of its own section. */
+#exercise-section {
+  margin-bottom: 22px;
+}
+
+/* The plan, in Settings: the same surface as the sections under it rather
+   than an outline on the page. */
+#settings-screen .plan-card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
+  padding: 16px;
+  margin-bottom: 0;
+}
+
+/* Inside the app, a link styled as a button is the same soft green pill as
+   the small buttons beside it ("Export PDF" next to "Share week"), not an
+   outlined box. The 404 page shares the base rule and keeps it. */
+:where(body:has(#app-shell)) .button-link {
+  border: 0;
+  border-radius: 999px;
+  background: var(--action-soft);
+}
+@media (hover: hover) {
+  :where(body:has(#app-shell)) .button-link:hover {
+    background: var(--action-soft-hover);
+  }
+}
+
+/* The browser's own "Choose File" button was the last grey system control
+   on the screen. Same pill as the buttons around it. */
+:where(body:has(#app-shell)) input[type="file"]::file-selector-button {
+  margin-right: 10px;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--action-soft);
+  color: var(--action-ink);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+:where(body:has(#app-shell)) input[type="file"] {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* The one email field in the app (recovery email, in Settings) was still
+   the browser's outlined box. Scoped to the app, because the landing page
+   styles its own email field and shares this sheet. */
+:where(body:has(#app-shell)) input[type="email"] {
+  width: 100%;
+  font-size: 1rem;
+  padding: 11px 14px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-field);
+  font-family: inherit;
+  margin-bottom: 12px;
+  background: var(--field);
+  color: var(--ink);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), background-color 0.15s var(--ease);
+}
+
+@media (min-width: 1024px) {
+  #settings-screen .settings-section-head {
+    padding: 14px 20px;
+  }
+  #settings-screen .settings-section-body {
+    padding: 2px 20px 20px;
+  }
 }
