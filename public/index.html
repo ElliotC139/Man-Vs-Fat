@@ -47,8 +47,18 @@
   </head>
   <body>
     <div id="auth-screen" class="auth-screen" hidden>
+      <div class="auth-hero">
+        <h1 class="auth-title"><img src="/icons/mark-inverse.svg" alt="" class="auth-brand-mark" width="56" height="56" /><span class="brand-word"><span class="brand-word-a">Quic</span><span class="brand-word-k">K</span><span class="brand-word-b">cals</span></span></h1>
+        <p class="auth-tagline">The calorie diary that stops being work.</p>
+      </div>
       <div class="card auth-card">
-        <h1 class="auth-title"><img src="/icons/icon-192.png" alt="" class="auth-brand-mark" width="56" height="56" /><span class="brand-word"><span class="brand-word-a">Quic</span><span class="brand-word-k">K</span><span class="brand-word-b">cals</span></span></h1>
+        <!-- Says which of the three things this card is doing right now —
+             logging in, signing up, or resetting — because the form looks
+             the same for the first two and a button label is easy to miss. -->
+        <div class="auth-head">
+          <h2 id="auth-heading" class="auth-heading">Welcome back</h2>
+          <p id="auth-subheading" class="auth-subheading">Log in to your diary.</p>
+        </div>
         <!-- Shown only when someone arrived on a working invite link. It
              names who invited them, because "someone invited you" reads like
              a trick and a name reads like a friend. -->
@@ -652,6 +662,10 @@
     </div>
 
     <div id="onboarding-screen" class="onboarding-screen" hidden>
+      <div class="auth-hero onboarding-hero">
+        <img src="/icons/mark-inverse.svg" alt="" class="auth-brand-mark" width="46" height="46" />
+        <p class="auth-tagline">Let's set up your diary.</p>
+      </div>
       <div class="card onboarding-card">
         <div class="onboarding-progress">
           <span class="onboarding-dot onboarding-dot--active" data-step="0"></span>
@@ -729,7 +743,7 @@
             <li><strong>Connect WHOOP</strong> — replaces the estimated burn with what you actually burned.</li>
             <li><strong>Daily reminder</strong> — a nudge if you haven't logged by a time you choose.</li>
           </ul>
-          <p class="muted">Both live in Settings, behind the cog in the top corner.</p>
+          <p class="muted">Both live in Settings.</p>
         </section>
 
         <div class="result-actions">
@@ -745,7 +759,7 @@
         <button id="review-back" type="button" class="library-back" aria-label="Back">
           <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
-        <h1 class="brand"><img src="/icons/mark-inverse.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Weekly Review</span></h1>
+        <h1 class="brand"><img src="/icons/mark-inverse.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Weekly review</span></h1>
       </header>
 
       <main>
@@ -1614,12 +1628,15 @@
         <button id="food-library-back" type="button" class="library-back" aria-label="Back">
           <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
-        <h1 class="brand"><img src="/icons/mark-inverse.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Food Library</span></h1>
+        <h1 class="brand"><img src="/icons/mark-inverse.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Food library</span></h1>
       </header>
 
       <main>
         <section class="card">
-          <input type="search" id="food-search" placeholder="Search foods or tags…" />
+          <label class="search-field">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+            <input type="search" id="food-search" placeholder="Search foods or tags…" aria-label="Search foods or tags" />
+          </label>
           <p id="food-library-error" class="error" hidden></p>
         </section>
 

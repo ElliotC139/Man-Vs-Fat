@@ -668,21 +668,26 @@ button:disabled {
   cursor: default;
 }
 
+/* The secondary button: a soft neutral fill beside the solid green one.
+   It was an outlined green twin of the primary, and two green buttons side
+   by side made "Keep 2,200" and "Skip for now" look like the thing to press.
+   A tint of the ink rather than a fixed grey, so it reads on a card, a
+   sheet or a tinted panel alike. */
 button.ghost {
-  background: transparent;
-  color: var(--action-ink);
-  border: 1.5px solid color-mix(in srgb, var(--action-ink) 55%, var(--hairline));
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+  border: 0;
   margin-top: 8px;
   box-shadow: none;
 }
 @media (hover: hover) {
   button.ghost:hover {
-    background: var(--action-soft);
+    background: color-mix(in srgb, var(--ink) 10%, transparent);
   }
 }
 
 button.ghost:active {
-  background: var(--action-soft-hover);
+  background: color-mix(in srgb, var(--ink) 13%, transparent);
 }
 
 .button-link {
@@ -1183,50 +1188,138 @@ h2 {
   padding: 20px;
 }
 
+/* ── Sign in ────────────────────────────────────────────────────────────────
+   The app's own header colour as a band across the top, the mark and the
+   wordmark on it in white, and the form on a card that rises out of it —
+   the same overlap every screen inside the app has, so the first screen and
+   the hundredth look like one product. */
 .auth-screen:not([hidden]) {
+  position: relative;
+  isolation: isolate;
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 16px calc(32px + env(safe-area-inset-bottom));
+  background: var(--bg);
+}
+.auth-screen:not([hidden])::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 auto 0;
+  height: calc(268px + env(safe-area-inset-top));
+  background:
+    radial-gradient(120% 90% at 90% -10%, rgba(255, 255, 255, 0.13), transparent 60%),
+    var(--pitch-deep);
+}
+.auth-hero {
+  width: 100%;
+  max-width: 400px;
+  padding: calc(52px + env(safe-area-inset-top)) 4px 34px;
+  color: #fff;
+  text-align: center;
+}
+.auth-title {
+  display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
-  background:
-    radial-gradient(circle at 15% 10%, rgba(31, 157, 82, 0.1), transparent 45%),
-    radial-gradient(circle at 85% 90%, rgba(217, 119, 6, 0.09), transparent 45%),
-    var(--bg);
+  gap: 10px;
+  margin: 0;
+  color: #fff;
+  font-size: 1.85rem;
+  line-height: 1;
+}
+.auth-brand-mark {
+  display: block;
+  width: 46px;
+  height: 46px;
+  flex: none;
+}
+.auth-tagline {
+  margin: 12px 0 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .auth-card {
   width: 100%;
-  max-width: 360px;
+  max-width: 400px;
   position: relative;
-  overflow: hidden;
+  padding: 26px 22px 22px;
+  border-radius: 24px;
+  box-shadow: 0 1px 2px rgba(15, 30, 22, 0.05), 0 18px 40px -18px rgba(15, 30, 22, 0.28);
 }
-.auth-card::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 5px;
-  background: linear-gradient(90deg, var(--pitch-light), var(--pitch), var(--amber));
+.auth-head {
+  margin-bottom: 18px;
 }
-
-.auth-brand-mark {
+.auth-heading {
+  margin: 0;
+  font-size: 1.32rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
   display: block;
-  margin: 0 auto 14px;
-  border-radius: 18px;
-  box-shadow: var(--shadow-md);
 }
-
-.auth-title {
-  text-align: center;
-  color: var(--pitch-dark);
-  margin: 0 0 16px;
-  font-size: 1.3rem;
+.auth-subheading {
+  margin: 4px 0 0;
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+.auth-card label {
+  font-size: 0.86rem;
+}
+.auth-card #auth-submit,
+.auth-card #forgot-submit,
+.auth-card #reset-submit {
+  width: 100%;
+  margin-top: 6px;
 }
 
 .auth-toggle {
   text-align: center;
   margin-top: 4px;
+}
+/* The two ways out of the form, as quiet text links rather than two bold
+   underlined lines competing with the button above them. */
+.auth-card .auth-toggle {
+  margin: 14px 0 0;
+  font-size: 0.9rem;
+}
+.auth-card .auth-toggle + .auth-toggle {
+  margin-top: 6px;
+}
+.auth-card .link-btn {
+  padding: 2px 2px;
+  color: var(--action-ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+#auth-forgot-btn {
+  color: var(--muted);
+  font-weight: 500;
+}
+@media (hover: hover) {
+  .auth-card .link-btn:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
+
+@media (min-width: 720px) {
+  .auth-screen:not([hidden])::before {
+    height: calc(320px + env(safe-area-inset-top));
+  }
+  .auth-hero {
+    padding-top: calc(84px + env(safe-area-inset-top));
+    padding-bottom: 40px;
+  }
+  .auth-screen .auth-card {
+    padding: 32px 30px 26px;
+  }
 }
 
 .google-signin-btn:not([hidden]) {
@@ -3705,40 +3798,66 @@ tr.has-tooltip:active {
   background: var(--amber-light);
 }
 
-/* ── First-run wizard ── */
+/* ── First-run wizard ──
+   The sign-in screen's band and rising card, so signing up and setting up
+   read as one continuous thing rather than two different apps. */
 .onboarding-screen:not([hidden]) {
+  position: relative;
+  isolation: isolate;
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background:
-    radial-gradient(circle at 15% 10%, rgba(31, 157, 82, 0.1), transparent 45%),
-    radial-gradient(circle at 85% 90%, rgba(217, 119, 6, 0.09), transparent 45%),
-    var(--bg);
+  padding: 0 16px calc(32px + env(safe-area-inset-bottom));
+  background: var(--bg);
 }
-.onboarding-card {
+.onboarding-screen:not([hidden])::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 auto 0;
+  height: calc(220px + env(safe-area-inset-top));
+  background:
+    radial-gradient(120% 90% at 90% -10%, rgba(255, 255, 255, 0.13), transparent 60%),
+    var(--pitch-deep);
+}
+.onboarding-hero {
+  padding-top: calc(36px + env(safe-area-inset-top));
+  padding-bottom: 28px;
+}
+.onboarding-hero .auth-brand-mark {
+  margin: 0 auto;
+}
+.onboarding-hero .auth-tagline {
+  margin-top: 10px;
+}
+.onboarding-screen .onboarding-card {
   width: 100%;
   max-width: 460px;
+  padding: 24px 22px 22px;
+  border-radius: 24px;
+  box-shadow: 0 1px 2px rgba(15, 30, 22, 0.05), 0 18px 40px -18px rgba(15, 30, 22, 0.28);
 }
 .onboarding-progress {
   display: flex;
   gap: 6px;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 .onboarding-dot {
   flex: 1;
   height: 4px;
   border-radius: 999px;
-  background: var(--hairline);
-  transition: background 0.25s var(--ease);
+  background: var(--surface-2);
+  transition: background 0.3s var(--ease);
 }
 .onboarding-dot--active {
-  background: var(--pitch);
+  background: var(--action);
 }
 .onboarding-step h2 {
-  margin-top: 0;
+  margin: 0 0 6px;
+  font-size: 1.32rem;
+  letter-spacing: -0.02em;
 }
 .onboarding-step > .muted {
   margin-bottom: 16px;
@@ -3755,7 +3874,7 @@ tr.has-tooltip:active {
   margin-bottom: 8px;
 }
 .onboarding-list strong {
-  color: var(--pitch-dark);
+  color: var(--ink);
 }
 
 /* ── Weekly review ── */
@@ -8392,4 +8511,260 @@ h2 .cell-icon {
 #plan-card,
 [data-settings-section] {
   scroll-margin-top: 16px;
+}
+
+/* ── Food library lists ────────────────────────────────────────────────────
+   The same grouped card as the diary: saved meals, favourites and every food
+   each sit in one card with inset separators, rather than fourteen separate
+   white boxes with page showing between them. */
+#meal-list:not(:empty),
+#food-favorites-list:not(:empty),
+#food-all-list:not(:empty) {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+:is(#meal-list, #food-favorites-list, #food-all-list) > :is(.food-row, .meal-row) {
+  position: relative;
+  margin: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  animation: none;
+}
+:is(#food-favorites-list, #food-all-list) > .food-row {
+  padding: 12px 14px 12px 8px;
+}
+:is(#meal-list) > .meal-row {
+  padding: 12px 14px 12px 16px;
+}
+:is(#meal-list, #food-favorites-list, #food-all-list) > :is(.food-row, .meal-row) + :is(.food-row, .meal-row)::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  height: 1px;
+  background: var(--hairline);
+  pointer-events: none;
+}
+/* Past the star, so the line starts where the names do. */
+:is(#food-favorites-list, #food-all-list) > .food-row + .food-row::before {
+  left: 48px;
+}
+:is(#meal-list, #food-favorites-list, #food-all-list) > .empty-state {
+  margin: 0;
+  padding: 22px 16px;
+  text-align: center;
+  color: var(--muted);
+}
+/* Editing a food opens under its row, inside the list, on the second
+   surface — not as a card floating in the middle of another card. */
+:is(#food-favorites-list, #food-all-list) > .food-editor {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--surface-2);
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  grid-column: 1 / -1;
+}
+/* The empty list's "nothing here" line now lives inside the card. */
+#food-all-list:empty::after,
+#food-favorites-list:empty::after {
+  border: 0;
+}
+
+/* A star on every row in gold was a column of gold down the screen. Only a
+   favourite is gold; the rest are an outline you can tap. */
+.food-star {
+  color: color-mix(in srgb, var(--muted) 75%, transparent);
+}
+.food-star--on {
+  color: var(--gold);
+}
+@media (hover: hover) {
+  .food-star:hover {
+    color: var(--gold);
+  }
+}
+
+@media (min-width: 1024px) {
+  #food-favorites-list:not(:empty),
+  #food-all-list:not(:empty) {
+    gap: 0;
+  }
+  /* Two-up: a line over every row but the first pair, and one down the
+     middle. */
+  :is(#food-favorites-list, #food-all-list) > .food-row:nth-child(2)::before {
+    display: none;
+  }
+  :is(#food-favorites-list, #food-all-list) > .food-row:nth-child(n+3)::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 48px;
+    right: 0;
+    height: 1px;
+    background: var(--hairline);
+  }
+  :is(#food-favorites-list, #food-all-list) > .food-row:nth-child(even) {
+    box-shadow: inset 1px 0 0 var(--hairline);
+  }
+}
+
+/* Weigh-ins in the History card: rows of the card, not cards in it. */
+#weighin-list > .food-row {
+  position: relative;
+  margin: 0;
+  padding: 10px 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  animation: none;
+  align-items: center;
+}
+#weighin-list > .food-row + .food-row {
+  border-top: 1px solid var(--hairline);
+}
+
+/* A search box that looks like one: the glass inside the field. */
+.search-field {
+  position: relative;
+  display: block;
+  margin: 0;
+  font-weight: 400;
+}
+.search-field > .icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin-top: -9px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.search-field > input {
+  padding-left: 42px;
+}
+
+/* Air between the Food screen's sections, so each heading belongs to the
+   list under it rather than the one above. */
+#food-library-screen main > section:not(.ad-slot) {
+  margin-bottom: 22px;
+}
+#meal-list > .empty-block {
+  padding: 22px 20px 20px;
+}
+
+/* ── Settings list ─────────────────────────────────────────────────────────
+   The sections as one grouped card, the way a phone's own settings are: rows
+   on a surface with inset separators, rather than rows floating on the page
+   with full-width rules between them. */
+.settings-nav {
+  gap: 0;
+  padding: 4px 0;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+#settings-screen .settings-nav-item {
+  position: relative;
+  border-radius: 0;
+  padding: 11px 16px;
+}
+.settings-nav-item + .settings-nav-item {
+  border-top: 0;
+}
+.settings-nav-item + .settings-nav-item::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 60px;
+  right: 0;
+  height: 1px;
+  background: var(--hairline);
+}
+.settings-nav-icon {
+  background: var(--action-soft);
+  color: var(--action-ink);
+}
+.settings-nav-item--active .settings-nav-icon {
+  background: var(--action);
+  color: #fff;
+}
+@media (hover: hover) {
+  .settings-nav-item:hover {
+    background: var(--surface-2);
+  }
+}
+@media (min-width: 1024px) {
+  .settings-nav-item--active,
+  .settings-nav-item--active:hover {
+    background: var(--action-soft);
+    color: var(--action-ink);
+  }
+}
+
+/* Log out is an ordinary thing to do, not a second primary action: a plain
+   surface button under Save, not an outlined twin of it. */
+#logout-btn {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-card);
+  color: var(--ink);
+}
+@media (hover: hover) {
+  #logout-btn:hover {
+    background: var(--surface-2);
+  }
+}
+
+/* A section of a settings pane is a card like any other: a surface you open,
+   not an outline drawn on the page. */
+#settings-screen .settings-section {
+  margin: 0;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
+}
+#settings-screen .settings-section-head {
+  min-height: 54px;
+  padding: 12px 16px;
+}
+#settings-screen .settings-section-body {
+  padding: 2px 16px 16px;
+}
+#settings-screen .settings-section--open .settings-section-chevron {
+  color: var(--action-ink);
+}
+#settings-screen .settings-section--danger {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--card-border));
+}
+@media (hover: hover) {
+  #settings-screen .settings-section-head:hover {
+    background: var(--surface-2);
+  }
+}
+/* The pane's title, in ink: the back arrow carries the brand colour. */
+#settings-screen .settings-pane-title {
+  color: var(--ink);
+}
+#settings-screen .settings-pane-back {
+  color: var(--action-ink);
+}
+
+/* Three fields in a row left "Prefer not to say" reading "Prefer". */
+#onboarding-screen .settings-row:has(#onboarding-sex) {
+  flex-wrap: wrap;
+}
+#onboarding-screen .settings-field:has(#onboarding-sex) {
+  flex-basis: 100%;
 }

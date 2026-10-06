@@ -69,6 +69,8 @@ const authPassword = document.getElementById("auth-password");
 const authSubmit = document.getElementById("auth-submit");
 const authError = document.getElementById("auth-error");
 const authToggleText = document.getElementById("auth-toggle-text");
+const authHeading = document.getElementById("auth-heading");
+const authSubheading = document.getElementById("auth-subheading");
 const authToggleBtn = document.getElementById("auth-toggle-btn");
 const googleSigninBtn = document.getElementById("google-signin-btn");
 const authDivider = document.getElementById("auth-divider");
@@ -3539,8 +3541,19 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
+/** The sign-in card's own heading, for whichever of its jobs it's doing. */
+function setAuthHeading(title, sub) {
+  authHeading.textContent = title;
+  authSubheading.textContent = sub ?? "";
+  authSubheading.hidden = !sub;
+}
+
 function setAuthMode(mode) {
   authMode = mode;
+  setAuthHeading(
+    mode === "login" ? "Welcome back" : "Create your account",
+    mode === "login" ? "Log in to your diary." : "Start a diary. It's free.",
+  );
   authSubmit.textContent = mode === "login" ? "Log in" : "Sign up";
   authToggleText.textContent = mode === "login" ? "Don't have an account?" : "Already have an account?";
   authToggleBtn.textContent = mode === "login" ? "Sign up" : "Log in";
@@ -4219,6 +4232,7 @@ async function checkAuth() {
     // Same clean sweep as signing out: whatever was on screen belongs to a
     // session that is about to be replaced.
     showAuthScreen();
+    setAuthHeading("Set a new password");
     authForm.hidden = true;
     authToggleBtn.parentElement.hidden = true;
     authForgotBtn.parentElement.hidden = true;
@@ -5717,7 +5731,7 @@ function renderFoodRow(food) {
 
   const starBtn = document.createElement("button");
   starBtn.type = "button";
-  starBtn.className = "food-star";
+  starBtn.className = food.favorite ? "food-star food-star--on" : "food-star";
   starBtn.innerHTML = food.favorite ? ICONS.starFilled : ICONS.starOutline;
   starBtn.setAttribute("aria-label", food.favorite ? "Remove from favourites" : "Add to favourites");
   starBtn.addEventListener("click", () => toggleFavorite(food));
@@ -8316,9 +8330,14 @@ function renderMeals(allMeals) {
     // "None saved yet" and "none match" are different facts, and telling
     // somebody mid-search that they have no saved meals — when they have
     // twenty — is the kind of wrong that makes people stop trusting a screen.
-    mealListEl.innerHTML = searching
-      ? '<p class="empty-state">No meals or recipes match that.</p>'
-      : '<p class="empty-state">No saved meals yet — save one to log it in a single tap.</p>';
+    if (searching) mealListEl.innerHTML = '<p class="empty-state">No meals or recipes match that.</p>';
+    else {
+      mealListEl.appendChild(emptyState(
+        ICONS.bookmark,
+        "No saved meals yet",
+        "Save something you have often — a usual breakfast, a batch of chilli — and it logs in one tap.",
+      ));
+    }
     mealListMore.hidden = true;
     return;
   }
@@ -11304,7 +11323,7 @@ function applyTrackerAwareSettings(trackerConnected) {
       "estimate what you burn until a tracker can measure it.";
     estimateFieldsSummary.textContent = "Burn estimate details";
     estimateFieldsNote.textContent =
-      "Used to estimate what you burn each day. Connect WHOOP in Settings to measure it instead.";
+      "Used to estimate what you burn each day. Connect WHOOP under Fitness tracker to measure it instead.";
     estimateFields.open = true;
   }
 }
@@ -13494,6 +13513,8 @@ const resetPassword = document.getElementById("reset-password");
 const resetError = document.getElementById("reset-error");
 
 function showForgotForm(show) {
+  if (show) setAuthHeading("Reset your password", "We'll email you a link to set a new one.");
+  else setAuthMode(authMode);
   forgotForm.hidden = !show;
   authForm.hidden = show;
   authForgotBtn.parentElement.hidden = show;
