@@ -19,10 +19,20 @@
      AA for the small captions it is mostly used for. This clears 4.5 on the
      card, the page and the green-tinted panels, and reads as the same grey. */
   --muted: #64716a;
-  /* Pitch-marking white, warm-neutral. Not cream. */
-  --bg: #f6f7f4;
+  /* Pitch-marking white, warm-neutral. Not cream. A step deeper than it was
+     (#f6f7f4) so a white card separates from it by tone rather than needing a
+     drawn edge; every text colour on it still clears AA (muted 4.7:1). */
+  --bg: #f3f5f2;
   --card: #ffffff;
-  --hairline: #e6ece8;
+  --hairline: #e4e9e5;
+  /* Surfaces inside a card: tiles, wells, filled fields. */
+  --surface-2: #f3f5f2;
+  --field: #f3f5f2;
+  --field-border: #e3e8e4;
+  /* A card's edge is a whisper and its lift is two soft shadows — one tight,
+     one wide — which is what reads as a surface rather than a drawn box. */
+  --card-border: rgba(15, 30, 22, 0.06);
+  --shadow-card: 0 1px 2px rgba(15, 30, 22, 0.04), 0 6px 20px -6px rgba(15, 30, 22, 0.08);
   --danger: #dc2626;
   /* Darkened from #b06f05 for the same reason: "3 AI estimates left" and
      every "over" figure are text, and that one measured 4.1:1 on white. */
@@ -52,7 +62,8 @@
 
   --radius-sm: 10px;
   --radius-md: 14px;
-  --radius-lg: 22px;
+  --radius-lg: 20px;
+  --radius-field: 12px;
 
   --shadow-sm: 0 1px 2px rgba(20, 30, 24, 0.06);
   --shadow-md: 0 4px 14px rgba(20, 30, 24, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.6);
@@ -69,13 +80,18 @@
   --font-heading: "Barlow Condensed", "Oswald", "Arial Narrow", -apple-system, BlinkMacSystemFont, sans-serif;
   /* The logo's own face, for the wordmark and nothing else. */
   --font-brand: "Montserrat", "Avenir Next", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Everything that is read rather than glanced at: body copy, and every
+     title. Barlow Condensed is kept for display figures — the scoreboard
+     numbers it was chosen for — and stops being the voice of every heading,
+     caption and day label, which is what made screens read as a template. */
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
   /* The raised "selected" pill shared by the stats tabs, the daily/weekly
      toggle and the units switch. A token because all three were the same
      hardcoded white gradient, which stayed white in dark mode. */
-  --pill-active-bg: linear-gradient(160deg, #ffffff, #eefbf3);
-  --pill-active-ink: var(--pitch-dark);
-  --pill-active-shadow: 0 2px 6px rgba(18, 96, 47, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --pill-active-bg: #ffffff;
+  --pill-active-ink: var(--ink);
+  --pill-active-shadow: 0 1px 3px rgba(15, 30, 22, 0.12), 0 1px 1px rgba(15, 30, 22, 0.04);
 
   /* The tooltip is a deliberate inversion of the page, so it can't just use
      --ink for its ground: in dark mode that's near-white, and the white text
@@ -86,6 +102,18 @@
 
 * {
   box-sizing: border-box;
+}
+
+/* A tap on a phone should feel like the app's own press state, not the
+   browser's grey flash; and touch-action stops a quick second tap on a
+   button from being read as the start of a double-tap zoom. */
+button,
+a,
+label,
+summary,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 /* Author rules like `.settings-field { display: flex }` share specificity
@@ -106,13 +134,14 @@
   }
 }
 
-.banner h1,
-h2,
+/* Barlow Condensed for display figures only — see --font-body. */
 .summary-total,
-.balance-number,
-.budget-title,
-.auth-title {
+.balance-number {
   font-family: var(--font-heading);
+}
+.banner h1,
+.auth-title {
+  font-family: var(--font-brand);
 }
 
 /* Barlow Condensed runs narrow and short next to Poppins, so headings and
@@ -155,76 +184,107 @@ html {
 
 body {
   margin: 0;
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-body);
   background: var(--bg);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* The header is the scoreboard: a deep, flat touchline green rather than
-   the three-layer gradient it replaces. The gradient was doing decorative
-   work; a solid dark ground does structural work, by making everything
-   below it read as the lit surface. */
+/* ── The header ─────────────────────────────────────────────────────────────
+   One row, left to right, on every screen: the mark, the screen's title, and
+   the controls that belong to it. It used to be two stacked bands — a centred
+   logo, then a row of boxed arrows round a centred date — which made every
+   screen open with the same 110px of chrome before anything of its own.
+
+   The ground is the deep, flat brand green: a solid dark ground does
+   structural work, by making everything below it read as the lit surface. On
+   the screens that lead with a card, the green runs on under that card's top
+   edge (the apron, below), so the header and the first thing on the screen
+   read as one composition rather than a bar with a stack of boxes under it. */
 .banner {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: calc(62px + env(safe-area-inset-top));
   background: var(--pitch-deep);
   color: #fff;
   /* The page runs under the status bar (viewport-fit=cover), so the header's
-     own padding has to clear it — otherwise the back arrow and the corner
-     icons sit behind the clock on an installed iPhone app and can't be
-     pressed at all. Zero on every device without a notch. */
-  padding: calc(14px + env(safe-area-inset-top)) 20px 13px;
-  text-align: center;
-  overflow: hidden;
-}
-/* A single bright line along the bottom edge — the touchline. The only
-   decoration the header gets. */
-.banner::after {
-  content: "";
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 2px;
-  background: linear-gradient(90deg, var(--pitch) 0%, var(--pitch-light) 50%, var(--pitch) 100%);
+     own padding has to clear it — otherwise the controls sit behind the clock
+     on an installed iPhone app and can't be pressed at all. Zero on every
+     device without a notch. */
+  padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+  text-align: left;
 }
 
-.settings-toggle,
-.library-toggle,
-.stats-toggle,
+/* The apron. Screens whose first thing is a card let the green run 24px
+   further down and pull their content up over it. Settings and the weekly
+   review lead with text rather than a card, so they don't. */
+:root {
+  --banner-apron: 24px;
+}
+#today-screen .banner,
+#app-shell .banner,
+#stats-screen .banner,
+#food-library-screen .banner,
+#admin-screen .banner {
+  padding-bottom: calc(10px + var(--banner-apron));
+}
+#today-screen .banner + main,
+#app-shell .banner + main,
+#stats-screen .banner + main,
+#food-library-screen .banner + main,
+#admin-screen .banner + main {
+  position: relative;
+  margin-top: calc(-1 * var(--banner-apron));
+  padding-top: 0;
+}
+
+/* Round, borderless, translucent: the day arrows, the calendar, the review's
+   back arrow. They were boxed chips with drawn edges, which is the one thing
+   in the header that made it look assembled rather than designed. */
+.week-nav button,
+.date-jump,
 .library-back {
-  position: absolute;
-  top: calc(14px + env(safe-area-inset-top));
+  flex: none;
   width: 38px;
   height: 38px;
-  min-height: 38px;
+  min-height: 0;
   padding: 0;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.09);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: rgba(255, 255, 255, 0.92);
-  font-size: 1.15rem;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.95);
   box-shadow: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.22s var(--spring), background 0.15s var(--ease), box-shadow 0.15s var(--ease);
+  font-size: 1.1rem;
+  line-height: 1;
+  transition: background 0.15s var(--ease), transform 0.22s var(--spring), opacity 0.15s var(--ease);
 }
-.settings-toggle:active,
-.library-toggle:active,
-.stats-toggle:active,
-.library-back:active {
-  transform: scale(0.9);
-  background: rgba(255, 255, 255, 0.18);
+.week-nav button .icon,
+.date-jump .icon,
+.library-back .icon {
+  width: 19px;
+  height: 19px;
 }
 @media (hover: hover) {
+  .week-nav button:hover:not(:disabled),
+  .date-jump:hover,
   .library-back:hover {
-    background: rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.17);
   }
 }
-.settings-toggle { right: 14px; }
-.stats-toggle { right: 60px; }
-.library-toggle { right: 106px; }
-.library-back { left: 14px; }
+.week-nav button:active,
+.date-jump:active,
+.library-back:active {
+  transform: scale(0.9);
+  background: rgba(255, 255, 255, 0.2);
+}
+.week-nav button:disabled {
+  opacity: 0.32;
+}
 
 /* Stats, Food, Settings and Admin are tabs, and a tab is somewhere you arrive
    at from the bar along the bottom — every one of these arrows just went back
@@ -239,176 +299,73 @@ body {
   display: none;
 }
 
-/* An action in a header (Admin's Refresh) wears the same translucent chip as
-   the date arrows. As a ghost button it was pitch green on the brand green —
-   there, but only if you already knew where to look. */
+/* An action in a header (Admin's Refresh) wears the same translucent ground
+   as the arrows, and sits at the end of the row. */
 .banner .admin-refresh {
-  min-height: 34px;
-  padding: 4px 12px;
-  color: rgba(255, 255, 255, 0.92);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  margin-left: auto;
+  min-height: 36px;
+  padding: 4px 14px;
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.1);
+  border: 0;
 }
 .banner .admin-refresh:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-@media (max-width: 1023px) {
-  .banner .admin-refresh {
-    position: absolute;
-    top: calc(11px + env(safe-area-inset-top));
-    right: 12px;
-  }
+  background: rgba(255, 255, 255, 0.17);
 }
 
-/* The title on the screens that have one — Stats, Food, Settings, Admin and
-   the weekly review.
+/* The title: the mark, then the screen's name in the wordmark's face.
 
-   This rule spent two weeks inside a comment that was never closed (a line
-   introducing the desktop nav bar lost its last half, and its closing mark
-   with it). With it gone, those titles fell back to the browser's own 2em h1,
-   and the wordmark inside them scaled up to 43px: a phone header that was a
-   fifth of the screen and said "Settings". It is back, deliberately without
-   the uppercase it used to carry — the titles are set in the wordmark's face
-   now, and that face is never capitalised. */
+   (This rule spent two weeks inside a comment that was never closed, which
+   left those titles at the browser's own 2em; it is written for the current
+   brand, without the uppercase it used to carry.) */
 .banner h1 {
+  flex: 0 1 auto;
+  min-width: 0;
   margin: 0;
-  /* Clears the review screen's back arrow on the left and keeps the title
-     centred by reserving the same on the right. */
-  padding: 0 52px;
-  font-size: 1.05rem;
+  padding: 0;
+  font-size: 1rem;
   font-weight: 700;
   line-height: 1.2;
 }
-
-/* On the diary the hierarchy inverts, deliberately: you open that screen to
-   look at a week, not to be told the app's name. The wordmark drops to a
-   tracked eyebrow and the fixture becomes the headline. Every other screen
-   keeps its title at full size — there's no fixture there to take over, and
-   an eyebrow alone leaves the header a large empty band. */
-.banner--fixture h1 {
-  margin: 0 0 20px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  line-height: 1.2;
-  color: rgba(255, 255, 255, 0.62);
-  /* The clipping that keeps a long title on one line lives on the wordmark
-     itself (see .brand-word), not here. On the heading it also clipped the
-     mark, which now deliberately overflows this line box — a disc cropped
-     into a horizontal band is not a logo. */
-}
-/* On the fixture screens the line the mark shares is a 0.7rem eyebrow, so
-   there is much less line box to fall back into — the mark is a little
-   smaller and the margin correspondingly larger to land on the same 28px. */
-.banner--fixture h1 .brand-mark {
-  width: 40px;
-  height: 40px;
-  margin-block: -8px;
-}
-
-/* Three header icons on the main app-shell banner (food library, stats,
-   settings) need more clearance than the single-icon screens below it. */
-/* The generic centered/symmetric-padding title above assumes clearance is
-   needed on both sides. app-shell's icons are only ever on the right, so
-   reserving 144px on the left too (to keep the text visually centered) was
-   starving the title of width on a narrow phone and forcing it onto 3-4
-   lines, ballooning the banner's height. Left-aligning with clearance only
-   where the icons actually are fixes that. */
-#app-shell .banner h1 {
-  padding: 0 144px 0 4px;
-  text-align: left;
-}
-
-.banner .muted {
-  color: #d7ecdf;
-  margin: 0;
-}
-
-/* Header wordmark: the same plate/fork/knife mark used as the home-screen
-   app icon, reused as a small badge next to the title on every screen —
-   gives the header an actual brand identity instead of plain bold text. */
 .banner h1.brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  justify-content: center;
+  gap: 10px;
 }
-#app-shell .banner h1.brand {
-  justify-content: flex-start;
+.banner .muted {
+  color: rgba(255, 255, 255, 0.78);
+  margin: 0;
 }
-/* The mark used to be a green bubble on a white disc this stylesheet drew
-   behind it — a badge on a badge, and the reason it read as a sticker stuck
-   to the header rather than as the header's own mark.
 
-   It is now inverted (icons/mark-inverse.svg): the bubble is the white shape
-   and the cutlery is knocked out of it, so the banner shows through the K.
-   That removes the need for the disc, the hairline and the shadow entirely —
-   there is no plate to hold an edge, just the mark. It also hands the whole
-   box back to the artwork: with no disc there is no padding to inset it, so
-   the drawing is the full 68px rather than 52px of it.
-
-   It is twice the size it was, and the header is exactly as tall as it was
-   before. Those two facts are held together by the negative block margins:
-   the banner's height is set by the text line the mark sits on, so the mark
-   is allowed to overflow that line box into the padding the header already
-   had rather than pushing it open. The margin is half the difference between
-   the mark and the line it has to fit back into — change one and the other
-   has to move with it, or the banner grows.
-
-   The knockout is why this file names no colour for it. A cutout is
-   transparent, so the mark takes whatever green is behind it and needs no
-   second asset for the dark theme. The corollary: it is invisible on a light
-   ground, which is why the sign-in card keeps its own green-on-white asset
-   (.auth-brand-mark) rather than sharing this one. */
-/* Big enough that the fork in the K reads at arm's length, small enough that
-   the header is a header. 68px was sized when the mark was the app's only
-   brand presence on screen; at 46px the tines are still legible and the bar
-   stops being a splash screen. */
+/* The mark is the inverse knockout (icons/mark-inverse.svg): the bubble is
+   the white shape and the cutlery is cut out of it, so the banner shows
+   through the K and the mark needs no colour of its own in either theme. The
+   corollary: it is invisible on a light ground, which is why the sign-in card
+   keeps its own green-on-white asset (.auth-brand-mark). */
 .brand-mark {
   display: block;
-  width: 46px;
-  height: 46px;
-  margin-block: -10px;
   flex-shrink: 0;
-}
-/* Beside a page title rather than the wordmark, the mark is a badge on the
-   title, not the name of the app — at 46px it was twice the title's height
-   and reached down into the touchline. Same overflow arithmetic as above:
-   half the difference between the mark and the line it sits on. */
-.banner:not(.banner--fixture) h1 .brand-mark {
-  width: 32px;
-  height: 32px;
-  margin-block: -3px;
+  width: 34px;
+  height: 34px;
 }
 
 /* The wordmark. "Quic" carries the weight and everything after it steps back:
-   the K belongs with "cals" in the reading, not with the bold half, and
-   bolding it made the join the loudest thing in the word. It stays split out
-   because it is still the K the mark is built from and the k of kcal — it
-   just doesn't shout about it. */
+   the K belongs with "cals" in the reading, not with the bold half. It stays
+   split out because it is still the K the mark is built from and the k of
+   kcal — it just doesn't shout about it. */
 .brand-word {
   font-family: var(--font-brand);
   letter-spacing: -0.02em;
-  /* Kept on one line, and truncated here rather than on the heading: the
-     heading also holds the mark, which overflows its line box on purpose. */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  /* A flex item won't shrink below its content without this, so without it
-     the ellipsis never gets the chance to appear. */
+  /* A flex item won't shrink below its content without this. */
   min-width: 0;
-  /* Larger than the heading it sits in, so the name reads as the name rather
-     than as more of the same text. */
-  font-size: 1.35em;
 }
-/* Full white on the banner, not the 62% the fixture strap around it uses.
-   That strap is a label and is meant to recede; the name of the app is not,
-   and inheriting the label's colour was most of why the logo got lost.
-   Scoped to the banner rather than set on .brand-word itself, because the
-   same wordmark also sits on the white sign-in card — where white on white
-   is no wordmark at all. */
 .banner h1 .brand-word {
   color: #fff;
+  font-size: 1.32em;
+  letter-spacing: -0.025em;
 }
 .brand-word-a {
   font-weight: 800;
@@ -418,78 +375,70 @@ body {
   font-weight: 500;
 }
 
+/* On Today and My week the screen's title is the day or the week, so the
+   heading keeps only the mark and the wordmark is read out but not drawn. */
+.banner--fixture h1 .brand-word {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* Hidden until the nav becomes a rail; see the ≥1024px block. */
 .rail-brand {
   display: none;
 }
 
+/* The day or week stepper: the title takes the row, the arrows and the
+   calendar sit at the end of it. The title comes first by `order`, so the
+   markup — and what a screen reader meets first — is unchanged. */
 .week-nav {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 0;
+  gap: 6px;
+  margin: 0;
 }
-
-/* The fixture, and on Today the date. These are the headline of their
-   screens, so they are set in the brand face rather than the condensed
-   scoreboard one — uppercase tracked-out Barlow made a date read as a
-   stadium announcement, and a date is something you glance at. */
 .week-nav #week-range,
 .today-date {
+  order: -1;
+  flex: 1 1 auto;
   min-width: 0;
-  margin: 0;
+  margin: 0 6px 0 0;
   font-family: var(--font-brand);
-  font-size: 1.2rem;
-  font-weight: 600;
-  letter-spacing: -0.015em;
+  font-size: clamp(1.1rem, 5.2vw, 1.32rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
   text-transform: none;
   color: #fff;
   font-variant-numeric: tabular-nums;
-  line-height: 1.15;
+  line-height: 1.12;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.week-nav #week-range {
-  min-width: 176px;
+/* Two lines: what to call it, then the plain date. "Today", "Yesterday" or
+   the weekday leads; the date steps back under it. */
+.today-date .today-date-day,
+.week-nav .week-range-main {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-/* Today's date is two parts — the weekday, and the date itself. The weekday
-   is what you actually navigate by, so it leads; the rest steps back. */
-.today-date .today-date-day {
-  font-weight: 700;
-}
-.today-date .today-date-rest {
+.today-date .today-date-rest,
+.week-nav .week-range-sub {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
   font-weight: 500;
+  letter-spacing: 0;
   color: rgba(255, 255, 255, 0.72);
-}
-/* "Today" and "Yesterday" earn the accent — they are the two days you are
-   most often looking at, and the only ones worth naming rather than dating. */
-.today-date--today .today-date-day {
-  color: var(--pitch-light);
-}
-
-.week-nav button {
-  width: auto;
-  min-height: 30px;
-  padding: 4px 12px;
-  font-size: 1.1rem;
-  line-height: 1;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 8px;
-  box-shadow: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s var(--ease), transform 0.22s var(--spring), box-shadow 0.15s var(--ease);
-}
-
-.week-nav button:active {
-  transform: scale(0.92);
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.week-nav button:disabled {
-  opacity: 0.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 main {
@@ -508,12 +457,23 @@ main {
    for the one thing per screen that is the point of it. */
 .card {
   background: var(--card);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--card-border);
   border-radius: var(--radius-lg);
   padding: 18px;
-  margin-bottom: 16px;
-  box-shadow: var(--shadow-sm);
+  margin-bottom: 14px;
+  box-shadow: var(--shadow-card);
   animation: fadeInUp 0.35s var(--ease);
+}
+
+/* Wells inside a card — tiles, tracks, tags, toggles — were painted with
+   the page colour. In light mode that is the same grey as --surface-2; in
+   dark it is darker than the card, so every tile read as a hole punched
+   through it. Inside a surface, "the background" means the raised well. */
+:where([id$="-screen"], #app-shell) .card,
+.sheet-panel,
+.share-panel,
+.app-dialog-panel {
+  --bg: var(--surface-2);
 }
 
 label {
@@ -533,23 +493,40 @@ input[type="search"],
 select {
   width: 100%;
   font-size: 1rem;
-  padding: 10px 12px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
+  padding: 11px 14px;
+  /* Filled rather than outlined: a field is a well in the card, not a second
+     box drawn inside the first. It lifts to the card's own white when you
+     are in it, so where the caret is never needs looking for. */
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-field);
   font-family: inherit;
   margin-bottom: 12px;
   resize: vertical;
-  background: var(--card);
+  background: var(--field);
   color: var(--ink);
-  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), background-color 0.15s var(--ease);
+}
+textarea {
+  line-height: 1.45;
+}
+/* A comfortable thumb height for single-line fields, at zero specificity so
+   the compact ones (a tag being typed, a plan picker in a table row) keep
+   whatever height their own class gives them. */
+:where(input[type="text"], input[type="number"], input[type="password"], input[type="time"], input[type="date"], input[type="search"], input[type="email"], select) {
+  min-height: 46px;
+}
+::placeholder {
+  color: var(--muted);
+  opacity: 0.85;
 }
 
 textarea:focus,
 input:focus,
 select:focus {
   outline: none;
-  border-color: var(--pitch);
-  box-shadow: 0 0 0 3px rgba(31, 157, 82, 0.15);
+  background-color: var(--card);
+  border-color: color-mix(in srgb, var(--action-ink) 70%, transparent);
+  box-shadow: 0 0 0 4px var(--action-soft);
 }
 
 /* The clear button WebKit draws in a search box is its own blue — the one
@@ -691,21 +668,26 @@ button:disabled {
   cursor: default;
 }
 
+/* The secondary button: a soft neutral fill beside the solid green one.
+   It was an outlined green twin of the primary, and two green buttons side
+   by side made "Keep 2,200" and "Skip for now" look like the thing to press.
+   A tint of the ink rather than a fixed grey, so it reads on a card, a
+   sheet or a tinted panel alike. */
 button.ghost {
-  background: transparent;
-  color: var(--action-ink);
-  border: 1.5px solid color-mix(in srgb, var(--action-ink) 55%, var(--hairline));
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink);
+  border: 0;
   margin-top: 8px;
   box-shadow: none;
 }
 @media (hover: hover) {
   button.ghost:hover {
-    background: var(--action-soft);
+    background: color-mix(in srgb, var(--ink) 10%, transparent);
   }
 }
 
 button.ghost:active {
-  background: var(--action-soft-hover);
+  background: color-mix(in srgb, var(--ink) 13%, transparent);
 }
 
 .button-link {
@@ -754,6 +736,27 @@ button.ghost:active {
   color: var(--ink);
   line-height: 1.05;
 }
+/* The figure is the headline; "kcal this week" is its caption, set in the
+   reading face beside it rather than shouting in the display face too. */
+#app-shell .summary-total {
+  font-family: var(--font-body);
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: -0.005em;
+}
+#app-shell .summary-total #week-total {
+  font-family: var(--font-heading);
+  font-size: 2.7rem;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1;
+  letter-spacing: -0.01em;
+  margin-right: 2px;
+}
+#app-shell .summary-total + .muted {
+  margin-top: 4px;
+}
 
 .week-net-summary {
   margin-top: 8px;
@@ -769,71 +772,138 @@ button.ghost:active {
 }
 
 .day-totals {
-  margin-top: 12px;
+  margin-top: 16px;
   text-align: left;
-}
-
-.day-total-row {
   display: flex;
-  justify-content: space-between;
-  font-size: 0.85rem;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--hairline);
+  flex-direction: column;
+  gap: 2px;
 }
 
-.day-total-row:last-child {
-  border-bottom: none;
+/* Label, bar, figure — the same three columns on every row, so seven bars
+   share one baseline and can be compared at a glance. */
+.day-total-row {
+  display: grid;
+  grid-template-columns: 4.6rem minmax(0, 1fr) 5.2rem;
+  align-items: center;
+  column-gap: 12px;
+  padding: 7px 8px;
+  border-radius: 10px;
+  font-size: 0.86rem;
 }
 
 .day-total-row--today {
-  background: var(--bg);
-  border-bottom: none;
-  border-radius: 8px;
-  padding: 6px 8px;
-  margin: 2px 0;
+  background: var(--action-soft);
 }
 
 .day-total-label {
+  color: var(--ink);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.day-total-track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+.day-total-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--fill, 0) * 100%);
+  min-width: 8px;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--pitch-light), var(--action));
+  transform-origin: left center;
+  animation: day-bar-grow 0.6s var(--glide) both;
+}
+.day-total-fill--over {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--floodlight) 70%, #fff), var(--floodlight));
+}
+/* What the day was measured against: burn, target or estimate. */
+.day-total-tick {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  left: calc(var(--at, 0) * 100%);
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--ink);
+  opacity: 0.28;
+}
+.day-totals--still .day-total-fill {
+  animation: none;
+}
+@keyframes day-bar-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+.day-total-kcal {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.day-total-unit {
+  font-size: 0.78em;
+  font-weight: 500;
   color: var(--muted);
 }
+
 /* Days still to come: there, so the week reads as a week, but stepped back
    behind the ones that have been played. */
-.day-total-row--future .day-total-label,
-.day-total-row--future .day-total-kcal {
+.day-total-row--future .day-total-label {
   color: var(--muted);
-  opacity: 0.6;
+  opacity: 0.7;
   font-weight: 400;
 }
-
-.day-total-whoop {
-  display: inline-block;
-  font-size: 0.75rem;
-  color: var(--muted);
-  font-weight: 400;
-  margin-top: 2px;
-}
-
-.day-total-net {
-  display: inline-block;
-  font-size: 0.75rem;
-  font-weight: 600;
-  margin-top: 2px;
-  color: var(--muted);
-}
-.day-total-net--under {
-  color: var(--pitch-dark);
-}
-.day-total-net--over {
-  color: var(--danger);
+.day-total-row--future .day-total-track {
+  background: color-mix(in srgb, var(--ink) 3.5%, transparent);
 }
 
 .day-total-row--today .day-total-label,
 .day-total-row--today .day-total-kcal {
-  color: var(--pitch-dark);
+  color: var(--action-ink);
   font-weight: 700;
 }
+.day-total-row--today .day-total-track {
+  background: color-mix(in srgb, var(--action) 14%, transparent);
+}
 
-.day-total-kcal {
+.day-total-meta {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin-top: 4px;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+.day-total-whoop {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.day-total-whoop .icon {
+  width: 12px;
+  height: 12px;
+}
+.day-total-net {
+  font-weight: 600;
+  color: var(--muted);
+}
+.day-total-net--under {
+  color: var(--action-ink);
+}
+.day-total-net--over {
+  color: var(--danger);
+}
+.day-total-pending {
+  color: var(--amber);
   font-weight: 600;
 }
 
@@ -846,16 +916,29 @@ button.ghost:active {
    little green bar that used to sit in front of every one of these is gone:
    it encoded nothing, it just repeated the brand colour eleven times down
    the page. That was the one accessory to take off before leaving. */
+/* A section's heading, on the page above what it heads: "Logged today",
+   "Food diary", "All foods". Set like a heading rather than a label — the
+   tracked-out condensed capitals it was read as a scoreboard caption, and
+   there were a dozen of them on one screen. Card titles have their own,
+   smaller rule; see "Titles and labels" at the end of this file. */
 h2 {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin: 0 6px 10px;
+  font-family: var(--font-body);
+  font-size: 1.08rem;
+  font-weight: 700;
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: -0.015em;
+  margin: 0 4px 10px;
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Tighter leading for the app's titles only. The legal pages share this
+   stylesheet and set their headings inside running prose, where the prose's
+   own line-height is the right one. */
+:where(body:has(#app-shell)) h2 {
+  line-height: 1.25;
 }
 
 .day-group {
@@ -869,12 +952,12 @@ h2 {
      and baseline alignment hung it below the row. */
   align-items: center;
   gap: 8px;
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-weight: 600;
   font-size: 0.95rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
   margin: 14px 6px 6px;
   padding-bottom: 5px;
@@ -958,14 +1041,15 @@ h2 {
 }
 
 .entry-kcal {
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-weight: 600;
-  font-size: 1.05rem;
+  font-size: 0.92rem;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
   /* The provenance badge sits inside this cell, so it must never be split
      onto its own line away from the number it describes. */
   white-space: nowrap;
+  letter-spacing: -0.01em;
 }
 
 /* Icon-sized actions fit beside even a long label and a provenance badge on
@@ -1049,11 +1133,12 @@ h2 {
 .entry-edit-field--third { grid-column: span 2; }
 
 .entry-edit-caption {
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--muted);
+  font-family: var(--font-body);
 }
 
 .entry-edit-field input,
@@ -1109,50 +1194,138 @@ h2 {
   padding: 20px;
 }
 
+/* ── Sign in ────────────────────────────────────────────────────────────────
+   The app's own header colour as a band across the top, the mark and the
+   wordmark on it in white, and the form on a card that rises out of it —
+   the same overlap every screen inside the app has, so the first screen and
+   the hundredth look like one product. */
 .auth-screen:not([hidden]) {
+  position: relative;
+  isolation: isolate;
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 16px calc(32px + env(safe-area-inset-bottom));
+  background: var(--bg);
+}
+.auth-screen:not([hidden])::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 auto 0;
+  height: calc(268px + env(safe-area-inset-top));
+  background:
+    radial-gradient(120% 90% at 90% -10%, rgba(255, 255, 255, 0.13), transparent 60%),
+    var(--pitch-deep);
+}
+.auth-hero {
+  width: 100%;
+  max-width: 400px;
+  padding: calc(52px + env(safe-area-inset-top)) 4px 34px;
+  color: #fff;
+  text-align: center;
+}
+.auth-title {
+  display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
-  background:
-    radial-gradient(circle at 15% 10%, rgba(31, 157, 82, 0.1), transparent 45%),
-    radial-gradient(circle at 85% 90%, rgba(217, 119, 6, 0.09), transparent 45%),
-    var(--bg);
+  gap: 10px;
+  margin: 0;
+  color: #fff;
+  font-size: 1.85rem;
+  line-height: 1;
+}
+.auth-brand-mark {
+  display: block;
+  width: 46px;
+  height: 46px;
+  flex: none;
+}
+.auth-tagline {
+  margin: 12px 0 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .auth-card {
   width: 100%;
-  max-width: 360px;
+  max-width: 400px;
   position: relative;
-  overflow: hidden;
+  padding: 26px 22px 22px;
+  border-radius: 24px;
+  box-shadow: 0 1px 2px rgba(15, 30, 22, 0.05), 0 18px 40px -18px rgba(15, 30, 22, 0.28);
 }
-.auth-card::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 5px;
-  background: linear-gradient(90deg, var(--pitch-light), var(--pitch), var(--amber));
+.auth-head {
+  margin-bottom: 18px;
 }
-
-.auth-brand-mark {
+.auth-heading {
+  margin: 0;
+  font-size: 1.32rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
   display: block;
-  margin: 0 auto 14px;
-  border-radius: 18px;
-  box-shadow: var(--shadow-md);
 }
-
-.auth-title {
-  text-align: center;
-  color: var(--pitch-dark);
-  margin: 0 0 16px;
-  font-size: 1.3rem;
+.auth-subheading {
+  margin: 4px 0 0;
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+.auth-card label {
+  font-size: 0.86rem;
+}
+.auth-card #auth-submit,
+.auth-card #forgot-submit,
+.auth-card #reset-submit {
+  width: 100%;
+  margin-top: 6px;
 }
 
 .auth-toggle {
   text-align: center;
   margin-top: 4px;
+}
+/* The two ways out of the form, as quiet text links rather than two bold
+   underlined lines competing with the button above them. */
+.auth-card .auth-toggle {
+  margin: 14px 0 0;
+  font-size: 0.9rem;
+}
+.auth-card .auth-toggle + .auth-toggle {
+  margin-top: 6px;
+}
+.auth-card .link-btn {
+  padding: 2px 2px;
+  color: var(--action-ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+#auth-forgot-btn {
+  color: var(--muted);
+  font-weight: 500;
+}
+@media (hover: hover) {
+  .auth-card .link-btn:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
+
+@media (min-width: 720px) {
+  .auth-screen:not([hidden])::before {
+    height: calc(320px + env(safe-area-inset-top));
+  }
+  .auth-hero {
+    padding-top: calc(84px + env(safe-area-inset-top));
+    padding-bottom: 40px;
+  }
+  .auth-screen .auth-card {
+    padding: 32px 30px 26px;
+  }
 }
 
 .google-signin-btn:not([hidden]) {
@@ -1209,12 +1382,13 @@ h2 {
   margin: 0 0 14px;
 }
 .settings-fieldset legend {
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 600;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  text-transform: none;
+  letter-spacing: 0;
   padding: 0 4px;
+  font-family: var(--font-body);
 }
 .settings-row {
   display: flex;
@@ -1274,13 +1448,19 @@ h2 {
 .budget-header {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
+  gap: 10px;
   margin-bottom: 12px;
 }
-.budget-title {
-  font-weight: 800;
-  font-size: 1.02rem;
-  letter-spacing: -0.01em;
+/* What the balance is measured against, as a quiet tag. */
+#budget-source-label:not(:empty) {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
 .balance-grid {
   display: grid;
@@ -1306,8 +1486,8 @@ h2 {
 }
 .balance-cell {
   text-align: center;
-  background: var(--bg);
-  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border-radius: 14px;
   /* Was 16px 8px around a 1.55rem figure. Four of these stacked two-up made
      a card taller than the chart underneath it, for numbers nobody reads one
      at a time — they are scanned as a set. Smaller tile, same set. */
@@ -1316,7 +1496,7 @@ h2 {
 }
 .balance-number {
   display: block;
-  font-size: 1.25rem;
+  font-size: 1.32rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
@@ -1329,23 +1509,17 @@ h2 {
   margin-top: 2px;
   font-weight: 500;
 }
-.balance-cell--loss {
-  background: rgba(31, 157, 82, 0.12);
-}
+/* The tiles stay one neutral surface and the figure carries the verdict.
+   A wall of tinted boxes made every number look like a warning or a prize;
+   colour on the number alone says the same thing once. */
 .balance-cell--loss .balance-number {
-  color: var(--pitch-dark);
-}
-.balance-cell--gain {
-  background: rgba(220, 38, 38, 0.08);
+  color: var(--action-ink);
 }
 .balance-cell--gain .balance-number {
   color: var(--danger);
 }
-.balance-cell--accent {
-  background: rgba(217, 119, 6, 0.12);
-}
 .balance-cell--accent .balance-number {
-  color: var(--amber);
+  color: var(--ink);
 }
 
 /* ── Exercise section ── */
@@ -1973,12 +2147,13 @@ tr.has-tooltip:active {
 }
 .breakdown-table th {
   text-align: left;
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--muted);
   padding: 0 10px 8px;
+  font-family: var(--font-body);
 }
 .breakdown-table td {
   padding: 9px 10px;
@@ -2020,11 +2195,12 @@ tr.has-tooltip:active {
 .stat-hero-caption {
   display: block;
   margin-top: 4px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--muted);
+  font-family: var(--font-body);
 }
 .stat-hero--good .stat-hero-number { color: var(--pitch-dark); }
 .stat-hero--fair .stat-hero-number { color: var(--amber); }
@@ -2273,25 +2449,7 @@ tr.has-tooltip:active {
   }
 
   .banner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    text-align: left;
-    padding: 18px 32px;
-    gap: 16px 24px;
-  }
-  .banner h1,
-  #app-shell .banner h1 {
-    padding: 0;
-    margin: 0;
-    flex-shrink: 0;
-  }
-  .week-nav {
-    margin: 0;
-    order: 3;
-    flex-basis: 100%;
-    justify-content: flex-start;
+    gap: 16px;
   }
 
   /* Settings is panes now (see .settings-panes), so the two-column grid that
@@ -2394,11 +2552,12 @@ tr.has-tooltip:active {
 .weight-hero-caption {
   display: block;
   margin-top: 6px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--muted);
+  font-family: var(--font-body);
 }
 .weight-hero-note {
   display: block;
@@ -2504,11 +2663,6 @@ tr.has-tooltip:active {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 10px;
-}
-.quick-add-title {
-  font-family: var(--font-heading);
-  font-weight: 700;
-  font-size: 0.95rem;
 }
 .quick-add-chips {
   display: flex;
@@ -2625,9 +2779,10 @@ tr.has-tooltip:active {
   gap: 12px;
 }
 .plan-name {
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-weight: 700;
-  font-size: 1.05rem;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
 }
 .plan-price {
   font-size: 0.85rem;
@@ -2769,9 +2924,10 @@ tr.has-tooltip:active {
 }
 .referral-title {
   margin: 0;
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-weight: 700;
-  font-size: 1.05rem;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
 }
 .referral-reward {
   font-size: 0.85rem;
@@ -2840,10 +2996,12 @@ tr.has-tooltip:active {
   color: var(--ink);
 }
 .referral-stat-label {
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 0.72rem;
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--muted);
+  font-family: var(--font-body);
+  font-weight: 500;
 }
 
 /* The line on the sign-in card naming who invited them. */
@@ -2987,8 +3145,8 @@ tr.has-tooltip:active {
   letter-spacing: 0.04em;
   padding: 2px 6px;
   border-radius: 999px;
-  background: var(--pill-active-bg);
-  color: var(--pill-active-ink);
+  background: var(--action-soft);
+  color: var(--action-ink);
 }
 
 /* ── Suggestions, in the admin card ───────────────────────────────────────*/
@@ -3220,8 +3378,8 @@ tr.has-tooltip:active {
   letter-spacing: 0.04em;
   padding: 2px 7px;
   border-radius: 999px;
-  background: var(--pill-active-bg);
-  color: var(--pill-active-ink);
+  background: var(--action-soft);
+  color: var(--action-ink);
 }
 /* A problem is the one worth spotting in a list of ideas. */
 .suggestion-kind--problem {
@@ -3601,12 +3759,13 @@ tr.has-tooltip:active {
   padding: 10px 14px;
   margin-bottom: 12px;
   border-radius: var(--radius-md);
-  background: rgba(217, 119, 6, 0.1);
-  border: 1px solid rgba(217, 119, 6, 0.3);
+  background: color-mix(in srgb, var(--amber) 10%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--amber) 28%, var(--card));
   color: var(--amber);
   font-size: 0.83rem;
   line-height: 1.35;
   animation: fadeInUp 0.3s var(--ease);
+  box-shadow: var(--shadow-card);
 }
 .offline-banner .icon {
   font-size: 1rem;
@@ -3614,45 +3773,97 @@ tr.has-tooltip:active {
 }
 /* Work is safely stored and on its way out — reassurance, not a warning. */
 .offline-banner--waiting {
-  background: rgba(31, 157, 82, 0.09);
-  border-color: rgba(31, 157, 82, 0.28);
+  background: color-mix(in srgb, var(--pitch) 9%, var(--card));
+  border-color: color-mix(in srgb, var(--pitch) 26%, var(--card));
   color: var(--pitch-dark);
 }
 
-/* ── First-run wizard ── */
+/* Looking at an earlier week. A notice rather than a stray grey sentence — it
+   can be the first thing under the header, and it says why the log buttons
+   behave differently. */
+#week-note:not([hidden]) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-card);
+  color: var(--ink);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+#week-note::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--amber-light);
+}
+
+/* ── First-run wizard ──
+   The sign-in screen's band and rising card, so signing up and setting up
+   read as one continuous thing rather than two different apps. */
 .onboarding-screen:not([hidden]) {
+  position: relative;
+  isolation: isolate;
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background:
-    radial-gradient(circle at 15% 10%, rgba(31, 157, 82, 0.1), transparent 45%),
-    radial-gradient(circle at 85% 90%, rgba(217, 119, 6, 0.09), transparent 45%),
-    var(--bg);
+  padding: 0 16px calc(32px + env(safe-area-inset-bottom));
+  background: var(--bg);
 }
-.onboarding-card {
+.onboarding-screen:not([hidden])::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 auto 0;
+  height: calc(220px + env(safe-area-inset-top));
+  background:
+    radial-gradient(120% 90% at 90% -10%, rgba(255, 255, 255, 0.13), transparent 60%),
+    var(--pitch-deep);
+}
+.onboarding-hero {
+  padding-top: calc(36px + env(safe-area-inset-top));
+  padding-bottom: 28px;
+}
+.onboarding-hero .auth-brand-mark {
+  margin: 0 auto;
+}
+.onboarding-hero .auth-tagline {
+  margin-top: 10px;
+}
+.onboarding-screen .onboarding-card {
   width: 100%;
   max-width: 460px;
+  padding: 24px 22px 22px;
+  border-radius: 24px;
+  box-shadow: 0 1px 2px rgba(15, 30, 22, 0.05), 0 18px 40px -18px rgba(15, 30, 22, 0.28);
 }
 .onboarding-progress {
   display: flex;
   gap: 6px;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 .onboarding-dot {
   flex: 1;
   height: 4px;
   border-radius: 999px;
-  background: var(--hairline);
-  transition: background 0.25s var(--ease);
+  background: var(--surface-2);
+  transition: background 0.3s var(--ease);
 }
 .onboarding-dot--active {
-  background: var(--pitch);
+  background: var(--action);
 }
 .onboarding-step h2 {
-  margin-top: 0;
+  margin: 0 0 6px;
+  font-size: 1.32rem;
+  letter-spacing: -0.02em;
 }
 .onboarding-step > .muted {
   margin-bottom: 16px;
@@ -3669,7 +3880,7 @@ tr.has-tooltip:active {
   margin-bottom: 8px;
 }
 .onboarding-list strong {
-  color: var(--pitch-dark);
+  color: var(--ink);
 }
 
 /* ── Weekly review ── */
@@ -3741,11 +3952,12 @@ tr.has-tooltip:active {
 }
 .review-section h3 {
   margin: 0 0 6px;
-  font-family: var(--font-heading);
-  font-size: 0.82rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  text-transform: none;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  font-weight: 700;
 }
 .review-section ul {
   margin: 0;
@@ -3803,9 +4015,14 @@ tr.has-tooltip:active {
   --pitch-dark: #7fe3a8;
   --ink: #e8ecea;
   --muted: #9aa5a0;
-  --bg: #121614;
-  --card: #1b211e;
-  --hairline: #2c342f;
+  --bg: #111513;
+  --card: #1a201d;
+  --hairline: #2a322d;
+  --surface-2: #222925;
+  --field: #222925;
+  --field-border: #2f3833;
+  --card-border: rgba(255, 255, 255, 0.05);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35);
   --danger: #f87171;
   --amber: #fbbf24;
   --amber-light: #fcd34d;
@@ -3813,9 +4030,9 @@ tr.has-tooltip:active {
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
   --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.55);
-  --pill-active-bg: linear-gradient(160deg, #2f3a34, #24312a);
-  --pill-active-ink: #9fe9bf;
-  --pill-active-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --pill-active-bg: #2e3732;
+  --pill-active-ink: var(--ink);
+  --pill-active-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   --tooltip-bg: #f2f5f3;
   --tooltip-ink: #14181a;
   /* The header ground has to stay clearly above the page in dark mode; the
@@ -3839,9 +4056,14 @@ tr.has-tooltip:active {
     --pitch-dark: #7fe3a8;
     --ink: #e8ecea;
     --muted: #9aa5a0;
-    --bg: #121614;
-    --card: #1b211e;
-    --hairline: #2c342f;
+    --bg: #111513;
+    --card: #1a201d;
+    --hairline: #2a322d;
+    --surface-2: #222925;
+    --field: #222925;
+    --field-border: #2f3833;
+    --card-border: rgba(255, 255, 255, 0.05);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35);
     --danger: #f87171;
     --amber: #fbbf24;
     --amber-light: #fcd34d;
@@ -3850,9 +4072,9 @@ tr.has-tooltip:active {
     --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
     --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.55);
 
-    --pill-active-bg: linear-gradient(160deg, #2f3a34, #24312a);
-    --pill-active-ink: #9fe9bf;
-    --pill-active-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    --pill-active-bg: #2e3732;
+    --pill-active-ink: var(--ink);
+    --pill-active-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
     --tooltip-bg: #f2f5f3;
     --tooltip-ink: #14181a;
     /* The header ground has to stay clearly above the page in dark mode; the
@@ -4085,22 +4307,20 @@ tr.has-tooltip:active {
   margin-bottom: 10px;
 }
 .form-guide-title {
-  font-family: var(--font-heading);
-  font-size: 0.9rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--muted);
+  font-family: var(--font-body);
+  font-size: 0.98rem;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: -0.01em;
+  color: var(--ink);
 }
 .form-guide-record {
-  font-family: var(--font-heading);
-  font-size: 0.95rem;
+  font-size: 0.84rem;
   font-weight: 600;
-  letter-spacing: 0.03em;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
-.form-guide-record--good { color: var(--pitch-dark); }
+.form-guide-record--good { color: var(--action-ink); }
 .form-guide-record--bad { color: var(--amber); }
 
 .form-guide-days {
@@ -4117,20 +4337,19 @@ tr.has-tooltip:active {
   max-width: 400px;
 }
 .form-day {
-  aspect-ratio: 1;
-  border-radius: 8px;
+  position: relative;
+  height: 38px;
+  border-radius: 11px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-heading);
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-size: 0.8rem;
+  font-weight: 700;
   cursor: pointer;
   transition: transform 0.2s var(--spring), box-shadow 0.15s var(--ease);
 }
 .form-day:active { transform: scale(0.92); }
-.form-day.tooltip-active { box-shadow: 0 0 0 2px var(--pitch); }
+.form-day.tooltip-active { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--action); }
 
 /* Under your burn: the win. Solid pitch green, the one place the brand
    colour is allowed to be a fill rather than an accent. */
@@ -4146,23 +4365,32 @@ tr.has-tooltip:active {
 }
 /* Logged, but no burn data to judge it against yet. */
 .form-day--logged {
-  background: rgba(31, 157, 82, 0.14);
-  color: var(--pitch-dark);
+  background: var(--action-soft-hover);
+  color: var(--action-ink);
 }
 /* Not yet played. */
 .form-day--none {
-  background: var(--bg);
+  background: var(--surface-2);
   color: var(--muted);
-  box-shadow: inset 0 0 0 1px var(--hairline);
 }
-.form-day--today {
-  box-shadow: inset 0 0 0 2px var(--ink);
-}
-.form-day--today.tooltip-active {
-  box-shadow: inset 0 0 0 2px var(--ink), 0 0 0 2px var(--pitch);
+/* Today is marked under the day rather than round it, so its colour still
+   reads as the result and not as a frame. */
+.form-day--today::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--ink);
 }
 .form-day-letter {
   line-height: 1;
+}
+.form-guide-days {
+  padding-bottom: 8px;
 }
 
 /* ── Deficit streak ── */
@@ -4172,8 +4400,8 @@ tr.has-tooltip:active {
   gap: 10px;
 }
 .streak-cell {
-  background: var(--bg);
-  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  border-radius: 14px;
   padding: 14px 12px;
   text-align: center;
 }
@@ -4215,13 +4443,6 @@ tr.has-tooltip:active {
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-}
-.water-title {
-  font-family: var(--font-heading);
-  font-size: 1.05rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 .water-total-row {
   display: inline-flex;
@@ -4565,17 +4786,20 @@ tr.has-tooltip:active {
 .settings-fieldset--danger legend {
   color: var(--danger);
 }
+/* A fixed red rather than --danger: in dark mode --danger is the light red
+   that reads as text on a dark ground, and white on it measures 2.8:1. This
+   is 4.8:1 in both themes. */
 .danger-btn {
   width: 100%;
-  background: var(--danger);
+  background: #dc2626;
   color: #fff;
   border: none;
-  /* The shared button rule glows green; on a delete button that reads as
-     reassurance, which is the opposite of what this one is. */
-  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 2px rgba(80, 10, 10, 0.25);
 }
-.danger-btn:hover {
-  filter: brightness(0.94);
+@media (hover: hover) {
+  .danger-btn:hover {
+    background: #c42020;
+  }
 }
 
 .settings-legal,
@@ -5286,16 +5510,6 @@ tr.has-tooltip:active {
   #app-shell .banner h1 {
     display: none;
   }
-  /* With the eyebrow gone the nav is the whole header, so it stops sitting
-     centred in a band sized for a title above it. */
-  #today-screen .banner .week-nav,
-  #app-shell .banner .week-nav {
-    justify-content: flex-start;
-  }
-  #today-screen .banner--fixture h1,
-  #app-shell .banner--fixture h1 {
-    margin-bottom: 0;
-  }
   /* The date and the week are now the page title, so they are sized like
      one. */
   .week-nav #week-range,
@@ -5399,15 +5613,9 @@ tr.has-tooltip:active {
 /* ── Today ─────────────────────────────────────────────────────────────── */
 /* Borrows the week nav's arrows so stepping through days feels the same as
    stepping through weeks — same control, same place, one width down. */
-.day-nav {
-  margin-top: 4px;
-}
 /* Type lives with the week range up top, since the two are the same thing
    one width apart. All this needs is enough room that stepping between a
    short day and a long one doesn't shuffle the arrows either side of it. */
-.today-date {
-  min-width: 210px;
-}
 
 .today-hero-row {
   display: flex;
@@ -5431,13 +5639,13 @@ tr.has-tooltip:active {
    solid disc rather than a ring. */
 .today-ring-track {
   fill: none;
-  stroke: var(--hairline);
-  stroke-width: 10;
+  stroke: color-mix(in srgb, var(--pitch) 11%, var(--hairline));
+  stroke-width: 11;
 }
 .today-ring-fill {
   fill: none;
-  stroke: var(--pitch);
-  stroke-width: 10;
+  stroke: url(#today-ring-gradient);
+  stroke-width: 11;
   stroke-linecap: round;
   /* The sweep is driven frame by frame in JS (see animateRing in app.js) so it
      stays locked to the counting figure — a CSS transition here would chase
@@ -5466,11 +5674,12 @@ tr.has-tooltip:active {
   font-variant-numeric: tabular-nums;
 }
 .today-hero-unit {
-  font-size: 0.7rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  text-transform: none;
   color: var(--muted);
+  font-family: var(--font-body);
 }
 .today-hero-side {
   flex: 1 1 auto;
@@ -5625,18 +5834,19 @@ tr.has-tooltip:active {
 .sheet-panel {
   width: 100%;
   max-width: 560px;
-  max-height: 88vh;
+  max-height: 90vh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  gap: 14px;
+  padding: 28px 20px calc(20px + env(safe-area-inset-bottom));
+  border-radius: 26px 26px 0 0;
   background: var(--card);
   box-shadow: var(--shadow-lg);
   /* Up from the bottom edge it is attached to, which is what makes it read
      as a sheet over the page rather than a card that appeared on it. */
   animation: sheet-rise 0.34s var(--glide, var(--ease));
+  position: relative;
 }
 @keyframes sheet-rise {
   from { transform: translateY(48px); opacity: 0; }
@@ -5668,9 +5878,11 @@ tr.has-tooltip:active {
 }
 .sheet-title {
   margin: 0;
-  font-family: var(--font-heading);
-  font-size: 1.4rem;
-  letter-spacing: 0.01em;
+  font-family: var(--font-body);
+  font-size: 1.2rem;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  color: var(--ink);
 }
 /* Says where the figures came from, because "from the packet" and "AI
    estimate" deserve different amounts of scrutiny. */
@@ -5678,8 +5890,8 @@ tr.has-tooltip:active {
   flex: none;
   padding: 3px 9px;
   border-radius: 999px;
-  background: var(--pill-active-bg);
-  color: var(--pill-active-ink);
+  background: var(--action-soft);
+  color: var(--action-ink);
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -5718,10 +5930,12 @@ tr.has-tooltip:active {
   flex-direction: column;
   gap: 3px;
   margin: 0;
-  font-size: 0.74rem;
+  font-size: 0.78rem;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-body);
+  font-weight: 600;
 }
 .confirm-item input { margin-bottom: 0; }
 .confirm-label { flex: 1 1 auto; min-width: 0; }
@@ -5733,10 +5947,12 @@ tr.has-tooltip:active {
   flex-direction: column;
   gap: 3px;
   margin: 0;
-  font-size: 0.74rem;
+  font-size: 0.78rem;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-body);
+  font-weight: 600;
 }
 .confirm-kcal {
   width: 100%;
@@ -5797,10 +6013,12 @@ tr.has-tooltip:active {
   flex-direction: column;
   gap: 3px;
   margin: 0;
-  font-size: 0.74rem;
+  font-size: 0.78rem;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-body);
+  font-weight: 600;
 }
 .confirm-macro-field input {
   font-variant-numeric: tabular-nums;
@@ -6004,8 +6222,8 @@ body.sheet-open { overflow: hidden; }
   margin-top: 2px;
   padding: 1px 7px;
   border-radius: 999px;
-  background: var(--pill-active-bg);
-  color: var(--pill-active-ink);
+  background: var(--action-soft);
+  color: var(--action-ink);
   font-size: 0.66rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -6023,10 +6241,12 @@ body.sheet-open { overflow: hidden; }
   flex-direction: column;
   gap: 3px;
   margin: 0;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-body);
+  font-weight: 600;
 }
 .food-editor-field--wide { grid-column: 1 / -1; }
 .food-editor-field input {
@@ -6088,14 +6308,6 @@ body.sheet-open { overflow: hidden; }
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-}
-.what-now-title {
-  font-family: var(--font-heading);
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink);
 }
 .what-now-chevron {
   display: grid;
@@ -6297,14 +6509,17 @@ body.sheet-open { overflow: hidden; }
   inset: 0;
   z-index: 60;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  padding: 16px;
-  background: rgba(7, 20, 13, 0.72);
+  padding: 12px 0 0;
+  background: rgba(8, 14, 11, 0.5);
   overflow-y: auto;
   /* Without this, scrolling past the end of the panel hands the gesture to the
      page underneath and the background slides around behind the modal. */
   overscroll-behavior: contain;
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: sheet-backdrop-in 0.2s var(--ease);
 }
 /* Belt and braces with the above: the body itself is frozen for as long as any
    modal is open, so nothing behind it can move even where scroll chaining is
@@ -6318,33 +6533,40 @@ body.modal-open {
 }
 .share-panel {
   width: 100%;
-  max-width: 420px;
+  max-width: 560px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: 14px;
+  padding: 28px 20px calc(20px + env(safe-area-inset-bottom));
   background: var(--card);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  border-radius: 26px 26px 0 0;
+  box-shadow: var(--shadow-lg);
+  position: relative;
+  animation: sheet-rise 0.34s var(--glide, var(--ease));
 }
 .share-panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-family: var(--font-heading);
-  font-size: 1.1rem;
+  font-family: var(--font-body);
+  font-size: 1.12rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: -0.015em;
+  text-transform: none;
 }
 /* Undoes the global button rule for the icon-only close. */
 .share-close-btn {
-  width: auto;
-  min-height: 36px;
-  padding: 0 6px;
-  background: none;
+  width: 34px;
+  min-height: 0;
+  padding: 0;
+  background: var(--surface-2);
   box-shadow: none;
   color: var(--muted);
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  flex: none;
 }
 .share-preview {
   border-radius: var(--radius-sm);
@@ -6398,11 +6620,11 @@ body.modal-open {
    a single scroll. */
 .settings-group {
   margin: 22px 0 10px;
-  font-family: var(--font-heading);
+  font-family: var(--font-body);
   font-size: 0.85rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--muted);
 }
 .settings-group:first-of-type {
@@ -6462,35 +6684,14 @@ body.modal-open {
    the label is what opens the OS date picker on a phone, and every attempt to
    drive one from a button ends up fighting a different browser's idea of
    showPicker(). The icon is what you see; the input is what you press. */
-/* The jump-to-a-date control. It sits between two arrows that both wear a
-   translucent chip, and wearing nothing itself is what made it read as a
-   stray icon dropped on the header rather than part of the same control
-   group. Same chip, same size, one rounder corner radius so it still reads
-   as the odd one out in kind — it opens a picker, the arrows step. */
+/* It wears the header's round translucent button (see "The header"); this
+   is only what makes it a label holding an invisible input. */
 .date-jump {
   position: relative;
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
   margin: 0;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: rgba(255, 255, 255, 0.9);
   cursor: pointer;
-  transition: background 0.15s var(--ease), transform 0.22s var(--spring);
-}
-.date-jump:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-.date-jump:active {
-  transform: scale(0.92);
 }
 .date-jump .icon {
-  width: 17px;
-  height: 17px;
   pointer-events: none;
 }
 .date-jump input {
@@ -6711,11 +6912,12 @@ body.modal-open {
   justify-content: space-between;
   gap: 12px;
   margin: 16px 2px 6px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--muted);
+  font-family: var(--font-body);
 }
 .meal-group-heading:first-child {
   margin-top: 4px;
@@ -6820,11 +7022,6 @@ body.hide-entry-times .entry-time {
   gap: 8px;
   min-height: 34px;
   padding: 0;
-}
-.card-collapse-head .settings-section-title {
-  font-family: var(--font-heading);
-  font-size: 1.05rem;
-  font-weight: 700;
 }
 .card-collapse-body {
   padding: 12px 0 0;
@@ -7317,8 +7514,10 @@ body.hide-entry-times .entry-time {
    Present only when there is something to answer, so it can afford to look
    like an interruption rather than another permanent card. */
 .target-review-card {
-  border: 1px solid var(--pitch);
-  background: rgba(31, 157, 82, 0.05);
+  border: 1px solid color-mix(in srgb, var(--action) 50%, var(--card-border));
+  /* Tinted over the card colour, not over whatever is behind it: a
+     translucent wash let the darker page through in dark mode. */
+  background: color-mix(in srgb, var(--action) 6%, var(--card));
 }
 .target-review-title {
   font-size: 1rem;
@@ -7363,14 +7562,6 @@ body.hide-entry-times .entry-time {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-}
-.keto-title {
-  font-family: var(--font-heading);
-  font-weight: 700;
-  font-size: 0.95rem;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: var(--muted);
 }
 .keto-note {
   font-size: 0.8rem;
@@ -7745,11 +7936,12 @@ body.hide-entry-times .entry-time {
 }
 .roadmap-group {
   margin: 12px 0 2px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--muted);
+  font-family: var(--font-body);
 }
 .roadmap-group:first-child { margin-top: 0; }
 .roadmap-item {
@@ -7890,18 +8082,21 @@ body.hide-entry-times .entry-time {
 }
 
 /* ── Titles and labels ─────────────────────────────────────────────────────
-   Two levels, used the same way everywhere. A card's title names the card and
-   is set in ink; a list's label sits on the page above rows of cards and is
-   muted, because the rows are what you read. Before this there were five
-   treatments for the same job — muted eyebrows, bold ink capitals on What
-   still fits and Water, sentence-case bold on Calorie balance and the
-   collapsible Stats cards — and which one a card got depended on when it was
-   written.
+   Three levels, used the same way everywhere, all in the body face and all in
+   sentence case:
+
+     a section heading on the page ("Logged today")   h2, 1.08rem / 700
+     a card's title ("What still fits", "Water")      1rem / 650-ish (600)
+     a caption under a figure ("current weight")      0.8rem / 600, muted
+
+   Before this there were five treatments for the same job, nearly all of them
+   Barlow Condensed in tracked capitals — a scoreboard caption repeated a dozen
+   times down every screen. Barlow is kept for the figures themselves.
 
    :where() keeps the h2 selectors at an element's weight, so Settings, which
-   sets its own headings in the body face, is untouched — and they are scoped
-   to the app's screens, because the privacy and terms pages share this
-   stylesheet and put their own headings in a .card. */
+   sets its own headings, is untouched — and they are scoped to the app's
+   screens, because the privacy and terms pages share this stylesheet and put
+   their own headings in a .card. */
 :where([id$="-screen"], #app-shell) :where(.card) > h2,
 :where([id$="-screen"], #app-shell) :where(.card) > .section-header h2,
 :where([id$="-screen"], #app-shell) :where(.card) > .card-heading-row h2,
@@ -7910,17 +8105,884 @@ body.hide-entry-times .entry-time {
 .water-title,
 .budget-title,
 .keto-title,
+.quick-add-title,
+.target-review-title,
 .card-collapse-head .settings-section-title {
-  font-family: var(--font-heading);
-  font-size: 0.95rem;
+  font-family: var(--font-body);
+  font-size: 1rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  line-height: 1.2;
-  text-transform: uppercase;
+  letter-spacing: -0.012em;
+  line-height: 1.25;
+  text-transform: none;
   color: var(--ink);
 }
-/* The Insights card's title was inset 6px from the sentences under it. */
-#insights-card > h2 {
+/* A card's own title sits on the card's edge, in line with what's under
+   it. The 4px side inset on h2 is for section titles out on the page, where
+   it lines them up with the card corners below. */
+:where([id$="-screen"], #app-shell) :where(.card) > h2 {
   margin-left: 0;
   margin-right: 0;
+}
+
+/* ── Lists ─────────────────────────────────────────────────────────────────
+   A list of entries is one card with its rows inside it, divided by inset
+   hairlines — not a stack of separate cards, each with its own shadow and its
+   own rounded corners, with page showing between them. That stack was the
+   single biggest reason the diary read as boxes rather than as a diary.
+
+   The containers: Today's logged and exercise lists, My week's exercise list,
+   and each day of the week's diary (.entry-rows, built in renderEntries). */
+#today-entry-list,
+#today-exercise-list,
+#exercise-list,
+.entry-rows {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+:is(#today-entry-list, #today-exercise-list, #exercise-list, .entry-rows) > :is(.entry-row, .exercise-entry) {
+  position: relative;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 12px 14px 12px 16px;
+}
+/* Inset from the left, like every native list: the line divides two rows,
+   it doesn't box them. */
+:is(#today-entry-list, #today-exercise-list, #exercise-list, .entry-rows) > :is(.entry-row, .exercise-entry) + :is(.entry-row, .exercise-entry)::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  height: 1px;
+  background: var(--hairline);
+  pointer-events: none;
+}
+/* A meal, opened: its items step in and sit on the card's second surface. */
+:is(#today-entry-list, .entry-rows) > .entry-row--in-group {
+  padding-left: 30px;
+  background: var(--surface-2);
+}
+/* Picked while selecting: a fill, since a drawn border inside a list fights
+   the separators. */
+:is(#today-entry-list, .entry-rows) > .entry-row--picked {
+  background: var(--action-soft);
+}
+/* The heading over each meal, when the day is grouped by meal tag, sits
+   inside the card as a sub-heading. */
+#today-entry-list > .meal-group-heading {
+  margin: 0;
+  padding: 14px 16px 6px;
+  border-top: 1px solid var(--hairline);
+}
+#today-entry-list > .meal-group-heading:first-child {
+  border-top: 0;
+  padding-top: 12px;
+}
+@media (hover: hover) {
+  :is(#today-entry-list, .entry-rows) > .meal-group-row:hover {
+    background: var(--surface-2);
+  }
+}
+/* An empty list keeps its card, with the message inside it. */
+#exercise-list:empty::after,
+#entry-list:empty::after {
+  border: 0;
+  padding: 22px 16px;
+}
+/* The week's diary has no card of its own — each day carries one — so its
+   "nothing yet" line is the one place the old empty box stays. */
+#entry-list:empty::after {
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  border: 1px solid var(--card-border);
+}
+/* A day in the diary: its heading on the page, its rows in their card. */
+.day-group .day-heading {
+  border-bottom: 0;
+  padding-bottom: 0;
+  margin: 18px 4px 8px;
+}
+.day-group:first-child .day-heading {
+  margin-top: 6px;
+}
+.day-group .day-note,
+.day-group .day-note-editor {
+  margin: 0 0 8px;
+}
+
+/* ── Cells ─────────────────────────────────────────────────────────────────
+   The small tinted chip beside a card's title — the same well the Settings
+   list puts its icons in. Six cards in a column with nothing but a title each
+   is a list you read; with a shape each it is one you scan, and the second
+   time you come looking for water you go by the drop. */
+.cell-icon {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--action-soft);
+  color: var(--action-ink);
+}
+.cell-icon .icon {
+  width: 17px;
+  height: 17px;
+}
+h2 .cell-icon {
+  margin-right: 2px;
+}
+.water-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.target-review-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+/* What still fits, closed, is a row you tap: chip, title and what's left,
+   chevron at the end. */
+.what-now-toggle {
+  justify-content: flex-start;
+  gap: 12px;
+}
+.what-now-toggle-text {
+  flex: 1 1 auto;
+}
+.what-now-chevron {
+  margin-left: auto;
+}
+
+/* ── An empty list, said properly ──────────────────────────────────────── */
+.empty-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 26px 20px 24px;
+  text-align: center;
+}
+.empty-block-icon {
+  width: 44px;
+  height: 44px;
+  margin-bottom: 4px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--action-soft);
+  color: var(--action-ink);
+}
+.empty-block-icon .icon {
+  width: 22px;
+  height: 22px;
+}
+.empty-block-title {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.empty-block-body {
+  margin: 0;
+  max-width: 32ch;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* ── The day's ring ────────────────────────────────────────────────────────
+   A sweep from the light pitch to the action green rather than one flat
+   stroke, on a track tinted towards the brand instead of a grey one. Over the
+   target it turns the floodlight, as before (.today-ring-fill--over). */
+.today-ring-stop-a { stop-color: var(--pitch-light); }
+.today-ring-stop-b { stop-color: var(--action); }
+
+/* ── The app's own dialog ──────────────────────────────────────────────────
+   See appConfirm() in app.js. On a phone it rises from the bottom with its
+   buttons stacked where the thumb already is, like the app's other sheets; on
+   anything wider it settles in the middle with the buttons side by side.
+   Above every sheet (70) and the toast (80), since it can be asked from
+   inside either. */
+.app-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+  background: rgba(8, 14, 11, 0.5);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: sheet-backdrop-in 0.2s var(--ease);
+}
+.app-dialog-panel {
+  width: 100%;
+  max-width: 420px;
+  padding: 22px 20px 14px;
+  border-radius: 24px;
+  background: var(--card);
+  box-shadow: var(--shadow-lg);
+  animation: sheet-rise 0.32s var(--glide, var(--ease));
+}
+.app-dialog-title {
+  display: block;
+  margin: 0 0 6px;
+  font-family: var(--font-body);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.app-dialog-body {
+  margin: 0 0 16px;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.app-dialog-input {
+  margin-bottom: 16px;
+}
+.app-dialog-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.app-dialog-actions button {
+  margin: 0;
+}
+/* The way out is quiet: a neutral fill, not a second green outline arguing
+   with the action. */
+.app-dialog .app-dialog-cancel {
+  background: var(--surface-2);
+  border: 0;
+  color: var(--ink);
+}
+@media (hover: hover) {
+  .app-dialog .app-dialog-cancel:hover {
+    background: color-mix(in srgb, var(--ink) 8%, var(--surface-2));
+  }
+}
+@media (min-width: 560px) {
+  .app-dialog {
+    align-items: center;
+  }
+  .app-dialog-panel {
+    padding: 24px 24px 20px;
+    animation-name: sheet-pop;
+  }
+  .app-dialog-actions {
+    flex-direction: row-reverse;
+  }
+  .app-dialog-actions button {
+    flex: 1 1 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-dialog,
+  .app-dialog-panel {
+    animation: none;
+  }
+}
+
+/* ── One kind of sheet ─────────────────────────────────────────────────────
+   The confirm sheet, "just a number", saving a meal, a shared link, the daily
+   target picker and the share card were two families — bottom sheets with no
+   handle and muted grey titles, and centred cards with a bare × — that
+   happened to sit on the same page. They are one now: on a phone each rises
+   from the bottom with a handle at its top, a title in the body face, a round
+   close where there is one, and a quiet neutral way out under the action; on
+   anything wider each settles in the middle as a dialog. */
+.sheet-panel::before,
+.share-panel::before {
+  content: "";
+  position: absolute;
+  top: 9px;
+  left: 50%;
+  width: 38px;
+  height: 5px;
+  margin-left: -19px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 16%, transparent);
+  pointer-events: none;
+}
+.sheet-actions .ghost,
+.share-panel button.ghost {
+  margin-top: 0;
+  background: var(--surface-2);
+  border: 0;
+  color: var(--ink);
+}
+@media (hover: hover) {
+  .sheet-actions .ghost:hover,
+  .share-panel button.ghost:hover {
+    background: color-mix(in srgb, var(--ink) 8%, var(--surface-2));
+  }
+  .share-close-btn:hover {
+    color: var(--ink);
+    background: color-mix(in srgb, var(--ink) 8%, var(--surface-2));
+  }
+}
+.share-panel-head {
+  align-items: center;
+  gap: 12px;
+}
+@media (min-width: 720px) {
+  .share-modal {
+    align-items: center;
+    padding: 16px;
+  }
+  .share-panel {
+    max-width: 440px;
+    padding: 24px;
+    border-radius: 24px;
+    animation-name: sheet-pop;
+  }
+  .sheet-panel {
+    padding: 24px;
+    border-radius: 24px;
+  }
+  .sheet-panel::before,
+  .share-panel::before {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .share-modal,
+  .share-panel {
+    animation: none;
+  }
+}
+
+/* A field inside a tinted well (a confirm-sheet item, the quick-add drawer, a
+   burn-estimate panel) takes the card's own white, or it is the same grey as
+   the well it sits in and only its outline shows. */
+:where(.confirm-item, .quick-add, .estimate-fields, .food-editor) :is(input, select, textarea):not(:focus) {
+  background-color: var(--card);
+}
+
+.empty-block-action {
+  margin-top: 10px;
+}
+
+/* A week off, after you'd started: kept in the table, stepped back. */
+.breakdown-row--empty td:not(.breakdown-toggle-cell) {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+/* Where a plan holds back the "add", a quiet way to the plans instead. */
+.plan-gate {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  box-shadow: none;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.plan-gate .icon {
+  width: 14px;
+  height: 14px;
+}
+@media (hover: hover) {
+  .plan-gate:hover {
+    background: var(--action-soft);
+    color: var(--action-ink);
+  }
+}
+#progress-photos-card > .plan-gate {
+  margin-top: 4px;
+}
+/* Somewhere a link into Settings lands: a little air above it rather than
+   the top edge hard against the screen. */
+#plan-card,
+[data-settings-section] {
+  scroll-margin-top: 16px;
+}
+
+/* ── Food library lists ────────────────────────────────────────────────────
+   The same grouped card as the diary: saved meals, favourites and every food
+   each sit in one card with inset separators, rather than fourteen separate
+   white boxes with page showing between them. */
+#meal-list:not(:empty),
+#food-favorites-list:not(:empty),
+#food-all-list:not(:empty) {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+:is(#meal-list, #food-favorites-list, #food-all-list) > :is(.food-row, .meal-row) {
+  position: relative;
+  margin: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  animation: none;
+}
+:is(#food-favorites-list, #food-all-list) > .food-row {
+  padding: 12px 14px 12px 8px;
+}
+:is(#meal-list) > .meal-row {
+  padding: 12px 14px 12px 16px;
+}
+:is(#meal-list, #food-favorites-list, #food-all-list) > :is(.food-row, .meal-row) + :is(.food-row, .meal-row)::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  height: 1px;
+  background: var(--hairline);
+  pointer-events: none;
+}
+/* Past the star, so the line starts where the names do. */
+:is(#food-favorites-list, #food-all-list) > .food-row + .food-row::before {
+  left: 48px;
+}
+:is(#meal-list, #food-favorites-list, #food-all-list) > .empty-state {
+  margin: 0;
+  padding: 22px 16px;
+  text-align: center;
+  color: var(--muted);
+}
+/* Editing a food opens under its row, inside the list, on the second
+   surface — not as a card floating in the middle of another card. */
+:is(#food-favorites-list, #food-all-list) > .food-editor {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--surface-2);
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  grid-column: 1 / -1;
+}
+/* The empty list's "nothing here" line now lives inside the card. */
+#food-all-list:empty::after,
+#food-favorites-list:empty::after {
+  border: 0;
+}
+
+/* A star on every row in gold was a column of gold down the screen. Only a
+   favourite is gold; the rest are an outline you can tap. */
+.food-star {
+  color: color-mix(in srgb, var(--muted) 75%, transparent);
+}
+.food-star--on {
+  color: var(--gold);
+}
+@media (hover: hover) {
+  .food-star:hover {
+    color: var(--gold);
+  }
+}
+
+@media (min-width: 1024px) {
+  #food-favorites-list:not(:empty),
+  #food-all-list:not(:empty) {
+    gap: 0;
+  }
+  /* Two-up: a line over every row but the first pair, and one down the
+     middle. */
+  :is(#food-favorites-list, #food-all-list) > .food-row:nth-child(2)::before {
+    display: none;
+  }
+  :is(#food-favorites-list, #food-all-list) > .food-row:nth-child(n+3)::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 48px;
+    right: 0;
+    height: 1px;
+    background: var(--hairline);
+  }
+  :is(#food-favorites-list, #food-all-list) > .food-row:nth-child(even) {
+    box-shadow: inset 1px 0 0 var(--hairline);
+  }
+}
+
+/* Weigh-ins in the History card: rows of the card, not cards in it. */
+#weighin-list > .food-row {
+  position: relative;
+  margin: 0;
+  padding: 10px 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  animation: none;
+  align-items: center;
+}
+#weighin-list > .food-row + .food-row {
+  border-top: 1px solid var(--hairline);
+}
+
+/* A search box that looks like one: the glass inside the field. */
+.search-field {
+  position: relative;
+  display: block;
+  margin: 0;
+  font-weight: 400;
+}
+.search-field > .icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin-top: -9px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.search-field > input {
+  padding-left: 42px;
+}
+
+/* Air between the Food screen's sections, so each heading belongs to the
+   list under it rather than the one above. */
+#food-library-screen main > section:not(.ad-slot) {
+  margin-bottom: 22px;
+}
+#meal-list > .empty-block {
+  padding: 22px 20px 20px;
+}
+
+/* ── Settings list ─────────────────────────────────────────────────────────
+   The sections as one grouped card, the way a phone's own settings are: rows
+   on a surface with inset separators, rather than rows floating on the page
+   with full-width rules between them. */
+.settings-nav {
+  gap: 0;
+  padding: 4px 0;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+#settings-screen .settings-nav-item {
+  position: relative;
+  border-radius: 0;
+  padding: 11px 16px;
+}
+.settings-nav-item + .settings-nav-item {
+  border-top: 0;
+}
+.settings-nav-item + .settings-nav-item::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 60px;
+  right: 0;
+  height: 1px;
+  background: var(--hairline);
+}
+.settings-nav-icon {
+  background: var(--action-soft);
+  color: var(--action-ink);
+}
+.settings-nav-item--active .settings-nav-icon {
+  background: var(--action);
+  color: #fff;
+}
+@media (hover: hover) {
+  .settings-nav-item:hover {
+    background: var(--surface-2);
+  }
+}
+@media (min-width: 1024px) {
+  .settings-nav-item--active,
+  .settings-nav-item--active:hover {
+    background: var(--action-soft);
+    color: var(--action-ink);
+  }
+}
+
+/* Log out is an ordinary thing to do, not a second primary action: a plain
+   surface button under Save, not an outlined twin of it. */
+#logout-btn {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-card);
+  color: var(--ink);
+}
+@media (hover: hover) {
+  #logout-btn:hover {
+    background: var(--surface-2);
+  }
+}
+
+/* A section of a settings pane is a card like any other: a surface you open,
+   not an outline drawn on the page. */
+#settings-screen .settings-section {
+  margin: 0;
+  /* The head and body carry the padding; the desktop rule's own 18px 20px
+     on the section doubled it. */
+  padding: 0;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
+}
+#settings-screen .settings-section-head {
+  min-height: 54px;
+  padding: 12px 16px;
+}
+#settings-screen .settings-section-body {
+  padding: 2px 16px 16px;
+}
+#settings-screen .settings-section--open .settings-section-chevron {
+  color: var(--action-ink);
+}
+#settings-screen .settings-section--danger {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--card-border));
+}
+@media (hover: hover) {
+  #settings-screen .settings-section-head:hover {
+    background: var(--surface-2);
+  }
+}
+/* The pane's title, in ink: the back arrow carries the brand colour. */
+#settings-screen .settings-pane-title {
+  color: var(--ink);
+}
+#settings-screen .settings-pane-back {
+  color: var(--action-ink);
+}
+
+/* Three fields in a row left "Prefer not to say" reading "Prefer". */
+#onboarding-screen .settings-row:has(#onboarding-sex) {
+  flex-wrap: wrap;
+}
+#onboarding-screen .settings-field:has(#onboarding-sex) {
+  flex-basis: 100%;
+}
+
+/* ── First-load skeletons ──────────────────────────────────────────────────
+   The shape of what's coming, in a tint of the ink so it reads on a card in
+   either theme, with a slow sweep across it. Reduced motion stills the sweep
+   (the global rule caps every animation) and leaves the shapes. */
+:root {
+  --skeleton: color-mix(in srgb, var(--ink) 7%, transparent);
+  --skeleton-hi: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+@keyframes skeleton-sweep {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+.skeleton-line,
+.screen--loading :is(#today-kcal, .today-stat-value, .today-stat-caption, #week-range, #week-total, .summary-total + .muted, #water-total) {
+  background: linear-gradient(90deg, var(--skeleton) 25%, var(--skeleton-hi) 50%, var(--skeleton) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-sweep 1.6s ease-in-out infinite;
+  border-radius: 6px;
+}
+/* Figures that haven't arrived: the box they'll sit in, not a zero. */
+.screen--loading :is(#today-kcal, .today-stat-value, .today-stat-caption, #week-range, #week-total, .summary-total + .muted, #water-total) {
+  color: transparent !important;
+  user-select: none;
+}
+.screen--loading #week-range {
+  min-width: 9em;
+}
+.screen--loading .summary-total + .muted {
+  display: inline-block;
+  min-width: 16em;
+}
+.screen--loading .today-stat-caption {
+  min-width: 5.5em;
+}
+.screen--loading .today-ring-fill {
+  opacity: 0;
+}
+.screen--loading .burn-settings-btn {
+  visibility: hidden;
+}
+/* The banner's own figures sit on green, so their placeholder is white. */
+.screen--loading .banner #week-range {
+  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.16) 25%, rgba(255, 255, 255, 0.26) 50%, rgba(255, 255, 255, 0.16) 75%);
+}
+
+.skeleton-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 15px 16px;
+  position: relative;
+}
+.skeleton-row + .skeleton-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  height: 1px;
+  background: var(--hairline);
+}
+.skeleton-line {
+  display: block;
+  height: 12px;
+}
+.skeleton-line--title {
+  width: 58%;
+}
+.skeleton-line--meta {
+  width: 34%;
+  height: 10px;
+}
+.skeleton-row:nth-child(3n+2) .skeleton-line--title { width: 44%; }
+.skeleton-row:nth-child(3n) .skeleton-line--title { width: 66%; }
+
+/* A day of the week: label, bar, figure — the real row's three columns. */
+.skeleton-row--bar {
+  display: grid;
+  grid-template-columns: 4.6rem minmax(0, 1fr) 5.2rem;
+  align-items: center;
+  column-gap: 12px;
+  padding: 9px 8px;
+}
+.skeleton-row--bar + .skeleton-row--bar::before {
+  display: none;
+}
+.skeleton-row--bar .skeleton-line {
+  height: 10px;
+}
+.skeleton-row--bar .skeleton-line:last-child {
+  width: 70%;
+  justify-self: end;
+}
+.skeleton-line--bar {
+  height: 8px !important;
+  border-radius: 999px;
+}
+
+/* The week's diary has no card of its own until a day group gives it one, so
+   its placeholder rows bring their own. */
+#entry-list > .skeleton-row:first-child {
+  margin-top: 6px;
+}
+#entry-list:has(> .skeleton-row) {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+#entry-list:has(> .skeleton-row) > .skeleton-row:first-child {
+  margin-top: 0;
+}
+
+/* Held back until /api/plan has answered — see loadPlan. */
+.plan-pending :is(.photo-field, #measurement-toggle, #open-review-btn, #progress-photos-card .photo-label) {
+  display: none !important;
+}
+
+.screen--loading #today-kcal {
+  display: inline-block;
+  min-width: 2.4em;
+}
+.screen--loading .today-stat-value {
+  display: inline-block;
+  min-width: 3.4em;
+}
+.screen--loading #week-total {
+  display: inline-block;
+  min-width: 2.6em;
+}
+
+/* My week's sections: air between the exercise list and the diary heading,
+   so "Food diary" reads as the start of its own section. */
+#exercise-section {
+  margin-bottom: 22px;
+}
+
+/* The plan, in Settings: the same surface as the sections under it rather
+   than an outline on the page. */
+#settings-screen .plan-card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
+  padding: 16px;
+  margin-bottom: 0;
+}
+
+/* Inside the app, a link styled as a button is the same soft green pill as
+   the small buttons beside it ("Export PDF" next to "Share week"), not an
+   outlined box. The 404 page shares the base rule and keeps it. */
+:where(body:has(#app-shell)) .button-link {
+  border: 0;
+  border-radius: 999px;
+  background: var(--action-soft);
+}
+@media (hover: hover) {
+  :where(body:has(#app-shell)) .button-link:hover {
+    background: var(--action-soft-hover);
+  }
+}
+
+/* The browser's own "Choose File" button was the last grey system control
+   on the screen. Same pill as the buttons around it. */
+:where(body:has(#app-shell)) input[type="file"]::file-selector-button {
+  margin-right: 10px;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--action-soft);
+  color: var(--action-ink);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+:where(body:has(#app-shell)) input[type="file"] {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* The one email field in the app (recovery email, in Settings) was still
+   the browser's outlined box. Scoped to the app, because the landing page
+   styles its own email field and shares this sheet. */
+:where(body:has(#app-shell)) input[type="email"] {
+  width: 100%;
+  font-size: 1rem;
+  padding: 11px 14px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-field);
+  font-family: inherit;
+  margin-bottom: 12px;
+  background: var(--field);
+  color: var(--ink);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), background-color 0.15s var(--ease);
+}
+
+@media (min-width: 1024px) {
+  #settings-screen .settings-section-head {
+    padding: 14px 20px;
+  }
+  #settings-screen .settings-section-body {
+    padding: 2px 20px 20px;
+  }
 }

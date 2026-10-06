@@ -28,7 +28,94 @@ const ICONS = {
   note: icon('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z"/><path d="M14 3v6h6"/>'),
   chevronDown: icon('<polyline points="6 9 12 15 18 9"/>'),
   chevronUp: icon('<polyline points="18 15 12 9 6 15"/>'),
+  utensils: icon('<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>'),
+  heartPulse: icon('<path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/><path d="M3.2 12H9l.5-1 2 4.5 2-7 1.5 3.5h5.3"/>'),
+  bookmark: icon('<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z"/>'),
+  lock: icon('<rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>'),
 };
+
+/**
+ * An empty list, said as a small composed block — an icon in a well, a line
+ * saying what isn't there, and a line saying how it gets there — rather than
+ * a lone grey sentence where the content would be.
+ */
+function emptyState(iconSvg, title, body) {
+  const wrap = document.createElement("div");
+  wrap.className = "empty-block";
+  const mark = document.createElement("span");
+  mark.className = "empty-block-icon";
+  mark.setAttribute("aria-hidden", "true");
+  mark.innerHTML = iconSvg;
+  const heading = document.createElement("p");
+  heading.className = "empty-block-title";
+  heading.textContent = title;
+  wrap.append(mark, heading);
+  if (body) {
+    const text = document.createElement("p");
+    text.className = "empty-block-body";
+    text.textContent = body;
+    wrap.appendChild(text);
+  }
+  return wrap;
+}
+
+/**
+ * First-load placeholders.
+ *
+ * Before a screen's data arrives it used to show what an empty account
+ * looks like — "Nothing logged yet this week", "0 kcal over 0 days", a ring
+ * drawn full — and then swap it for the real thing a moment later. That is
+ * the screen telling you something false and then correcting itself. A
+ * skeleton says "coming" instead: the shape of the rows, no claims.
+ *
+ * Only the first load of each screen. Stepping between days or weeks keeps
+ * the last numbers on screen until the next ones land, which reads as the
+ * same screen updating rather than a new one loading.
+ */
+function skeletonRows(count, variant = "") {
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < count; i++) {
+    const row = document.createElement("div");
+    row.className = variant ? `skeleton-row skeleton-row--${variant}` : "skeleton-row";
+    row.setAttribute("aria-hidden", "true");
+    row.innerHTML = variant === "bar"
+      ? '<span class="skeleton-line"></span><span class="skeleton-line skeleton-line--bar"></span><span class="skeleton-line"></span>'
+      : '<span class="skeleton-line skeleton-line--title"></span><span class="skeleton-line skeleton-line--meta"></span>';
+    frag.appendChild(row);
+  }
+  return frag;
+}
+
+function clearSkeletons(root) {
+  for (const row of root?.querySelectorAll(".skeleton-row") ?? []) row.remove();
+}
+
+/** A screen's first load is over, whether it worked or not. */
+function settleFirstLoad(screen) {
+  if (!screen?.classList.contains("screen--loading")) return;
+  screen.classList.remove("screen--loading");
+  screen.removeAttribute("aria-busy");
+  clearSkeletons(screen);
+}
+
+for (const [screenId, lists] of [
+  ["today-screen", [["today-entry-list", 3]]],
+  ["app-shell", [["daily-totals", 7, "bar"], ["exercise-list", 1], ["entry-list", 3]]],
+]) {
+  const screen = document.getElementById(screenId);
+  screen?.classList.add("screen--loading");
+  screen?.setAttribute("aria-busy", "true");
+  for (const [listId, count, variant] of lists) {
+    document.getElementById(listId)?.append(skeletonRows(count, variant));
+  }
+}
+// Controls a plan can withhold stay out of sight until the plan is known, so
+// a free account doesn't watch "Take a photo" appear and then vanish.
+document.documentElement.classList.add("plan-pending");
+
+// Food has no screen-wide figures to hold back, only its two lists.
+document.getElementById("food-all-list")?.append(skeletonRows(4));
+document.getElementById("meal-list")?.append(skeletonRows(1));
 
 const authScreen = document.getElementById("auth-screen");
 const appShell = document.getElementById("app-shell");
@@ -40,6 +127,8 @@ const authPassword = document.getElementById("auth-password");
 const authSubmit = document.getElementById("auth-submit");
 const authError = document.getElementById("auth-error");
 const authToggleText = document.getElementById("auth-toggle-text");
+const authHeading = document.getElementById("auth-heading");
+const authSubheading = document.getElementById("auth-subheading");
 const authToggleBtn = document.getElementById("auth-toggle-btn");
 const googleSigninBtn = document.getElementById("google-signin-btn");
 const authDivider = document.getElementById("auth-divider");
@@ -143,6 +232,7 @@ const statAvgWeeklyChangeCaption = document.getElementById("stat-avg-weekly-chan
 const statAvgWorkouts = document.getElementById("stat-avg-workouts");
 const statAvgRecovery = document.getElementById("stat-avg-recovery");
 const statAvgSleep = document.getElementById("stat-avg-sleep");
+const averagesCard = document.getElementById("averages-card");
 const averagesWindow = document.getElementById("averages-window");
 const streakCard = document.getElementById("streak-card");
 const streakCurrent = document.getElementById("streak-current");
@@ -338,6 +428,25 @@ photoCameraInput?.addEventListener("change", () => {
   showChosenPhoto();
 });
 
+/**
+ * The week's title in the header: the dates, and under them which week it is
+ * relative to this one — the dates alone don't say whether you are looking at
+ * last week or the one before it.
+ */
+function renderWeekRange(rangeLabel) {
+  weekRangeEl.textContent = "";
+  const main = document.createElement("span");
+  main.className = "week-range-main";
+  main.textContent = rangeLabel;
+  const sub = document.createElement("span");
+  sub.className = "week-range-sub";
+  sub.textContent = weeksAgo === 0 ? "This week" : weeksAgo === 1 ? "Last week" : `${weeksAgo} weeks ago`;
+  weekRangeEl.append(main, sub);
+  // The form guide's own heading said "This week" whichever week it showed.
+  if (formGuideTitleEl) formGuideTitleEl.textContent = weeksAgo === 0 ? "This week" : "That week";
+}
+const formGuideTitleEl = document.querySelector("#form-guide .form-guide-title");
+
 // Which way the last arrow went, for loadWeek() to slide the new week in from
 // that side once it has drawn it. See playStep().
 let pendingWeekStep = null;
@@ -369,15 +478,23 @@ function refreshCurrentView() {
 }
 
 async function loadWeek() {
+  try {
+    await loadWeekData();
+  } finally {
+    settleFirstLoad(appShell);
+  }
+}
+
+async function loadWeekData() {
   const res = await fetch(`/api/match-weeks/current?weeksAgo=${weeksAgo}`);
   const week = await res.json();
 
   // Server-formatted in the app's timezone — see weekRangeLabel in
   // routes/matchWeeks.ts for why the browser can't be trusted to do this.
-  weekRangeEl.textContent = week.rangeLabel;
+  renderWeekRange(week.rangeLabel);
   weekNextBtn.disabled = weeksAgo === 0;
   weekTotalEl.textContent = (week.totalKcal ?? 0).toLocaleString();
-  weekAvgEl.textContent = week.dailyAverage;
+  weekAvgEl.textContent = Number.isFinite(Number(week.dailyAverage)) ? Number(week.dailyAverage).toLocaleString() : week.dailyAverage;
   daysLoggedEl.textContent = week.daysLogged;
   daysLoggedWordEl.textContent = Number(week.daysLogged) === 1 ? "day" : "days";
   exportPdfEl.href = `/api/match-weeks/current/report.pdf?weeksAgo=${weeksAgo}`;
@@ -644,14 +761,14 @@ teamSwitchBtn.addEventListener("click", () => {
   loadTeamTable();
 });
 
-teamLeaveBtn.addEventListener("click", () => {
+teamLeaveBtn.addEventListener("click", async () => {
   const team = myTeams.find((t) => t.id === currentTeamId);
   if (!team) return;
   const last = team.memberCount === 1;
-  const question = last
-    ? `Delete ${team.name}? You're the only one in it, so it goes for good.`
-    : `Leave ${team.name}?`;
-  if (!window.confirm(question)) return;
+  const ok = await appConfirm(last
+    ? { title: `Delete ${team.name}?`, body: "You're the only one in it, so it goes for good.", confirmLabel: "Delete team", danger: true }
+    : { title: `Leave ${team.name}?`, body: "You can rejoin with the team's code.", confirmLabel: "Leave", danger: true });
+  if (!ok) return;
 
   teamRequest(
     `/api/teams/${team.id}/members/${currentUser.id}`,
@@ -750,12 +867,43 @@ function renderFormGuide(days, whoopDailyBurn) {
   formGuideEl.hidden = false;
 }
 
+/**
+ * The week, a day to a row, each with a bar.
+ *
+ * A column of seven figures has to be read; seven bars against the same
+ * scale are seen. The tick in each track is what that day was measured
+ * against — WHOOP's burn where there is one, otherwise the target or the
+ * estimate — so a bar that runs past its tick is a day over, without the
+ * row having to say so in words.
+ */
+let dailyTotalsWeekKey = null;
+
 function renderDailyTotals(days, whoopDailyBurn) {
   const burnByDate = new Map((whoopDailyBurn ?? []).map((b) => [b.date, b]));
+  const reference = dailyReference();
   let weekNet = 0;
   let weekNetHasData = false;
 
+  const measured = (day) => {
+    const burn = burnByDate.get(day.date);
+    return !burn?.future && burn?.kcalWeighted != null ? burn.kcalWeighted : null;
+  };
+  // One scale for the whole week, with a little headroom so the longest bar
+  // and the furthest tick never sit hard against the end of the track.
+  const scale = Math.max(
+    1,
+    ...days.map((d) => d.kcal ?? 0),
+    ...days.map((d) => measured(d) ?? 0),
+    reference?.kcal ?? 0,
+  ) * 1.08;
+
   dailyTotalsEl.innerHTML = "";
+  // The bars grow in when a week arrives, not every time the same week is
+  // redrawn after an edit — that would be the whole chart replaying to say
+  // one row moved.
+  const weekKey = days[0]?.date ?? "";
+  dailyTotalsEl.classList.toggle("day-totals--still", weekKey === dailyTotalsWeekKey);
+  dailyTotalsWeekKey = weekKey;
   const todayKey = todayDateKey();
   for (const day of days) {
     const row = document.createElement("div");
@@ -767,42 +915,67 @@ function renderDailyTotals(days, whoopDailyBurn) {
 
     const label = document.createElement("span");
     label.className = "day-total-label";
-    label.textContent = day.isToday ? `Today · ${day.label}` : day.label;
+    label.textContent = day.isToday ? "Today" : day.label;
+    if (day.isToday) label.title = day.label;
 
     const burn = burnByDate.get(day.date);
-    // Future days only carry a trailing-average projection (folded into the
-    // weekly total), not a real measurement — showing it here would read as
-    // "this already happened," so it's hidden until the day arrives.
-    if (!burn?.future && burn?.kcalWeighted != null) {
-      const whoopLine = document.createElement("span");
-      whoopLine.className = "day-total-whoop";
-      whoopLine.innerHTML = `${ICONS.flame} ${burn.kcalWeighted.toLocaleString()} kcal${burn.estimated ? " (est.)" : ""} WHOOP`;
-      label.appendChild(document.createElement("br"));
-      label.appendChild(whoopLine);
+    const measuredBurn = measured(day);
+    const against = measuredBurn ?? reference?.kcal ?? null;
+
+    const track = document.createElement("span");
+    track.className = "day-total-track";
+    track.setAttribute("aria-hidden", "true");
+    if (!future && day.kcal > 0) {
+      const fill = document.createElement("span");
+      fill.className = "day-total-fill";
+      // Over is settled the moment it happens; under isn't until the day is
+      // done — the same rule the form guide uses, so the two never disagree.
+      if (against != null && day.kcal > against) fill.classList.add("day-total-fill--over");
+      fill.style.setProperty("--fill", String(Math.min(1, day.kcal / scale)));
+      track.appendChild(fill);
+    }
+    if (!future && against != null) {
+      const tick = document.createElement("span");
+      tick.className = "day-total-tick";
+      tick.style.setProperty("--at", String(Math.min(1, against / scale)));
+      track.appendChild(tick);
     }
 
     const kcal = document.createElement("span");
     kcal.className = "day-total-kcal";
-    const figure = `${(day.kcal ?? 0).toLocaleString()} kcal`;
-    kcal.textContent = future ? "—" : day.pending ? `${figure} + pending` : figure;
-
-    // Net = eaten minus burned for that specific day — positive means a
-    // surplus (ate more than burned), negative a deficit. Only shown once
-    // a real or projected burn figure exists for the day.
-    if (!burn?.future && burn?.kcalWeighted != null) {
-      const net = day.kcal - burn.kcalWeighted;
-      weekNet += net;
-      weekNetHasData = true;
-
-      const netLine = document.createElement("span");
-      netLine.className = net > 0 ? "day-total-net day-total-net--over" : net < 0 ? "day-total-net day-total-net--under" : "day-total-net";
-      const sign = net > 0 ? "+" : net < 0 ? "−" : "";
-      netLine.textContent = `${sign}${Math.abs(net).toLocaleString()} kcal net`;
-      kcal.appendChild(document.createElement("br"));
-      kcal.appendChild(netLine);
+    if (!future) {
+      kcal.textContent = (day.kcal ?? 0).toLocaleString();
+      const unit = document.createElement("span");
+      unit.className = "day-total-unit";
+      unit.textContent = " kcal";
+      kcal.appendChild(unit);
     }
 
-    row.append(label, kcal);
+    row.append(label, track, kcal);
+
+    // Future days only carry a trailing-average projection (folded into the
+    // weekly total), not a real measurement — showing it here would read as
+    // "this already happened," so it's hidden until the day arrives.
+    const meta = [];
+    if (day.pending) meta.push('<span class="day-total-pending">+ pending estimate</span>');
+    if (measuredBurn != null) {
+      meta.push(`<span class="day-total-whoop">${ICONS.flame} ${measuredBurn.toLocaleString()}${burn.estimated ? " (est.)" : ""} burned</span>`);
+      // Net = eaten minus burned for that specific day — positive means a
+      // surplus (ate more than burned), negative a deficit.
+      const net = day.kcal - measuredBurn;
+      weekNet += net;
+      weekNetHasData = true;
+      const sign = net > 0 ? "+" : net < 0 ? "−" : "";
+      const tone = net > 0 ? " day-total-net--over" : net < 0 ? " day-total-net--under" : "";
+      meta.push(`<span class="day-total-net${tone}">${sign}${Math.abs(net).toLocaleString()} net</span>`);
+    }
+    if (meta.length > 0) {
+      const line = document.createElement("span");
+      line.className = "day-total-meta";
+      line.innerHTML = meta.join("");
+      row.appendChild(line);
+    }
+
     dailyTotalsEl.appendChild(row);
   }
 
@@ -856,7 +1029,7 @@ function renderEntries(entries) {
 
     const headingKcal = document.createElement("span");
     headingKcal.className = "day-heading-kcal";
-    headingKcal.textContent = dayPending ? `${dayKcal} kcal + pending` : `${dayKcal} kcal`;
+    headingKcal.textContent = dayPending ? `${dayKcal.toLocaleString()} kcal + pending` : `${dayKcal.toLocaleString()} kcal`;
 
     // A note belongs to the calendar day, so it hangs off the day heading
     // rather than off any one meal. The button carries the note's presence as
@@ -881,7 +1054,12 @@ function renderEntries(entries) {
     group.appendChild(noteText);
     applyDayNote(group, dayKeyIso);
 
-    appendEntries(dayEntries, group);
+    // The day's rows sit in one card of their own, under the heading, rather
+    // than as a stack of separate cards — they are one list.
+    const rows = document.createElement("div");
+    rows.className = "entry-rows";
+    appendEntries(dayEntries, rows);
+    group.appendChild(rows);
 
     entryListEl.appendChild(group);
   }
@@ -1463,16 +1641,21 @@ function enterEditMode(row, entry) {
  *
  * The × sits between "Edit" and "+" in a row of three small buttons on a
  * phone, and a mis-tap threw away a logged meal with no undo and no way to
- * find out what it had been. Same window.confirm the other destructive
- * actions in this app use — leaving the team, deleting a saved meal, wiping
- * an account — rather than a fifth way of asking the same question.
+ * find out what it had been. The same dialog the other destructive actions
+ * in this app use — leaving the team, deleting a saved meal, wiping an
+ * account — rather than a fifth way of asking the same question.
  *
  * Named, because "Delete this entry?" tells you nothing about which one your
  * thumb actually landed on.
  */
 async function deleteEntry(entry) {
-  const name = entry.label ? `"${entry.label}"` : "this entry";
-  if (!window.confirm(`Delete ${name}? There's no undo.`)) return;
+  const ok = await appConfirm({
+    title: entry.label ? `Delete “${entry.label}”?` : "Delete this entry?",
+    body: "It comes off the day's total. There's no undo.",
+    confirmLabel: "Delete",
+    danger: true,
+  });
+  if (!ok) return;
   const folding = collapseRows(document.querySelectorAll(`.entry-row[data-id="${entry.id}"]`));
   await fetch(`/api/entries/${entry.id}`, { method: "DELETE" });
   await folding;
@@ -1636,6 +1819,22 @@ function applyPlanGates(plan) {
   const allowed = (name) => plan[name] !== false;
 
   const hide = (el, ok) => { if (el) el.hidden = !ok; };
+  const gate = (el, ok) => {
+    if (!el) return;
+    el.hidden = !ok;
+    let note = el.nextElementSibling?.classList.contains("plan-gate") ? el.nextElementSibling : null;
+    if (ok) {
+      note?.remove();
+      return;
+    }
+    if (note) return;
+    note = document.createElement("button");
+    note.type = "button";
+    note.className = "plan-gate";
+    note.innerHTML = `${ICONS.lock}<span>See plans</span>`;
+    note.addEventListener("click", () => openSettingsSection(planCardEl));
+    el.after(note);
+  };
 
   // Logging by photo. The user's own log-method preference also hides this
   // (see applyLogMethods), so read both rather than fighting over one flag.
@@ -1651,9 +1850,11 @@ function applyPlanGates(plan) {
   const ketoRow = ketoOnBtn?.closest(".settings-field");
   hide(ketoRow, allowed("keto"));
 
-  // Records: the history stays, the "add" goes.
-  hide(measurementToggle, allowed("measurements"));
-  hide(progressPhotoInput?.closest(".photo-label"), allowed("progressPhotos"));
+  // Records: the history stays, the "add" goes — and in its place a way to
+  // the plans, so a card that can't take a new record says why rather than
+  // just being a tip with nothing to do.
+  gate(measurementToggle, allowed("measurements"));
+  gate(progressPhotoInput?.closest(".photo-label"), allowed("progressPhotos"));
 
   // Purely computed, so nothing of the user's is behind it.
   hide(document.getElementById("eating-window-card"), allowed("eatingWindow"));
@@ -1673,6 +1874,10 @@ async function loadPlan() {
     planCardEl.hidden = true;
     planAllowanceEl.hidden = true;
   }
+  // Until now the controls a plan can hold back were held back for everyone
+  // (see "plan-pending" in style.css); from here applyPlanGates has the say,
+  // or, if the plan couldn't be read, nothing is held back at all.
+  document.documentElement.classList.remove("plan-pending");
 }
 
 function renderPlan() {
@@ -2895,8 +3100,14 @@ function renderPlanGrid(data) {
   reset.className = "ghost-sm admin-plan-reset";
   reset.textContent = "Put every tier back to the defaults";
   reset.hidden = !edited;
-  reset.addEventListener("click", () => {
-    if (!window.confirm("Undo every tier change and go back to what the app ships with?")) return;
+  reset.addEventListener("click", async () => {
+    const ok = await appConfirm({
+      title: "Put every tier back?",
+      body: "Every change made here is undone, and each plan goes back to what the app ships with.",
+      confirmLabel: "Reset tiers",
+      danger: true,
+    });
+    if (!ok) return;
     savePlanChange("/reset", {});
   });
   adminPlansEl.appendChild(reset);
@@ -3124,8 +3335,7 @@ function fillAdFor(tab) {
 
 for (const button of document.querySelectorAll(".ad-remove")) {
   button.addEventListener("click", () => {
-    navTo("settings");
-    planCardEl.scrollIntoView({ behavior: "smooth", block: "center" });
+    openSettingsSection(planCardEl);
   });
 }
 
@@ -3401,8 +3611,19 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
+/** The sign-in card's own heading, for whichever of its jobs it's doing. */
+function setAuthHeading(title, sub) {
+  authHeading.textContent = title;
+  authSubheading.textContent = sub ?? "";
+  authSubheading.hidden = !sub;
+}
+
 function setAuthMode(mode) {
   authMode = mode;
+  setAuthHeading(
+    mode === "login" ? "Welcome back" : "Create your account",
+    mode === "login" ? "Log in to your diary." : "Start a diary. It's free.",
+  );
   authSubmit.textContent = mode === "login" ? "Log in" : "Sign up";
   authToggleText.textContent = mode === "login" ? "Don't have an account?" : "Already have an account?";
   authToggleBtn.textContent = mode === "login" ? "Sign up" : "Log in";
@@ -3728,6 +3949,26 @@ function buildSettingsNav() {
   // empty right-hand side is just a hole. A phone opens on the list, because
   // the list is the thing you came to choose from.
   selectSettingsPane(window.matchMedia("(min-width: 1024px)").matches ? 0 : null);
+}
+
+/**
+ * Go to Settings with the section holding `el` open and on screen.
+ *
+ * For buttons elsewhere in the app that stand in for a setting — "Connect
+ * WHOOP" on the Recovery tab — so they land on the thing itself rather than
+ * on the top of a list you then have to search.
+ */
+function openSettingsSection(el) {
+  navTo("settings");
+  buildSettingsNav();
+  const pane = el.closest(".settings-pane");
+  if (pane) selectSettingsPane(Number(pane.dataset.pane));
+  const section = el.closest("[data-settings-section]");
+  const head = section?.querySelector(":scope > .settings-section-head");
+  if (head && head.getAttribute("aria-expanded") !== "true") head.click();
+  requestAnimationFrame(() => {
+    (section ?? el).scrollIntoView({ block: "start", behavior: prefersLessMotion() ? "auto" : "smooth" });
+  });
 }
 
 /** Show one settings group, or null for the list of them. */
@@ -4061,6 +4302,7 @@ async function checkAuth() {
     // Same clean sweep as signing out: whatever was on screen belongs to a
     // session that is about to be replaced.
     showAuthScreen();
+    setAuthHeading("Set a new password");
     authForm.hidden = true;
     authToggleBtn.parentElement.hidden = true;
     authForgotBtn.parentElement.hidden = true;
@@ -4308,7 +4550,9 @@ function renderBudgetWidget(week) {
   }
   budgetWidget.hidden = false;
 
-  budgetSourceLabel.textContent = sourceLabel ? `· ${sourceLabel}` : "";
+  budgetSourceLabel.textContent = sourceLabel
+    ? `vs ${sourceLabel === "WHOOP" ? "WHOOP burn" : sourceLabel === "estimated" ? "estimated burn" : sourceLabel}`
+    : "";
   balanceInTotal.textContent = caloriesIn.toLocaleString();
   balanceOutTotal.textContent = caloriesOut.toLocaleString();
   balanceOutCaption.textContent = comparedAgainst === "target" ? "target so far" : "kcal out";
@@ -5469,6 +5713,7 @@ async function loadFoods(query) {
     const foods = await res.json();
     renderFoodLibrary(foods);
   } catch {
+    clearSkeletons(foodAllList);
     foodLibraryError.textContent = "Couldn't load your foods — please try again.";
     foodLibraryError.hidden = false;
   }
@@ -5557,7 +5802,7 @@ function renderFoodRow(food) {
 
   const starBtn = document.createElement("button");
   starBtn.type = "button";
-  starBtn.className = "food-star";
+  starBtn.className = food.favorite ? "food-star food-star--on" : "food-star";
   starBtn.innerHTML = food.favorite ? ICONS.starFilled : ICONS.starOutline;
   starBtn.setAttribute("aria-label", food.favorite ? "Remove from favourites" : "Add to favourites");
   starBtn.addEventListener("click", () => toggleFavorite(food));
@@ -6044,10 +6289,40 @@ async function loadWhoopRecent() {
   }
 }
 
+/**
+ * The Recovery tab with nothing in it yet.
+ *
+ * Says what would be here and gives the one button that gets it there,
+ * rather than a sentence telling you to go and find a setting. Connected but
+ * empty is a different state — the first sync hasn't landed — and asking
+ * somebody to connect what they already have would send them in a circle.
+ */
+function renderWhoopPrompt(connected) {
+  const block = connected
+    ? emptyState(
+        ICONS.heartPulse,
+        "Waiting on the first sync",
+        "WHOOP is connected. Recovery and sleep show up here once the first sync comes through.",
+      )
+    : emptyState(
+        ICONS.heartPulse,
+        "Recovery and sleep live here",
+        "Connect WHOOP and each morning's recovery and last night's sleep sit beside what you ate.",
+      );
+  const action = document.createElement("button");
+  action.type = "button";
+  action.className = "ghost-sm empty-block-action";
+  action.textContent = connected ? "Tracker settings" : "Connect WHOOP";
+  action.addEventListener("click", () => openSettingsSection(whoopConnectBtn));
+  block.appendChild(action);
+  whoopStatsPrompt.replaceChildren(block);
+}
+
 function renderWhoopStats(data) {
   const days = data.connected ? (data.days ?? []) : [];
   if (days.length === 0) {
     whoopStatsCard.hidden = true;
+    renderWhoopPrompt(Boolean(data.connected));
     whoopStatsPrompt.hidden = false;
     return;
   }
@@ -6091,12 +6366,16 @@ async function loadStatsSummary() {
 }
 
 /**
- * The Averages card. Every figure is either a real number or an em dash —
- * nothing is filled in with a zero that would read as a measurement.
+ * The Averages card. Every figure is a real number — nothing is filled in
+ * with a zero that would read as a measurement. A figure there's no data for
+ * takes its tile with it: four dashes in a grid read as a broken screen, not
+ * as "connect a tracker for this", and the Recovery tab already says that.
  */
 function renderAverages(averages, avgKcalPerDay) {
   const set = (el, value) => {
     el.textContent = value ?? "—";
+    const cell = el.closest(".balance-cell");
+    if (cell) cell.hidden = value === null || value === undefined;
   };
   const num = (value) => (value === null || value === undefined ? null : value.toLocaleString());
 
@@ -6150,6 +6429,12 @@ function renderAverages(averages, avgKcalPerDay) {
   set(statAvgWorkouts, averages.workoutsPerWeek === null || averages.workoutsPerWeek === undefined ? null : String(averages.workoutsPerWeek));
   set(statAvgRecovery, averages.recovery === null || averages.recovery === undefined ? null : `${averages.recovery}%`);
   set(statAvgSleep, averages.sleepMinutes === null || averages.sleepMinutes === undefined ? null : formatSleep(averages.sleepMinutes));
+
+  // A grid with every tile gone goes too, and the card with it when there's
+  // nothing to average yet.
+  const grids = [...averagesCard.querySelectorAll(".balance-grid")];
+  for (const grid of grids) grid.hidden = [...grid.children].every((cell) => cell.hidden);
+  averagesCard.hidden = grids.every((grid) => grid.hidden);
 }
 
 function renderStatsSummary(data) {
@@ -6329,6 +6614,150 @@ function setModalOpen(modal, open) {
     window.scrollTo(0, scrollLockY);
   }
 }
+
+// ── Dialogs ─────────────────────────────────────────────────────────────────
+//
+// Every question the app asks — delete this? leave the team? how many
+// portions? — used to be the browser's own confirm() or prompt(). On an
+// installed iPhone app those are grey system alerts headed with the site's
+// address, with buttons that say OK; on a desktop they freeze the whole tab.
+// They were the least finished-looking thing in the app, at exactly the
+// moments it was asking somebody to be careful.
+//
+// This is one dialog, built once and reused, in the same language as the
+// app's own sheets: a title that names the thing, a line of consequence, and
+// buttons that say what they do ("Delete", not "OK"). It returns a promise, so
+// a call site reads the way it did with confirm():
+//
+//   if (!(await appConfirm({ title: "Delete it?", confirmLabel: "Delete", danger: true }))) return;
+//
+// Escape, the backdrop and Cancel all mean no. Focus goes into the dialog and
+// comes back to whatever opened it, and Tab stays inside while it is open.
+const appDialogEl = document.createElement("div");
+appDialogEl.className = "app-dialog";
+appDialogEl.hidden = true;
+appDialogEl.innerHTML = `
+  <div class="app-dialog-panel" role="alertdialog" aria-modal="true" aria-labelledby="app-dialog-title" aria-describedby="app-dialog-body">
+    <h2 id="app-dialog-title" class="app-dialog-title"></h2>
+    <p id="app-dialog-body" class="app-dialog-body"></p>
+    <input id="app-dialog-input" class="app-dialog-input" type="text" autocomplete="off" hidden />
+    <div class="app-dialog-actions">
+      <button type="button" class="app-dialog-confirm"></button>
+      <button type="button" class="ghost app-dialog-cancel"></button>
+    </div>
+  </div>`;
+document.body.appendChild(appDialogEl);
+const appDialogTitle = appDialogEl.querySelector(".app-dialog-title");
+const appDialogBody = appDialogEl.querySelector(".app-dialog-body");
+const appDialogInput = appDialogEl.querySelector(".app-dialog-input");
+const appDialogConfirm = appDialogEl.querySelector(".app-dialog-confirm");
+const appDialogCancel = appDialogEl.querySelector(".app-dialog-cancel");
+let appDialogSettle = null;
+let appDialogReturnFocus = null;
+
+function closeAppDialog(confirmed) {
+  if (!appDialogSettle) return;
+  const settle = appDialogSettle;
+  appDialogSettle = null;
+  const value = appDialogInput.hidden ? null : appDialogInput.value;
+  setModalOpen(appDialogEl, false);
+  if (appDialogReturnFocus && typeof appDialogReturnFocus.focus === "function" && appDialogReturnFocus.isConnected) {
+    appDialogReturnFocus.focus({ preventScroll: true });
+  }
+  appDialogReturnFocus = null;
+  settle({ confirmed, value });
+}
+
+/**
+ * Opens the dialog. Resolves to { confirmed, value } — value is the text
+ * typed, when there is a field. A second call while one is open answers the
+ * first with "no" rather than stacking two dialogs.
+ */
+function openAppDialog({
+  title,
+  body = "",
+  confirmLabel = "OK",
+  cancelLabel = "Cancel",
+  danger = false,
+  input = null,
+}) {
+  if (appDialogSettle) closeAppDialog(false);
+  appDialogReturnFocus = document.activeElement;
+  appDialogTitle.textContent = title;
+  appDialogBody.textContent = body;
+  appDialogBody.hidden = !body;
+  appDialogConfirm.textContent = confirmLabel;
+  appDialogConfirm.classList.toggle("danger-btn", danger);
+  appDialogCancel.textContent = cancelLabel ?? "";
+  appDialogCancel.hidden = cancelLabel === null;
+  appDialogInput.hidden = !input;
+  if (input) {
+    appDialogInput.value = input.value ?? "";
+    appDialogInput.placeholder = input.placeholder ?? "";
+    appDialogInput.inputMode = input.inputMode ?? "text";
+    appDialogInput.readOnly = Boolean(input.readOnly);
+    appDialogInput.setAttribute("aria-label", input.label ?? title);
+  }
+  setModalOpen(appDialogEl, true);
+  haptic(8);
+  return new Promise((resolve) => {
+    appDialogSettle = resolve;
+    requestAnimationFrame(() => {
+      if (input) {
+        appDialogInput.focus();
+        appDialogInput.select();
+      } else if (danger && cancelLabel !== null) {
+        // A stray Enter on a destructive question should be the safe answer.
+        appDialogCancel.focus();
+      } else {
+        appDialogConfirm.focus();
+      }
+    });
+  });
+}
+
+/** confirm(), in the app's own voice. Resolves to true or false. */
+async function appConfirm(options) {
+  const { confirmed } = await openAppDialog(options);
+  return confirmed;
+}
+
+/** prompt(), in the app's own voice. Resolves to the text, or null if cancelled. */
+async function appPrompt({ value = "", placeholder = "", inputMode = "text", label, ...options }) {
+  const { confirmed, value: typed } = await openAppDialog({ ...options, input: { value, placeholder, inputMode, label } });
+  return confirmed ? typed : null;
+}
+
+appDialogConfirm.addEventListener("click", () => closeAppDialog(true));
+appDialogCancel.addEventListener("click", () => closeAppDialog(false));
+appDialogEl.addEventListener("click", (event) => {
+  if (event.target === appDialogEl) closeAppDialog(false);
+});
+appDialogInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    closeAppDialog(true);
+  }
+});
+appDialogEl.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    closeAppDialog(false);
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const focusables = [appDialogInput, appDialogConfirm, appDialogCancel].filter((el) => !el.hidden);
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+});
 
 // ── Jumping to a date ───────────────────────────────────────────────────────
 //
@@ -6869,6 +7298,17 @@ function renderWeeklyBreakdown(data) {
   breakdownCaloriesBody.innerHTML = "";
   breakdownRecoveryBody.innerHTML = "";
 
+  // The weeks before anything was ever logged aren't empty weeks, they're
+  // weeks before you started — a dozen rows of dashes under the real ones.
+  // Each table starts from its own first week with data; a gap after that
+  // stays, stepped back, because a week off is worth seeing.
+  const firstWith = (has) => {
+    const i = weeks.findIndex(has);
+    return i === -1 ? weeks.length : i;
+  };
+  const firstCalories = firstWith((w) => w.avgKcalPerDay !== null || w.workoutCount > 0);
+  const firstRecovery = firstWith((w) => w.avgRecovery !== null || w.avgSleepMinutes !== null);
+
   for (let i = weeks.length - 1; i >= 0; i--) {
     const week = weeks[i];
 
@@ -6891,14 +7331,20 @@ function renderWeeklyBreakdown(data) {
     workouts.textContent = String(week.workoutCount);
     const kcalDetail =
       week.avgKcalPerDay !== null ? `Logged on ${formatDaysLogged(week.daysWithEntries)} of 7 days` : undefined;
-    appendBreakdownRow(breakdownCaloriesBody, week, [kcal, workouts], "calories", kcalDetail);
+    if (i >= firstCalories) {
+      const row = appendBreakdownRow(breakdownCaloriesBody, week, [kcal, workouts], "calories", kcalDetail);
+      if (week.avgKcalPerDay === null && !week.workoutCount) row.classList.add("breakdown-row--empty");
+    }
 
     // ── Recovery ──
     const recovery = document.createElement("td");
     recovery.textContent = week.avgRecovery !== null ? `${week.avgRecovery}%` : "—";
     const sleep = document.createElement("td");
     sleep.textContent = week.avgSleepMinutes !== null ? formatSleep(week.avgSleepMinutes) : "—";
-    appendBreakdownRow(breakdownRecoveryBody, week, [recovery, sleep], "recovery");
+    if (i >= firstRecovery) {
+      const row = appendBreakdownRow(breakdownRecoveryBody, week, [recovery, sleep], "recovery");
+      if (week.avgRecovery === null && week.avgSleepMinutes === null) row.classList.add("breakdown-row--empty");
+    }
   }
 }
 
@@ -6972,6 +7418,7 @@ function appendBreakdownRow(tbody, week, cells, kind, extraDetail) {
       detailCell.innerHTML = '<p class="muted breakdown-detail-loading">Couldn’t load those days.</p>';
     }
   });
+  return row;
 }
 
 /** Which column each table's drill-down shows, and how to render it. */
@@ -7305,8 +7752,14 @@ function renderWeighinRow(entry, prev) {
   delBtn.setAttribute("aria-label", `Delete the weigh-in for ${dateEl.textContent}`);
   // Asked first, like a diary entry: it was a word before, and a word is
   // harder to hit by accident than a cross.
-  delBtn.addEventListener("click", () => {
-    if (!window.confirm(`Delete the weigh-in for ${dateEl.textContent} (${metaEl.textContent.split(" · ")[0]})?`)) return;
+  delBtn.addEventListener("click", async () => {
+    const ok = await appConfirm({
+      title: `Delete the weigh-in for ${dateEl.textContent}?`,
+      body: `${metaEl.textContent.split(" · ")[0]} comes off the trend line.`,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
     deleteWeighIn(entry.date);
   });
 
@@ -7836,7 +8289,14 @@ async function quickLogFood(food) {
 async function logSavedMeal(meal) {
   let servings = 1;
   if (meal.kind === "recipe") {
-    const answer = window.prompt(`How many portions of ${meal.name}?`, "1");
+    const answer = await appPrompt({
+      title: `How many portions of ${meal.name}?`,
+      body: "Halves are fine — 0.5 for half a portion.",
+      value: "1",
+      inputMode: "decimal",
+      label: "Portions",
+      confirmLabel: "Log it",
+    });
     if (answer === null) return null;
     servings = Number(answer);
     if (!Number.isFinite(servings) || servings <= 0) {
@@ -7941,9 +8401,14 @@ function renderMeals(allMeals) {
     // "None saved yet" and "none match" are different facts, and telling
     // somebody mid-search that they have no saved meals — when they have
     // twenty — is the kind of wrong that makes people stop trusting a screen.
-    mealListEl.innerHTML = searching
-      ? '<p class="empty-state">No meals or recipes match that.</p>'
-      : '<p class="empty-state">No saved meals yet — save one to log it in a single tap.</p>';
+    if (searching) mealListEl.innerHTML = '<p class="empty-state">No meals or recipes match that.</p>';
+    else {
+      mealListEl.appendChild(emptyState(
+        ICONS.bookmark,
+        "No saved meals yet",
+        "Save something you have often — a usual breakfast, a batch of chilli — and it logs in one tap.",
+      ));
+    }
     mealListMore.hidden = true;
     return;
   }
@@ -8051,7 +8516,13 @@ function renderMealRow(meal) {
 }
 
 async function deleteMeal(meal) {
-  if (!window.confirm(`Delete "${meal.name}"? Entries already logged from it stay in your diary.`)) return;
+  const ok = await appConfirm({
+    title: `Delete “${meal.name}”?`,
+    body: "Entries already logged from it stay in your diary.",
+    confirmLabel: "Delete meal",
+    danger: true,
+  });
+  if (!ok) return;
   try {
     const res = await fetch(`/api/meals/${meal.id}`, { method: "DELETE" });
     if (!res.ok) throw new Error();
@@ -10649,11 +11120,22 @@ const themeButtons = {
   dark: document.getElementById("theme-dark"),
 };
 
+// The two theme-color metas follow the device's setting by media query. An
+// explicit choice in Settings has to pin both to the same colour, or a phone
+// set to dark with the app set to light shows a dark status bar over a light
+// header.
+const THEME_COLOURS = { light: "#176B3A", dark: "#124F2B" };
+const themeColourMetas = [...document.querySelectorAll('meta[name="theme-color"]')];
+
 function applyTheme(theme) {
   if (theme === "system") {
     delete document.documentElement.dataset.theme;
   } else {
     document.documentElement.dataset.theme = theme;
+  }
+  for (const meta of themeColourMetas) {
+    const own = meta.media.includes("dark") ? THEME_COLOURS.dark : THEME_COLOURS.light;
+    meta.content = theme === "system" ? own : THEME_COLOURS[theme];
   }
   for (const [name, button] of Object.entries(themeButtons)) {
     button.classList.toggle("meal-kind-btn--active", name === theme);
@@ -10912,7 +11394,7 @@ function applyTrackerAwareSettings(trackerConnected) {
       "estimate what you burn until a tracker can measure it.";
     estimateFieldsSummary.textContent = "Burn estimate details";
     estimateFieldsNote.textContent =
-      "Used to estimate what you burn each day. Connect WHOOP in Settings to measure it instead.";
+      "Used to estimate what you burn each day. Connect WHOOP under Fitness tracker to measure it instead.";
     estimateFields.open = true;
   }
 }
@@ -11258,8 +11740,9 @@ function buildUnitSelect(label, current, onChange) {
     const none = document.createElement("option");
     none.value = "";
     // "×" is what an entry with no unit already reads as on its row, so the
-    // option that produces that reads the same.
-    none.textContent = "×  (just a number)";
+    // option that produces that reads the same. Short, because the picker is
+    // half a row wide and "(just a number)" was cut off at "(just a n".
+    none.textContent = "× no unit";
     select.appendChild(none);
 
     for (const unit of suggestUnits(label(), selected ?? custom)) {
@@ -11279,9 +11762,16 @@ function buildUnitSelect(label, current, onChange) {
 
   render(typeof current === "string" && current.trim() ? current.trim().toLowerCase() : null);
 
-  select.addEventListener("change", () => {
+  select.addEventListener("change", async () => {
     if (select.value === CUSTOM_UNIT_VALUE) {
-      const typed = window.prompt("What is one of these? (e.g. wedge, scoop, jar)", custom ?? "");
+      const typed = await appPrompt({
+        title: "What is one of these?",
+        body: "A word for one of them — wedge, scoop, jar.",
+        value: custom ?? "",
+        placeholder: "e.g. scoop",
+        label: "Unit",
+        confirmLabel: "Use it",
+      });
       const clean = typeof typed === "string" ? typed.trim().toLowerCase().slice(0, 20) : "";
       // Cancelled or blank leaves the unit exactly as it was, rather than
       // quietly clearing it because a dialog was dismissed.
@@ -12043,7 +12533,10 @@ function toggleDayNoteEditor(group, dayIso, button) {
   });
 
   editor.append(textarea, saveBtn);
-  group.appendChild(editor);
+  // Under the heading it belongs to, above the day's rows.
+  const rows = group.querySelector(".entry-rows");
+  if (rows) group.insertBefore(editor, rows);
+  else group.appendChild(editor);
   textarea.focus();
 }
 
@@ -12594,8 +13087,14 @@ async function copyShareLink(url) {
   } catch {
     // Clipboard access is refused often enough (an insecure origin, a locked
     // down browser) that failing silently would look like nothing happened.
-    showToast("Couldn't copy — the link is in the address bar");
-    window.prompt("Copy this link", url);
+    await appPrompt({
+      title: "Copy this link",
+      body: "Your browser wouldn't let the app copy it, so here it is to copy yourself. It works for 14 days.",
+      value: url,
+      label: "Link",
+      confirmLabel: "Done",
+      cancelLabel: null,
+    });
   }
 }
 
@@ -12921,7 +13420,13 @@ settingsPasswordSave.addEventListener("click", async () => {
 });
 
 logoutEverywhereBtn.addEventListener("click", async () => {
-  if (!window.confirm("Sign out on every device, including this one?")) return;
+  const ok = await appConfirm({
+    title: "Sign out everywhere?",
+    body: "Every device signed in to this account is signed out, including this one.",
+    confirmLabel: "Sign out everywhere",
+    danger: true,
+  });
+  if (!ok) return;
   await fetch("/api/auth/logout-everywhere", { method: "POST" });
   window.location.reload();
 });
@@ -12941,9 +13446,13 @@ deleteAccountBtn.addEventListener("click", async () => {
     deleteError.hidden = false;
     return;
   }
-  if (!window.confirm("This deletes every entry, weigh-in, measurement and photo. There is no undo. Continue?")) {
-    return;
-  }
+  const ok = await appConfirm({
+    title: "Delete your account?",
+    body: "Every entry, weigh-in, measurement and photo goes with it. There is no undo.",
+    confirmLabel: "Delete everything",
+    danger: true,
+  });
+  if (!ok) return;
 
   try {
     const res = await fetch("/api/auth/me", {
@@ -13075,6 +13584,8 @@ const resetPassword = document.getElementById("reset-password");
 const resetError = document.getElementById("reset-error");
 
 function showForgotForm(show) {
+  if (show) setAuthHeading("Reset your password", "We'll email you a link to set a new one.");
+  else setAuthMode(authMode);
   forgotForm.hidden = !show;
   authForm.hidden = show;
   authForgotBtn.parentElement.hidden = show;
@@ -13734,6 +14245,7 @@ async function loadToday() {
     // Offline or a failed call: the banner already says so, and blanking the
     // screen would throw away the last good numbers for no gain.
   }
+  settleFirstLoad(todayScreen);
   pendingDayStep = null;
   loadQuickAdd();
   loadWhatNow();
@@ -13757,12 +14269,25 @@ function renderDayLabel(label, isToday) {
 
   if (space === -1) {
     day.textContent = label;
+  } else if (isToday === true) {
+    // "Today" over the whole date, weekday included: the header has a second
+    // line now, and the weekday is what "today" is usually checked against.
+    day.textContent = "Today";
+    rest.textContent = ` ${label}`;
   } else {
-    day.textContent = isToday === true ? "Today" : label.slice(0, space);
+    day.textContent = label.slice(0, space);
     rest.textContent = ` ${label.slice(space + 1)}`;
   }
   todayDateEl.append(day, rest);
 }
+
+// Today's date is known before the server answers, so the header says it
+// from the start instead of sitting blank. Same shape as the server's label;
+// the server's own replaces it the moment it lands.
+renderDayLabel(
+  new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(new Date()),
+  true,
+);
 
 function renderToday(data) {
   renderDayLabel(data.label, data.isToday !== false);
@@ -14405,10 +14930,11 @@ function renderTodayEntries(entries) {
   todaySelectToggle.hidden = entries.length === 0;
 
   if (entries.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "muted today-empty";
-    empty.textContent = viewingToday ? "Nothing logged yet today." : "Nothing was logged that day.";
-    todayEntryList.appendChild(empty);
+    todayEntryList.appendChild(emptyState(
+      ICONS.utensils,
+      viewingToday ? "Nothing logged yet today" : "Nothing was logged that day",
+      viewingToday ? "Type what you ate above, or pick from Quick add — it lands here." : "Anything you log now goes on this day.",
+    ));
     return;
   }
   // Reuses the diary's own row, so editing, repeating, deleting and the

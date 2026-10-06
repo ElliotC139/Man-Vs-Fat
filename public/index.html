@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <!-- Kept in step with VERSION in sw.js by hand; it is what a suggestion
          reports as the version somebody was on. -->
-    <meta name="app-version" content="v72" />
+    <meta name="app-version" content="v73" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <!--
       Never index this file.
@@ -36,7 +36,10 @@
     <!-- Lets "Add to Home Screen" open as a standalone full-screen app
          (no address bar/tabs) instead of a browser bookmark. -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#176B3A" />
+    <meta name="theme-color" content="#176B3A" media="(prefers-color-scheme: light)" />
+    <!-- The dark header ground, so the status bar matches it rather than
+         sitting a brighter green above a darker one. -->
+    <meta name="theme-color" content="#124F2B" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="QuicKcals" />
@@ -44,8 +47,18 @@
   </head>
   <body>
     <div id="auth-screen" class="auth-screen" hidden>
+      <div class="auth-hero">
+        <h1 class="auth-title"><img src="/icons/mark-inverse.svg" alt="" class="auth-brand-mark" width="56" height="56" /><span class="brand-word"><span class="brand-word-a">Quic</span><span class="brand-word-k">K</span><span class="brand-word-b">cals</span></span></h1>
+        <p class="auth-tagline">The calorie diary that stops being work.</p>
+      </div>
       <div class="card auth-card">
-        <h1 class="auth-title"><img src="/icons/icon-192.png" alt="" class="auth-brand-mark" width="56" height="56" /><span class="brand-word"><span class="brand-word-a">Quic</span><span class="brand-word-k">K</span><span class="brand-word-b">cals</span></span></h1>
+        <!-- Says which of the three things this card is doing right now —
+             logging in, signing up, or resetting — because the form looks
+             the same for the first two and a button label is easy to miss. -->
+        <div class="auth-head">
+          <h2 id="auth-heading" class="auth-heading">Welcome back</h2>
+          <p id="auth-subheading" class="auth-subheading">Log in to your diary.</p>
+        </div>
         <!-- Shown only when someone arrived on a working invite link. It
              names who invited them, because "someone invited you" reads like
              a trick and a name reads like a friend. -->
@@ -116,6 +129,12 @@
           <div class="today-hero-row">
             <div class="today-ring-wrap">
               <svg class="today-ring" viewBox="0 0 120 120" aria-hidden="true">
+                <defs>
+                  <linearGradient id="today-ring-gradient" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" class="today-ring-stop-a" />
+                    <stop offset="100%" class="today-ring-stop-b" />
+                  </linearGradient>
+                </defs>
                 <circle class="today-ring-track" cx="60" cy="60" r="52" />
                 <circle id="today-ring-fill" class="today-ring-fill" cx="60" cy="60" r="52" />
               </svg>
@@ -213,7 +232,7 @@
         <!-- Only ever present when there is a proposal to answer, so it isn't
              a permanent fixture of the screen. -->
         <section id="target-review-card" class="card target-review-card" hidden>
-          <h2 class="target-review-title">Your target could move</h2>
+          <h2 class="target-review-title"><span class="cell-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg></span>Your target could move</h2>
           <p id="target-review-body" class="target-review-body"></p>
           <div class="target-review-actions">
             <button type="button" id="target-review-accept"></button>
@@ -230,6 +249,7 @@
           aria-expanded="false"
           aria-controls="what-now-body"
           >
+          <span class="cell-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg></span>
           <span class="what-now-toggle-text">
           <span class="what-now-title">What still fits</span>
           <span id="what-now-room" class="what-now-room">Tap to see what's left of today</span>
@@ -398,12 +418,12 @@
           <div id="today-exercise-list"></div>
         </section>
         <section id="today-insights-card" class="card" data-module="today:insights" data-module-name="Today so far" hidden>
-          <div class="section-header"><h2>Today so far</h2></div>
+          <div class="section-header"><h2><span class="cell-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg></span>Today so far</h2></div>
           <ul id="today-insights" class="insights-list"></ul>
         </section>
 
         <section id="today-body-card" class="card" data-module="today:body" data-module-name="Recovery and sleep" hidden>
-          <div class="section-header"><h2>Body</h2></div>
+          <div class="section-header"><h2><span class="cell-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/></svg></span>Body</h2></div>
           <div class="balance-grid" id="today-body-grid">
             <div class="balance-cell" id="today-recovery-cell" hidden>
               <span id="today-recovery" class="balance-number">—</span>
@@ -422,7 +442,7 @@
              add — a row of three identical pills made taking one back look
              like a way of drinking. -->
         <div class="water-head">
-        <span class="water-title">Water today</span>
+        <span class="water-title"><span class="cell-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2.7 6.9 8.1a7.2 7.2 0 1 0 10.2 0Z"/></svg></span>Water today</span>
         <span class="water-total-row">
         <span id="water-total" class="water-total" aria-live="polite">0 ml</span>
         <button type="button" id="water-undo" class="water-btn water-undo" data-water="-250" title="Take back a glass" aria-label="Take back a glass (250 ml)" disabled>
@@ -438,7 +458,7 @@
 
         <section id="today-note-card" class="card today-note-card" data-module="today:note" data-module-name="Note">
           <div class="section-header">
-            <h2>Note</h2>
+            <h2><span class="cell-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"/><path d="M15 3v6h6"/></svg></span>Note</h2>
             <span id="today-note-status" class="muted today-note-status" hidden></span>
           </div>
           <textarea
@@ -642,6 +662,10 @@
     </div>
 
     <div id="onboarding-screen" class="onboarding-screen" hidden>
+      <div class="auth-hero onboarding-hero">
+        <img src="/icons/mark-inverse.svg" alt="" class="auth-brand-mark" width="46" height="46" />
+        <p class="auth-tagline">Let's set up your diary.</p>
+      </div>
       <div class="card onboarding-card">
         <div class="onboarding-progress">
           <span class="onboarding-dot onboarding-dot--active" data-step="0"></span>
@@ -719,7 +743,7 @@
             <li><strong>Connect WHOOP</strong> — replaces the estimated burn with what you actually burned.</li>
             <li><strong>Daily reminder</strong> — a nudge if you haven't logged by a time you choose.</li>
           </ul>
-          <p class="muted">Both live in Settings, behind the cog in the top corner.</p>
+          <p class="muted">Both live in Settings.</p>
         </section>
 
         <div class="result-actions">
@@ -735,7 +759,7 @@
         <button id="review-back" type="button" class="library-back" aria-label="Back">
           <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
-        <h1 class="brand"><img src="/icons/mark-inverse.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Weekly Review</span></h1>
+        <h1 class="brand"><img src="/icons/mark-inverse.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Weekly review</span></h1>
       </header>
 
       <main>
@@ -1604,12 +1628,15 @@
         <button id="food-library-back" type="button" class="library-back" aria-label="Back">
           <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
-        <h1 class="brand"><img src="/icons/mark-inverse.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Food Library</span></h1>
+        <h1 class="brand"><img src="/icons/mark-inverse.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Food library</span></h1>
       </header>
 
       <main>
         <section class="card">
-          <input type="search" id="food-search" placeholder="Search foods or tags…" />
+          <label class="search-field">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+            <input type="search" id="food-search" placeholder="Search foods or tags…" aria-label="Search foods or tags" />
+          </label>
           <p id="food-library-error" class="error" hidden></p>
         </section>
 
@@ -1811,7 +1838,7 @@
           <section id="breakdown-weight-card" class="card" data-module="stats-weight:breakdown" data-module-name="Weekly weight table" data-settings-section hidden>
             <div class="card-collapse-row">
               <button type="button" class="settings-section-head card-collapse-head" aria-expanded="false">
-                <span class="settings-section-title">Weekly Weight</span>
+                <span class="settings-section-title">Weekly weight</span>
                 <span class="settings-section-chevron" aria-hidden="true"></span>
               </button>
               <button type="button" class="info-btn" data-info="weekly-weight" aria-label="What this means"></button>
@@ -1933,7 +1960,7 @@
         <div id="stats-tab-calories" class="stats-tab-panel" hidden>
           <section id="balance-trend-card" class="card" data-module="stats-calories:balance" data-module-name="Calorie balance" hidden>
             <div class="card-heading-row">
-              <h2>Calorie Balance</h2>
+              <h2>Calorie balance</h2>
               <div class="balance-trend-controls">
                 <div class="chart-legend">
                   <span class="chart-legend-item"><i class="chart-legend-swatch chart-legend-swatch--in"></i>In</span>
@@ -1951,7 +1978,7 @@
 
           <section id="tdee-card" class="card" data-module="stats-calories:tdee" data-module-name="What you actually burn" hidden>
             <div class="card-heading-row">
-              <h2>Your Metabolism</h2>
+              <h2>Your metabolism</h2>
               <button type="button" class="info-btn" data-info="tdee" aria-label="What this means"></button>
               <span id="tdee-confidence" class="confidence-pill"></span>
             </div>
@@ -1966,7 +1993,7 @@
           </section>
 
           <section id="tdee-pending-card" class="card" data-module="stats-calories:tdee-pending" data-module-name="Burn — before there is enough data" hidden>
-            <h2>Your Metabolism</h2>
+            <h2>Your metabolism</h2>
             <p id="tdee-pending-text" class="muted"></p>
           </section>
 
@@ -2084,7 +2111,7 @@
           </section>
 
           <section id="breakdown-calories-card" class="card" data-module="stats-calories:breakdown" data-module-name="Weekly calories table" hidden>
-            <div class="card-header-row"><h2>Weekly Calories</h2><button type="button" class="info-btn" data-info="weekly-calories" aria-label="What this means"></button></div>
+            <div class="card-header-row"><h2>Weekly calories</h2><button type="button" class="info-btn" data-info="weekly-calories" aria-label="What this means"></button></div>
             <div class="table-scroll">
               <table class="breakdown-table">
                 <thead>
@@ -2103,7 +2130,7 @@
 
         <div id="stats-tab-recovery" class="stats-tab-panel" hidden>
           <section id="whoop-stats-card" class="card" data-module="stats-recovery:whoop" data-module-name="Recovery and sleep" hidden>
-            <div class="card-header-row"><h2>Recovery &amp; Sleep</h2><button type="button" class="info-btn" data-info="recovery" aria-label="What this means"></button></div>
+            <div class="card-header-row"><h2>Recovery &amp; sleep</h2><button type="button" class="info-btn" data-info="recovery" aria-label="What this means"></button></div>
             <div class="hero-row">
               <div id="stat-recovery-hero" class="stat-hero">
                 <span id="stat-recovery" class="stat-hero-number">—</span>
@@ -2118,11 +2145,12 @@
           </section>
 
           <section id="whoop-stats-prompt" class="card" data-module="stats-recovery:prompt" data-module-name="Connect a tracker" hidden>
-            <p class="muted">Connect WHOOP in Settings to see recovery &amp; sleep here.</p>
+            <!-- Filled by renderWhoopStats(): what this tab shows, and the one
+                 thing to do to get it. -->
           </section>
 
           <section id="breakdown-recovery-card" class="card" data-module="stats-recovery:breakdown" data-module-name="Weekly recovery table" hidden>
-            <div class="card-header-row"><h2>Weekly Recovery</h2><button type="button" class="info-btn" data-info="weekly-recovery" aria-label="What this means"></button></div>
+            <div class="card-header-row"><h2>Weekly recovery</h2><button type="button" class="info-btn" data-info="weekly-recovery" aria-label="What this means"></button></div>
             <div class="table-scroll">
               <table class="breakdown-table">
                 <thead>

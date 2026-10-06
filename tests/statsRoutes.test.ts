@@ -873,6 +873,12 @@ describe("GET /api/stats/share-card", () => {
   });
 
   it("totals the week and averages over the days that have happened", async () => {
+    // The two entries go on days 1 and 2 of the current week, which only both
+    // exist in the past from Thursday on: run on a Monday or a Tuesday, day 2
+    // was tomorrow, the card rightly left it out, and this failed on the
+    // calendar rather than on the code. A Thursday midday, pinned, so both
+    // days have always happened.
+    vi.setSystemTime(new Date("2026-09-17T12:00:00Z"));
     const { cookie, userId } = await signUp("alice");
     const day1 = await middayInCurrentWeek(cookie, 1);
     const day2 = await middayInCurrentWeek(cookie, 2);
