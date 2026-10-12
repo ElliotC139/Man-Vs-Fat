@@ -7158,7 +7158,9 @@ function renderBalanceTrend(data, animate = true) {
   const max = Math.max(...allValues, min + 1);
   const range = max - min || 1;
   const padLeft = 42;
-  const padRight = 10;
+  // Room for the last dot and no more: the gridlines run on to the edge, so
+  // the chart ends where the card's other content does.
+  const padRight = 5;
   const padY = 16;
 
   const xFor = (i) => padLeft + (i / (plotDays.length - 1)) * (w - padLeft - padRight);
@@ -7181,7 +7183,7 @@ function renderBalanceTrend(data, animate = true) {
   const gridlines = [max, midValue, min]
     .map(
       (v) =>
-        `<line x1="${padLeft}" y1="${yFor(v).toFixed(1)}" x2="${w - padRight}" y2="${yFor(v).toFixed(1)}" class="weighin-chart-grid" />`,
+        `<line x1="${padLeft}" y1="${yFor(v).toFixed(1)}" x2="${w}" y2="${yFor(v).toFixed(1)}" class="weighin-chart-grid" />`,
     )
     .join("");
   const labels = [max, midValue, min]
@@ -7638,7 +7640,9 @@ function renderWeighinChart(animate = true) {
   const max = Math.max(...weights);
   const range = max - min || 1;
   const padLeft = 42;
-  const padRight = 10;
+  // Room for the last dot and no more: the gridlines run on to the edge, so
+  // the chart ends where the card's other content does.
+  const padRight = 5;
   const padY = 18;
 
   const yFor = (kg) => h - padY - ((kg - min) / range) * (h - padY * 2);
@@ -7668,7 +7672,7 @@ function renderWeighinChart(animate = true) {
   const gridlines = [max, midKg, min]
     .map(
       (v) =>
-        `<line x1="${padLeft}" y1="${yFor(v).toFixed(1)}" x2="${w - padRight}" y2="${yFor(v).toFixed(1)}" class="weighin-chart-grid" />`,
+        `<line x1="${padLeft}" y1="${yFor(v).toFixed(1)}" x2="${w}" y2="${yFor(v).toFixed(1)}" class="weighin-chart-grid" />`,
     )
     .join("");
   const labels = [max, midKg, min]
