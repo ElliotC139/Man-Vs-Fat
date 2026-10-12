@@ -248,6 +248,19 @@ first cut only because the core pipeline (estimation → storage → match week
 WhatsApp/SMS specifically, when you do add it: no business-account
 verification step, a simple long-polling or webhook bot API, and free.
 
+## Logging from another app
+
+Another app can hand over a meal with its figures already worked out, as a
+link: `/?log=<name>&kcal=<total>` plus any of `protein`, `carbs`, `fat`,
+`fibre`, `sugar`, `satfat`, `salt` (grams, totals), `qty` and `unit` ("2" and
+"portion"), `meal` (`breakfast`, `lunch`, `dinner` or `snack`), `from` (shown
+as the badge, "From Ours") and `src=given` when the figures are stated rather
+than estimated. It opens the confirm sheet filled in — one tap, no estimate —
+and the parameters are stripped once read. A link should also carry `text=`
+with the same meal in words, which is what the share target reads, so an
+older build still gets something. The Ours couples app's "Log in QuickCals"
+uses this (`launchedMeal()` in `public/app.js`).
+
 ## How the match week boundary works
 
 `src/matchWeek.ts` is the one piece of this app that has to be exactly

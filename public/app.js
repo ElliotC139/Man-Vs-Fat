@@ -9315,8 +9315,68 @@ if (SpeechRecognitionCtor) {
 // shared into the app from elsewhere (manifest "share_target") as ?text=… /
 // ?title=…. Both are consumed once and stripped, so a refresh doesn't repeat
 // them.
+//
+// A meal sent from another app with its figures already worked out arrives as
+// ?log=<name>&kcal=… (the Ours couples app's "Log in QuickCals"). It opens the
+// confirm sheet with them filled in, so it's one tap and no estimate. Such a
+// link also carries ?text=, which is what a QuickCals from before this read,
+// so an old tab still gets the words.
+
+/** Reads a meal from ?log=…; null unless it has a name and a sensible kcal. */
+function launchedMeal(params) {
+  const label = (params.get("log") ?? "").trim().slice(0, 200);
+  const kcal = Number(params.get("kcal"));
+  if (!label || !Number.isFinite(kcal) || kcal < 0 || kcal > 20000) return null;
+  const grams = (key, max = 1000) => {
+    const raw = params.get(key);
+    if (raw === null || raw === "") return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 && n <= max ? Math.round(n * 10) / 10 : null;
+  };
+  const qty = Number(params.get("qty"));
+  const meal = params.get("meal");
+  return {
+    item: normaliseConfirmItem({
+      label,
+      kcal: Math.round(kcal),
+      protein: grams("protein"),
+      carbs: grams("carbs"),
+      fat: grams("fat"),
+      fibre: grams("fibre"),
+      sugar: grams("sugar"),
+      satFat: grams("satfat"),
+      salt: grams("salt", 100),
+      quantity: Number.isFinite(qty) && qty > 0 && qty <= 50 ? qty : 1,
+      unitLabel: (params.get("unit") ?? "").trim().slice(0, 20) || null,
+    }),
+    from: (params.get("from") ?? "").trim().slice(0, 30),
+    // Given: figures the recipe stated. Anything else was worked out, so it stays an estimate.
+    given: params.get("src") === "given",
+    meal: MEAL_TAG_SLOTS.includes(meal) ? meal : null,
+  };
+}
+
+const LAUNCH_KEYS = ["action", "title", "text", "url", "log", "kcal", "protein", "carbs", "fat", "fibre", "sugar", "satfat", "salt", "qty", "unit", "meal", "from", "src"];
+
 function handleLaunchParams() {
   const params = new URLSearchParams(window.location.search);
+  const sent = launchedMeal(params);
+  if (sent) {
+    openConfirmSheet({
+      items: [sent.item],
+      rawInput: sent.item.label,
+      source: sent.given ? "manual" : "ai",
+      sourceLabel: sent.from ? `From ${sent.from}` : "Sent here",
+      note: sent.given ? "Figures from the recipe" : "Worked out from the recipe",
+      date: loggingDate(),
+      // The meal they picked there, if this diary uses meal tags; otherwise the clock decides
+      mealType: mealTagsOn() ? (sent.meal ?? chosenMealTag()) : undefined,
+    });
+    for (const key of LAUNCH_KEYS) params.delete(key);
+    const rest = params.toString();
+    window.history.replaceState({}, "", rest ? `${window.location.pathname}?${rest}` : window.location.pathname);
+    return;
+  }
   const action = params.get("action");
   const shared = [params.get("title"), params.get("text"), params.get("url")]
     .filter(Boolean)
