@@ -973,7 +973,9 @@ h2 {
   text-transform: none;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
-  margin: 14px 6px 6px;
+  /* No side margin: the day's name lines up with "Food diary" above it and
+     the card's edge below, not 6px inside both. */
+  margin: 14px 0 6px;
   padding-bottom: 5px;
   border-bottom: 1px solid var(--hairline);
 }
@@ -1925,7 +1927,7 @@ h2 {
   flex-shrink: 0;
 }
 #weighin-trend-caption {
-  margin: 10px 6px 0;
+  margin: 10px 0 0;
 }
 
 /* ── Calorie balance trend ── */
@@ -1934,12 +1936,20 @@ h2 {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  row-gap: 8px;
-  margin: 0 6px 10px;
+  gap: 8px;
+  /* Flush with the card's padding like every other card's heading. The 6px
+     side margins were from when cards had less padding, and left Calorie
+     balance and Your metabolism a step inside the cards around them. */
+  margin: 0 0 10px;
 }
 .card-heading-row h2 {
   margin: 0;
   white-space: nowrap;
+}
+/* The ⓘ belongs to the title, so it stays beside it; whatever follows takes
+   the far end of the row, or wraps under the title on a narrow phone. */
+.card-heading-row > .info-btn {
+  margin-right: auto;
 }
 .chart-legend {
   display: flex;
@@ -1965,9 +1975,14 @@ h2 {
 .chart-legend-swatch--out {
   background: var(--amber);
 }
+/* Its own row under the title, legend left and the Daily/Weekly switch right.
+   Left to wrap on its own it landed on the title's line whenever it just
+   fitted, and the legend ran into the word "balance". */
 .balance-trend-controls {
+  flex: 1 1 100%;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
 }
 .granularity-toggle {
@@ -2118,7 +2133,7 @@ tr.has-tooltip:active {
   stroke: var(--amber);
 }
 #balance-trend-caption {
-  margin: 10px 6px 0;
+  margin: 10px 0 0;
 }
 
 /* ── Insights ── */
@@ -2151,7 +2166,6 @@ tr.has-tooltip:active {
 /* ── Weekly breakdown ── */
 .table-scroll {
   overflow-x: auto;
-  margin: 0 -2px;
 }
 .breakdown-table {
   width: 100%;
@@ -2176,6 +2190,15 @@ tr.has-tooltip:active {
 }
 .breakdown-table tbody tr:first-child td {
   border-top: none;
+}
+/* The outside columns sit on the card's own padding: the expand buttons line
+   up with the heading above them, and each row's rule ends where the card's
+   content does rather than a few pixels either side of it. */
+.breakdown-table :is(th, td):first-child {
+  padding-left: 0;
+}
+.breakdown-table :is(th, td):last-child {
+  padding-right: 0;
 }
 .breakdown-loss {
   color: var(--pitch-dark);
@@ -2638,7 +2661,7 @@ tr.has-tooltip:active {
   color: var(--muted);
 }
 #tdee-explain {
-  margin: 10px 6px 0;
+  margin: 10px 0 0;
 }
 .tdee-warning {
   margin: 12px 0 0;
@@ -8393,7 +8416,10 @@ body.hide-entry-times .entry-time {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  padding: 12px 14px 12px 16px;
+  /* 18 on the left, the cards' own padding, so a meal's name starts where
+     every other card's content does. The right stays 14: the icon buttons
+     carry their own space, and their glyphs already land on that line. */
+  padding: 12px 14px 12px 18px;
 }
 /* Inset from the left, like every native list: the line divides two rows,
    it doesn't box them. */
@@ -8401,7 +8427,7 @@ body.hide-entry-times .entry-time {
   content: "";
   position: absolute;
   top: 0;
-  left: 16px;
+  left: 18px;
   right: 0;
   height: 1px;
   background: var(--hairline);
@@ -8409,7 +8435,7 @@ body.hide-entry-times .entry-time {
 }
 /* A meal, opened: its items step in and sit on the card's second surface. */
 :is(#today-entry-list, .entry-rows) > .entry-row--in-group {
-  padding-left: 30px;
+  padding-left: 32px;
   background: var(--surface-2);
 }
 /* Picked while selecting: a fill, since a drawn border inside a list fights
@@ -8421,7 +8447,7 @@ body.hide-entry-times .entry-time {
    inside the card as a sub-heading. */
 #today-entry-list > .meal-group-heading {
   margin: 0;
-  padding: 14px 16px 6px;
+  padding: 14px 18px 6px;
   border-top: 1px solid var(--hairline);
 }
 #today-entry-list > .meal-group-heading:first-child {
@@ -8450,7 +8476,9 @@ body.hide-entry-times .entry-time {
 .day-group .day-heading {
   border-bottom: 0;
   padding-bottom: 0;
-  margin: 18px 4px 8px;
+  /* Flush left and right: the day's name under "Food diary", its total over
+     the card's right edge, rather than both 4px inside them. */
+  margin: 18px 0 8px;
 }
 .day-group:first-child .day-heading {
   margin-top: 6px;

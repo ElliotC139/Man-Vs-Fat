@@ -5,7 +5,7 @@ import { config } from "../config";
 import { fastingAnchors } from "../fasting";
 import { ketoDay } from "../keto";
 import { requireAuth } from "../auth";
-import { sexConstant } from "../sexConstant";
+import { estimateTdee, sexConstant } from "../sexConstant";
 import {
   getLocalParts,
   getMatchWeekBoundariesForWeeksAgo,
@@ -348,22 +348,6 @@ statsRouter.post("/target-review", async (req, res) => {
 // this module keep working.
 export { sexConstant };
 
-// Mirrors the estimate used client-side for the current week's budget widget
-// (public/app.js: calculateTdee) — used here as the "calories out" fallback
-// for historical days with no scored WHOOP cycle.
-function estimateTdee(user: {
-  weightKg: number | null;
-  heightCm: number | null;
-  ageYears: number | null;
-  activityLevel: string | null;
-  sex?: string | null;
-}): number | null {
-  const { weightKg, heightCm, ageYears, activityLevel } = user;
-  if (!weightKg || !heightCm || !ageYears || !activityLevel) return null;
-  const bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageYears + sexConstant(user.sex);
-  const multipliers: Record<string, number> = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725 };
-  return bmr * (multipliers[activityLevel] ?? 1.2);
-}
 
 /**
  * Splits a span of kcal burned proportionally across the local calendar

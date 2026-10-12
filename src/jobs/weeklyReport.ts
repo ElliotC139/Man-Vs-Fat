@@ -1,6 +1,7 @@
 import { prisma } from "../db";
 import { config, driveConfigured } from "../config";
 import { generateMatchWeekReport } from "../pdf/generateReport";
+import { loadReportContext } from "../pdf/reportContext";
 import { uploadReportToDrive } from "../drive/uploadToDrive";
 import { localDayKey } from "../matchWeek";
 import { recordError } from "../errorLog";
@@ -30,7 +31,9 @@ export async function closeMatchWeeksNeedingReport(): Promise<void> {
       continue;
     }
     try {
-      const pdfBuffer = await generateMatchWeekReport(week, config.TIMEZONE);
+      // A week from before accounts had no owner, and so no target to read.
+      const context = week.userId === null ? undefined : await loadReportContext(week.userId, week, config.TIMEZONE);
+      const pdfBuffer = await generateMatchWeekReport(week, config.TIMEZONE, null, context);
       const fileName = `${localDayKey(week.startsAt, config.TIMEZONE)}.pdf`;
 
       let driveFileId: string | undefined;

@@ -11,6 +11,7 @@ import {
   weekRangeLabel,
 } from "../matchWeek";
 import { generateMatchWeekReport } from "../pdf/generateReport";
+import { loadReportContext } from "../pdf/reportContext";
 import { getWeekInsights, previousWeekNumbers } from "../weekReview";
 import { sumMacros } from "../macros";
 import { dayNotesForWeek } from "../dayNotes";
@@ -270,7 +271,8 @@ matchWeeksRouter.get("/current/report.pdf", async (req, res) => {
       daysLogged,
       dayNotes: await dayNotesForWeek(req.userId!, start),
     });
-    const pdfBuffer = await generateMatchWeekReport(weekForPdf, config.TIMEZONE, insights);
+    const context = await loadReportContext(req.userId!, weekForPdf, config.TIMEZONE);
+    const pdfBuffer = await generateMatchWeekReport(weekForPdf, config.TIMEZONE, insights, context);
     const fileName = `${localDayKey(start, config.TIMEZONE)}.pdf`;
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
@@ -298,7 +300,8 @@ matchWeeksRouter.post("/:id/generate-report", async (req, res) => {
       daysLogged,
       dayNotes: await dayNotesForWeek(req.userId!, week.startsAt),
     });
-    const pdfBuffer = await generateMatchWeekReport(week, config.TIMEZONE, insights);
+    const context = await loadReportContext(week.userId, week, config.TIMEZONE);
+    const pdfBuffer = await generateMatchWeekReport(week, config.TIMEZONE, insights, context);
     const fileName = `${localDayKey(week.startsAt, config.TIMEZONE)}.pdf`;
 
     let driveFileId: string | undefined;

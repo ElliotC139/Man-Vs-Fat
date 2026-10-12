@@ -21,3 +21,22 @@ export function sexConstant(sex: string | null | undefined): number {
   if (sex === "male" || sex === "female") return SEX_CONSTANTS[sex];
   return SEX_CONSTANT_UNKNOWN;
 }
+
+// Mirrors the estimate used client-side for the current week's budget widget
+// (public/app.js: calculateTdee) — the "calories out" fallback for days with
+// no scored WHOOP cycle, and the line the weekly report measures days against
+// when no target is set. Here rather than in routes/stats.ts so the report can
+// reach it without loading a route.
+export function estimateTdee(user: {
+  weightKg: number | null;
+  heightCm: number | null;
+  ageYears: number | null;
+  activityLevel: string | null;
+  sex?: string | null;
+}): number | null {
+  const { weightKg, heightCm, ageYears, activityLevel } = user;
+  if (!weightKg || !heightCm || !ageYears || !activityLevel) return null;
+  const bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageYears + sexConstant(user.sex);
+  const multipliers: Record<string, number> = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725 };
+  return bmr * (multipliers[activityLevel] ?? 1.2);
+}
