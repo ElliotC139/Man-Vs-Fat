@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="app">
   <head>
     <meta charset="utf-8" />
     <!-- Kept in step with VERSION in sw.js by hand; it is what a suggestion
          reports as the version somebody was on. -->
-    <meta name="app-version" content="v73" />
+    <meta name="app-version" content="v75" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <!--
       Never index this file.
@@ -30,18 +30,28 @@
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Barlow+Condensed:wght@500;600;700&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet" />
+    <!-- Bricolage Grotesque for figures and titles, Plus Jakarta Sans for
+         everything read, Montserrat only for the wordmark (it is the logo's
+         own face). Bricolage carries a width axis, which is what lets a
+         figure keep the footprint Barlow Condensed had without reading as a
+         scoreboard. The public pages load their own fonts and keep them. -->
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Plus+Jakarta+Sans:wght@400..800&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/style.css" />
 
     <!-- Lets "Add to Home Screen" open as a standalone full-screen app
          (no address bar/tabs) instead of a browser bookmark. -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#176B3A" media="(prefers-color-scheme: light)" />
-    <!-- The dark header ground, so the status bar matches it rather than
-         sitting a brighter green above a darker one. -->
-    <meta name="theme-color" content="#124F2B" media="(prefers-color-scheme: dark)" />
+    <!-- The canvas colour in each theme, so the status bar is part of the page
+         rather than a strip of a different colour above it. Kept in step with
+         THEME_COLOURS in app.js, which repaints these when the theme changes. -->
+    <meta name="theme-color" content="#f6f4ef" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0c110e" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- "default", not "black-translucent". Translucent draws the clock and
+         battery in white, which was right over a green header and is
+         invisible over a light one; it also leaves an unpaintable strip at
+         the bottom on iOS 26 (WebKit 301108). Ours made the same call. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="QuicKcals" />
     <script src="/attribution.js"></script>
   </head>
@@ -106,7 +116,7 @@
 
     <div id="today-screen" hidden>
       <header class="banner banner--fixture banner--today">
-        <h1 class="brand"><img src="/icons/mark-inverse.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word"><span class="brand-word-a">Quic</span><span class="brand-word-k">K</span><span class="brand-word-b">cals</span></span></h1>
+        <h1 class="brand"><img src="/icons/mark.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word"><span class="brand-word-a">Quic</span><span class="brand-word-k">K</span><span class="brand-word-b">cals</span></span></h1>
         <div class="week-nav day-nav">
           <button id="day-prev" type="button" aria-label="Previous day"><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
           <p id="today-date" class="today-date"></p>
@@ -484,7 +494,7 @@
 
     <div id="app-shell" hidden>
       <header class="banner banner--fixture">
-        <h1 class="brand"><img src="/icons/mark-inverse.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word"><span class="brand-word-a">Quic</span><span class="brand-word-k">K</span><span class="brand-word-b">cals</span></span></h1>
+        <h1 class="brand"><img src="/icons/mark.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word"><span class="brand-word-a">Quic</span><span class="brand-word-k">K</span><span class="brand-word-b">cals</span></span></h1>
         <div class="week-nav">
           <button id="week-prev" type="button" aria-label="Previous week"><svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
           <p id="week-range" class="muted">Loading…</p>
@@ -508,7 +518,7 @@
         <section class="summary card" data-module="week:summary" data-module-name="This week">
           <div id="form-guide" class="form-guide" hidden>
             <div class="form-guide-head">
-              <span class="form-guide-title">This week</span>
+              <span class="form-guide-title">Day by day</span>
               <span id="form-guide-record" class="form-guide-record"></span>
             </div>
             <div id="form-guide-days" class="form-guide-days"></div>
@@ -759,7 +769,7 @@
         <button id="review-back" type="button" class="library-back" aria-label="Back">
           <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
-        <h1 class="brand"><img src="/icons/mark-inverse.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Weekly review</span></h1>
+        <h1 class="brand"><img src="/icons/mark.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Weekly review</span></h1>
       </header>
 
       <main>
@@ -818,7 +828,7 @@
         <button id="settings-back" type="button" class="library-back" aria-label="Back">
           <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
-        <h1 class="brand"><img src="/icons/mark-inverse.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Settings</span></h1>
+        <h1 class="brand"><img src="/icons/mark.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Settings</span></h1>
       </header>
 
       <main>
@@ -1628,7 +1638,7 @@
         <button id="food-library-back" type="button" class="library-back" aria-label="Back">
           <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
-        <h1 class="brand"><img src="/icons/mark-inverse.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Food library</span></h1>
+        <h1 class="brand"><img src="/icons/mark.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Food library</span></h1>
       </header>
 
       <main>
@@ -1722,7 +1732,7 @@
         <button id="admin-back" type="button" class="library-back" aria-label="Back">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
         </button>
-        <h1 class="brand"><img src="/icons/mark-inverse.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Admin</span></h1>
+        <h1 class="brand"><img src="/icons/mark.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Admin</span></h1>
         <button type="button" id="admin-refresh" class="ghost-sm admin-refresh">Refresh</button>
       </header>
       <main>
@@ -1773,7 +1783,7 @@
         <button id="stats-back" type="button" class="library-back" aria-label="Back">
           <svg class="icon" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
         </button>
-        <h1 class="brand"><img src="/icons/mark-inverse.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Stats</span></h1>
+        <h1 class="brand"><img src="/icons/mark.svg" alt="" class="brand-mark" width="68" height="68" /><span class="brand-word">Stats</span></h1>
       </header>
 
       <main>

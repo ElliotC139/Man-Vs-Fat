@@ -139,7 +139,6 @@ summary,
 .balance-number {
   font-family: var(--font-heading);
 }
-.banner h1,
 .auth-title {
   font-family: var(--font-brand);
 }
@@ -192,76 +191,74 @@ body {
 }
 
 /* ── The header ─────────────────────────────────────────────────────────────
-   One row, left to right, on every screen: the mark, the screen's title, and
-   the controls that belong to it. It used to be two stacked bands — a centred
-   logo, then a row of boxed arrows round a centred date — which made every
-   screen open with the same 110px of chrome before anything of its own.
+   A large title on the canvas. A slim top row carries the mark and the
+   screen's own controls; the screen's name is set big underneath, with the
+   date or the range as a small line above it.
 
-   The ground is the deep, flat brand green: a solid dark ground does
-   structural work, by making everything below it read as the lit surface. On
-   the screens that lead with a card, the green runs on under that card's top
-   edge (the apron, below), so the header and the first thing on the screen
-   read as one composition rather than a bar with a stack of boxes under it. */
+   It was a solid band of brand green with white text. Green at the top, a bar
+   along the bottom and the content framed between them made the chrome the
+   heaviest thing on every screen. The green lives in the light behind the
+   title now (see `.app body`), in the ring, and in what you press — which is
+   where it means something.
+
+   Two rows from the existing markup, in CSS alone: the header wraps, the
+   stepper's box steps aside (`display: contents`, safe on a plain div with no
+   role to lose), so its arrows join the top row, and the title — first in the
+   markup, so a screen reader still meets it first — is sent to a full-width
+   row of its own by `order`. The JS that fills and steps the date is
+   untouched. */
 .banner {
   position: relative;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  min-height: calc(62px + env(safe-area-inset-top));
-  background: var(--pitch-deep);
-  color: #fff;
-  /* The page runs under the status bar (viewport-fit=cover), so the header's
-     own padding has to clear it — otherwise the controls sit behind the clock
-     on an installed iPhone app and can't be pressed at all. Zero on every
-     device without a notch. */
-  padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+  column-gap: 6px;
+  row-gap: 14px;
+  max-width: 480px;
+  margin: 0 auto;
+  /* The page runs under the status bar on an installed app, so the header's
+     own padding has to clear it — otherwise the controls sit behind the
+     clock and can't be pressed. Zero on every device without a notch. */
+  padding: calc(12px + env(safe-area-inset-top)) 20px 6px;
+  background: transparent;
+  color: var(--ink);
   text-align: left;
 }
-
-/* The apron. Screens whose first thing is a card let the green run 24px
-   further down and pull their content up over it. Settings and the weekly
-   review lead with text rather than a card, so they don't. */
-:root {
-  --banner-apron: 24px;
-}
-#today-screen .banner,
-#app-shell .banner,
-#stats-screen .banner,
-#food-library-screen .banner,
-#admin-screen .banner {
-  padding-bottom: calc(10px + var(--banner-apron));
-}
-#today-screen .banner + main,
-#app-shell .banner + main,
-#stats-screen .banner + main,
-#food-library-screen .banner + main,
-#admin-screen .banner + main {
-  position: relative;
-  margin-top: calc(-1 * var(--banner-apron));
-  padding-top: 0;
+/* The header lines up with the content column at every width, not with the
+   edges of the window: it no longer has a band of colour to fill. */
+@media (min-width: 720px) {
+  .banner {
+    max-width: 640px;
+  }
 }
 
-/* Round, borderless, translucent: the day arrows, the calendar, the review's
-   back arrow. They were boxed chips with drawn edges, which is the one thing
-   in the header that made it look assembled rather than designed. */
+/* The stepper's own box steps aside, so its children take places in the
+   header's rows: the arrows and the calendar at the end of the top row, the
+   title on a row of its own. */
+.week-nav {
+  display: contents;
+}
+
+/* Round controls on the card's surface, lifted a touch: the day and week
+   arrows, the calendar, the review's back arrow. */
 .week-nav button,
 .date-jump,
 .library-back {
   flex: none;
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   min-height: 0;
   padding: 0;
   display: grid;
   place-items: center;
   border: 0;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.95);
-  box-shadow: none;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
   font-size: 1.1rem;
   line-height: 1;
-  transition: background 0.15s var(--ease), transform 0.22s var(--spring), opacity 0.15s var(--ease);
+  transition: background 0.15s var(--ease), transform 0.2s var(--ease), opacity 0.15s var(--ease);
 }
 .week-nav button .icon,
 .date-jump .icon,
@@ -273,25 +270,28 @@ body {
   .week-nav button:hover:not(:disabled),
   .date-jump:hover,
   .library-back:hover {
-    background: rgba(255, 255, 255, 0.17);
+    background: var(--surface-2);
   }
 }
 .week-nav button:active,
 .date-jump:active,
 .library-back:active {
-  transform: scale(0.9);
-  background: rgba(255, 255, 255, 0.2);
+  transform: scale(0.92);
 }
 .week-nav button:disabled {
-  opacity: 0.32;
+  opacity: 0.35;
+  box-shadow: none;
+}
+/* The first control pushes itself and everything after it to the end of the
+   row, leaving the mark alone at the start. */
+.week-nav > button:first-of-type {
+  margin-left: auto;
 }
 
 /* Stats, Food, Settings and Admin are tabs, and a tab is somewhere you arrive
    at from the bar along the bottom — every one of these arrows just went back
-   to Today, which the bar already does in the same place every time. A back
-   arrow on a screen with nowhere to go back to is the one control on a phone
-   that makes people wonder whether they are lost. The weekly review keeps
-   its arrow: that one really is a detail view of the week. */
+   to Today, which the bar already does in the same place every time. The
+   weekly review keeps its arrow: that one really is a detail view. */
 #stats-back,
 #settings-back,
 #food-library-back,
@@ -299,60 +299,71 @@ body {
   display: none;
 }
 
-/* An action in a header (Admin's Refresh) wears the same translucent ground
-   as the arrows, and sits at the end of the row. */
+/* Admin's Refresh sits at the end of the top row, a quiet tonal button. */
 .banner .admin-refresh {
-  margin-left: auto;
-  min-height: 36px;
-  padding: 4px 14px;
-  color: rgba(255, 255, 255, 0.95);
-  background: rgba(255, 255, 255, 0.1);
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top));
+  right: 20px;
+  min-height: 40px;
+  padding: 4px 16px;
+  color: var(--action-ink);
+  background: var(--action-soft);
   border: 0;
+  border-radius: 999px;
+  box-shadow: none;
 }
 .banner .admin-refresh:hover {
-  background: rgba(255, 255, 255, 0.17);
+  background: var(--action-soft-hover);
 }
 
-/* The title: the mark, then the screen's name in the wordmark's face.
-
-   (This rule spent two weeks inside a comment that was never closed, which
-   left those titles at the browser's own 2em; it is written for the current
-   brand, without the uppercase it used to carry.) */
+/* The heading: the mark above the screen's name. On Today and My week the
+   name is the day or the week (the title row below), so the heading there is
+   only the mark, and it stays in the top row beside the controls. */
 .banner h1 {
-  flex: 0 1 auto;
   min-width: 0;
   margin: 0;
   padding: 0;
   font-size: 1rem;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.1;
 }
 .banner h1.brand {
+  flex: 1 1 100%;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+.banner--fixture h1.brand {
+  flex: 0 0 auto;
+}
+/* The review has a back arrow in its top row already; a mark under it as well
+   would be three rows of chrome before the title. */
+#review-screen .banner .brand-mark {
+  display: none;
+}
+#review-screen .banner h1.brand {
+  flex-basis: auto;
+  flex-grow: 1;
 }
 .banner .muted {
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--muted);
   margin: 0;
 }
 
-/* The mark is the inverse knockout (icons/mark-inverse.svg): the bubble is
-   the white shape and the cutlery is cut out of it, so the banner shows
-   through the K and the mark needs no colour of its own in either theme. The
-   corollary: it is invisible on a light ground, which is why the sign-in card
-   keeps its own green-on-white asset (.auth-brand-mark). */
+/* The full-colour mark (icons/mark.svg) — a green bubble with the white K —
+   because the header is the canvas now. The white knockout the green band
+   used would vanish here; it stays on sign-in and the desktop rail, which are
+   still green. */
 .brand-mark {
   display: block;
   flex-shrink: 0;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
 }
 
 /* The wordmark. "Quic" carries the weight and everything after it steps back:
-   the K belongs with "cals" in the reading, not with the bold half. It stays
-   split out because it is still the K the mark is built from and the k of
-   kcal — it just doesn't shout about it. */
+   the K belongs with "cals" in the reading, not with the bold half. */
 .brand-word {
   font-family: var(--font-brand);
   letter-spacing: -0.02em;
@@ -361,11 +372,6 @@ body {
   text-overflow: ellipsis;
   /* A flex item won't shrink below its content without this. */
   min-width: 0;
-}
-.banner h1 .brand-word {
-  color: #fff;
-  font-size: 1.32em;
-  letter-spacing: -0.025em;
 }
 .brand-word-a {
   font-weight: 800;
@@ -391,54 +397,59 @@ body {
   display: none;
 }
 
-/* The day or week stepper: the title takes the row, the arrows and the
-   calendar sit at the end of it. The title comes first by `order`, so the
-   markup — and what a screen reader meets first — is unchanged. */
-.week-nav {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-}
+/* The title row: a small line over a big name. On Today the date is the small
+   line and "Today", "Yesterday" or the weekday is the name; on My week the
+   dates are the small line and "This week", "Last week" or "3 weeks ago" is
+   the name — the thing you'd actually call it, which the dates never said. */
 .week-nav #week-range,
 .today-date {
-  order: -1;
-  flex: 1 1 auto;
+  order: 2;
+  flex: 1 1 100%;
   min-width: 0;
-  margin: 0 6px 0 0;
-  font-family: var(--font-brand);
-  font-size: clamp(1.1rem, 5.2vw, 1.32rem);
-  font-weight: 700;
-  letter-spacing: -0.025em;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  color: var(--ink);
   text-transform: none;
-  color: #fff;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.12;
-  white-space: nowrap;
+}
+
+/* The name: the display face, big. Also the title on every other screen. */
+.today-date .today-date-day,
+.week-nav .week-range-sub,
+.banner h1:not(.auth-title) > .brand-word {
+  display: block;
+  order: 2;
+  font-family: var(--font-heading);
+  font-size: clamp(2rem, 9vw, 2.4rem);
+  font-weight: 700;
+  font-stretch: 92%;
+  font-optical-sizing: auto;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  /* The descenders of a big title in a tight line-height would be clipped by
+     overflow: hidden without a little room below. */
+  padding-bottom: 0.08em;
 }
-/* Two lines: what to call it, then the plain date. "Today", "Yesterday" or
-   the weekday leads; the date steps back under it. */
-.today-date .today-date-day,
+
+/* The small line above it. */
+.today-date .today-date-rest,
 .week-nav .week-range-main {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.today-date .today-date-rest,
-.week-nav .week-range-sub {
-  display: block;
-  margin-top: 2px;
+  order: 1;
+  margin: 0 0 6px;
   font-family: var(--font-body);
-  font-size: 0.78rem;
-  font-weight: 500;
+  font-size: 0.88rem;
+  font-weight: 600;
   letter-spacing: 0;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 main {
@@ -632,6 +643,9 @@ select {
 button {
   width: 100%;
   min-height: 48px;
+  /* Buttons don't inherit the page's face by default, so every Save and
+     Log it was in the system font while the text around it wasn't. */
+  font-family: inherit;
   font-size: 1rem;
   font-weight: 600;
   border: none;
@@ -1867,7 +1881,7 @@ h2 {
 }
 .weighin-chart-label {
   font-size: 10px;
-  font-family: "Inter", sans-serif;
+  font-family: var(--font-body);
   fill: var(--muted);
 }
 .chart-area {
@@ -4098,6 +4112,237 @@ tr.has-tooltip:active {
   :root:not([data-theme="light"]) { color-scheme: dark; }
 }
 
+/* ── The app's palette ─────────────────────────────────────────────────────
+   Oat and forest: a warm canvas by day, deep green-black by night, with the
+   brand green as the one saturated thing on the screen. Taken from Ours —
+   Elliot's other app — as a standard rather than a template: the same
+   layered surfaces, graded ink, hairline edges and two-part tinted shadows,
+   in QuicKcals' own colours and faces so the two read as siblings, not one
+   product wearing two names.
+
+   Scoped to `.app` (the class on index.html's root) because every public
+   page links this stylesheet too, and those — the landing page, the guides —
+   have their own type and palette, tuned for their own contrast checks.
+   The base :root above is theirs; this layer is the app's.
+
+   Every text colour here clears AA (4.5:1) on the canvas, the card and the
+   wells inside it, in both themes. --action-ink and --amber are a step
+   darker than the base for that reason: the warmer well is a touch deeper.
+
+   The dark values are written twice, which is the theme's three states
+   again: an explicit choice stamps data-theme, "system" stamps nothing and
+   only the media query can tell. Both selectors outrank the base dark
+   blocks (0,3,0 against 0,2,0), so source order can't undo them. */
+:root.app {
+  --bg: #f6f4ef;
+  --card: #ffffff;
+  --surface-2: #f1eee7;
+  --surface-3: #e8e4db;
+  --field: #f1eee7;
+  --field-border: rgb(26 38 30 / 0.06);
+  --hairline: #ebe7de;
+  --card-border: rgb(26 38 30 / 0.05);
+  --ink: #141d17;
+  --muted: #5a655e;
+  --action-ink: #127238;
+  --amber: #8a5603;
+  --danger: #c81e1e;
+
+  /* Shadows are tinted with the forest ink rather than drawn in grey, and
+     come in two parts — a tight one that gives the edge, a wide soft one
+     with negative spread that gives the lift — which is what makes a card
+     read as a surface sitting on the page rather than a box with a halo. */
+  --shadow-color: 24 44 32;
+  --shadow-sm: 0 1px 2px rgb(var(--shadow-color) / 0.04), 0 4px 16px -4px rgb(var(--shadow-color) / 0.08);
+  --shadow-card: 0 1px 1px rgb(var(--shadow-color) / 0.03), 0 8px 28px -10px rgb(var(--shadow-color) / 0.16);
+  --shadow-md: var(--shadow-card);
+  --shadow-lg: 0 2px 6px rgb(var(--shadow-color) / 0.06), 0 22px 50px -16px rgb(var(--shadow-color) / 0.32);
+  --shadow-glow: 0 10px 26px -10px rgb(21 128 61 / 0.55);
+
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-field: 14px;
+
+  /* Motion: a fast start that settles, rather than the symmetric ease the
+     base uses. Same durations everywhere; only the shape of the curve
+     changes, and it is the shape that makes a press feel answered. */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --font-heading: "Bricolage Grotesque", "Arial Narrow", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  /* Floating bars: as good as opaque, so what scrolls under them never shows
+     through, and no live blur to pay for on every frame of a scroll. */
+  --bar: rgb(255 255 255 / 0.985);
+  --glass-line: rgb(255 255 255 / 0.9);
+
+  /* The light behind the top of every screen — the brand green and a little
+     warmth, where the solid green header band used to be. */
+  --glow-a: rgb(31 157 82 / 0.16);
+  --glow-b: rgb(255 197 61 / 0.14);
+
+  /* Two-tone tiles, one colour per part of the day, so a screen can be
+     scanned by colour before it is read: food is green, moving is coral,
+     water is blue, the body (recovery, sleep) is violet. */
+  --tile-food: linear-gradient(145deg, #5cd793, #14904a);
+  --tile-move: linear-gradient(145deg, #ffb08c, #ee5a36);
+  --tile-water: linear-gradient(145deg, #8fc4ff, #2b74f0);
+  --tile-body: linear-gradient(145deg, #c4abff, #7547f5);
+}
+
+:root.app[data-theme="dark"] {
+    --bg: #0c110e;
+    --card: #151c18;
+    --surface-2: #1c2520;
+    --surface-3: #25302a;
+    --field: #1c2520;
+    --field-border: rgb(255 255 255 / 0.06);
+    --hairline: #232d27;
+    --card-border: rgb(255 255 255 / 0.06);
+    --ink: #ecf1ed;
+    --muted: #97a59d;
+    --action-ink: #3fc174;
+    --amber: #fbbf24;
+    --danger: #f87171;
+
+    --shadow-color: 0 0 0;
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-card: 0 1px 1px rgb(0 0 0 / 0.25), 0 10px 30px -12px rgb(0 0 0 / 0.6);
+    --shadow-md: var(--shadow-card);
+    --shadow-lg: 0 2px 6px rgb(0 0 0 / 0.3), 0 24px 54px -16px rgb(0 0 0 / 0.7);
+    --shadow-glow: 0 10px 26px -12px rgb(63 193 116 / 0.5);
+
+    --bar: rgb(24 32 28 / 0.985);
+    --glass-line: rgb(255 255 255 / 0.07);
+    --pill-active-bg: #26312b;
+    --glow-a: rgb(63 193 116 / 0.16);
+    --glow-b: rgb(232 169 31 / 0.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root.app:not([data-theme="light"]) {
+      --bg: #0c110e;
+      --card: #151c18;
+      --surface-2: #1c2520;
+      --surface-3: #25302a;
+      --field: #1c2520;
+      --field-border: rgb(255 255 255 / 0.06);
+      --hairline: #232d27;
+      --card-border: rgb(255 255 255 / 0.06);
+      --ink: #ecf1ed;
+      --muted: #97a59d;
+      --action-ink: #3fc174;
+      --amber: #fbbf24;
+      --danger: #f87171;
+
+      --shadow-color: 0 0 0;
+      --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+      --shadow-card: 0 1px 1px rgb(0 0 0 / 0.25), 0 10px 30px -12px rgb(0 0 0 / 0.6);
+      --shadow-md: var(--shadow-card);
+      --shadow-lg: 0 2px 6px rgb(0 0 0 / 0.3), 0 24px 54px -16px rgb(0 0 0 / 0.7);
+      --shadow-glow: 0 10px 26px -12px rgb(63 193 116 / 0.5);
+
+      --bar: rgb(24 32 28 / 0.985);
+      --glass-line: rgb(255 255 255 / 0.07);
+      --pill-active-bg: #26312b;
+      --glow-a: rgb(63 193 116 / 0.16);
+      --glow-b: rgb(232 169 31 / 0.08);
+  }
+}
+
+/* The page itself: the canvas, and the glow behind the top of it. Painted on
+   the body and left to scroll away with the content — it is light, not
+   furniture, and a fixed layer would be one more thing to composite on every
+   frame of a scroll. */
+.app body {
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(120% 340px at 8% -60px, var(--glow-a), transparent 70%),
+    radial-gradient(90% 300px at 100% -80px, var(--glow-b), transparent 70%);
+  background-repeat: no-repeat;
+  font-family: var(--font-body);
+}
+
+/* The display face for figures: Bricolage, held at 87% of its width. That
+   keeps a figure close to the footprint Barlow Condensed gave it — the ring,
+   the tiles and the week total were all sized against that — while trading
+   the scoreboard for a face with some warmth in it. Lining, even-width digits
+   so a figure that changes doesn't shuffle the ones beside it. */
+.app :is(.balance-number, #week-total, .stat-hero-number, .weight-hero-number,
+  .referral-stat-value, .admin-stat-number, .streak-number, .water-total,
+  .today-hero-number, .today-stat-value, .meal-breakdown-value, .keto-eaten) {
+  font-stretch: 87%;
+  font-variant-numeric: lining-nums tabular-nums;
+  font-optical-sizing: auto;
+  letter-spacing: -0.02em;
+}
+
+/* Tiles: the chip beside a card's title becomes a small two-tone tile in the
+   colour of what the card is about, with the icon in white. A column of cards
+   that each have a shape was already scannable; with a colour as well, water
+   is the blue one before you have read a word. The icons are decorative —
+   every tile sits beside its card's title — so white on the lighter tiles is
+   a choice about looks, not about meaning. */
+.app .cell-icon,
+.app .exercise-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  background: var(--tile-food);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.28), 0 4px 10px -4px rgb(20 144 74 / 0.45);
+}
+.app .cell-icon .icon,
+.app .exercise-icon .icon {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2.1;
+}
+.app #water-card .cell-icon {
+  background: var(--tile-water);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.28), 0 4px 10px -4px rgb(43 116 240 / 0.45);
+}
+.app [data-module="today:body"] .cell-icon {
+  background: var(--tile-body);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.28), 0 4px 10px -4px rgb(117 71 245 / 0.45);
+}
+.app .exercise-icon {
+  background: var(--tile-move);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.28), 0 4px 10px -4px rgb(238 90 54 / 0.45);
+}
+
+/* Sheets get the same display face as the screen titles, so "Looks right?"
+   reads as a heading rather than a bold line of body text. */
+.app .sheet-title {
+  font-family: var(--font-heading);
+  font-size: 1.55rem;
+  font-weight: 700;
+  font-stretch: 92%;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+/* The Food search sat in a card of its own: a white box holding a beige
+   field. On the canvas it is one white field, the way a phone's own search
+   looks, and the lists under it stay the only cards on the screen. */
+.app #food-library-screen main > .card:has(> .search-field) {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.app #food-library-screen #food-search {
+  min-height: 50px;
+  background: var(--card);
+  border-color: var(--card-border, var(--hairline));
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+}
+.app #food-library-screen #food-library-error:not([hidden]) {
+  margin-top: 10px;
+}
+
 /* ── Health export help ── */
 .health-help {
   margin-bottom: 12px;
@@ -4989,9 +5234,16 @@ tr.has-tooltip:active {
    have to be kept in step. */
 .tab-bar {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  /* A pill floating above the bottom edge rather than a strip welded to it:
+     it reads as a control you hold, the content runs past it at both sides,
+     and the page has an edge again. Centred by auto margins between two 12px
+     insets, so it's the full width on a phone and stops growing at 440px. */
+  left: 12px;
+  right: 12px;
+  bottom: max(calc(env(safe-area-inset-bottom) - 4px), 12px);
+  margin: 0 auto;
+  max-width: 440px;
+  height: 64px;
   z-index: 40;
   display: grid;
   /* Auto columns rather than repeat(5): the Admin tab only exists for an
@@ -5000,17 +5252,14 @@ tr.has-tooltip:active {
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
   gap: 2px;
-  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
-  /* The page's own surface, frosted, rather than a second band of the brand
-     green. With green at the top and green at the bottom the content sat in
-     a frame heavier than anything inside it, and the selected tab — a
-     slightly lighter green on green — was the hardest thing on the screen to
-     read. The header owns the brand; the bar is furniture. */
-  background: color-mix(in srgb, var(--card) 92%, transparent);
-  -webkit-backdrop-filter: saturate(1.6) blur(16px);
-  backdrop-filter: saturate(1.6) blur(16px);
-  border-top: 1px solid var(--hairline);
-  box-shadow: 0 -8px 24px rgba(20, 30, 24, 0.06);
+  padding: 6px;
+  /* Near-opaque rather than frosted. A live blur under a bar that content
+     scrolls beneath is paid for on every frame of every scroll; at 98.5%
+     nothing shows through anyway, so the blur bought nothing you could see. */
+  background: var(--bar, var(--card));
+  border: 1px solid var(--glass-line, var(--hairline));
+  border-radius: 26px;
+  box-shadow: var(--shadow-lg);
 }
 /* The shared button rule sets width:100%, a 48px floor, a green gradient and
    a glow — all four wrong here, and all four need overriding explicitly
@@ -5030,10 +5279,10 @@ tr.has-tooltip:active {
   background: transparent;
   box-shadow: none;
   color: var(--muted);
-  /* Inter, sentence case. The condensed capitals were a scoreboard face on
-     something that isn't a score, at a size where condensed stops being
-     legible — the same call Settings already makes for its headings. */
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* The body face, sentence case. The condensed capitals were a scoreboard
+     face on something that isn't a score, at a size where condensed stops
+     being legible. Through the token, so it follows the app's own face. */
+  font-family: var(--font-body);
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
@@ -5047,16 +5296,12 @@ tr.has-tooltip:active {
 .tab-bar .tab-btn::before {
   content: "";
   position: absolute;
-  top: 4px;
-  left: 50%;
-  width: 56px;
-  max-width: calc(100% - 4px);
-  height: 30px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--pitch) 16%, transparent);
-  transform: translateX(-50%) scaleX(0.4);
+  inset: 0 2px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--pitch) 14%, transparent);
+  transform: scale(0.55);
   opacity: 0;
-  transition: transform 0.32s var(--spring), opacity 0.18s var(--ease);
+  transition: transform 0.4s var(--spring), opacity 0.2s var(--ease);
 }
 .tab-bar .tab-btn .icon {
   position: relative;
@@ -5077,8 +5322,13 @@ tr.has-tooltip:active {
   color: var(--pitch-dark);
 }
 .tab-bar .tab-btn--active::before {
-  transform: translateX(-50%) scaleX(1);
+  transform: scale(1);
   opacity: 1;
+}
+/* The selected icon is drawn a touch heavier as well as coloured, so the
+   choice reads by shape too — not by colour alone. */
+.tab-bar .tab-btn--active .icon {
+  stroke-width: 2.3;
 }
 .tab-bar .tab-btn--active span {
   font-weight: 700;
@@ -5110,22 +5360,14 @@ tr.has-tooltip:active {
 #food-library-screen main,
 #review-screen main,
 #admin-screen main {
-  padding-bottom: calc(84px + env(safe-area-inset-bottom));
+  padding-bottom: calc(100px + env(safe-area-inset-bottom));
 }
 
 @media (min-width: 720px) {
-  /* Centred and detached on wider screens, so it reads as a control rather
-     than a strip welded across a very wide window. */
+  /* Floating at every width now; on a wider screen it just has more room. */
   .tab-bar {
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
     bottom: 16px;
-    width: min(560px, calc(100% - 32px));
-    border-radius: var(--radius-lg);
-    padding: 8px;
-    border: 1px solid var(--hairline);
-    box-shadow: var(--shadow-lg);
+    max-width: 560px;
   }
   /* The selection bar follows it up and in, so the two stay stacked rather
      than the bar stretching the full width above a centred tab bar. */
@@ -5243,8 +5485,7 @@ tr.has-tooltip:active {
 #settings-screen .settings-pane-title,
 #settings-screen .settings-section-head,
 #settings-screen .settings-nav-item {
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    Helvetica, Arial, sans-serif;
+  font-family: var(--font-body);
   letter-spacing: -0.015em;
   text-transform: none;
 }
@@ -5384,6 +5625,9 @@ tr.has-tooltip:active {
     bottom: 0;
     transform: none;
     border-radius: 0;
+    margin: 0;
+    max-width: none;
+    height: auto;
     width: var(--rail);
     /* A column, not a grid, so the last item can be pushed to the floor with
        margin-top:auto. Five rows and a brand block in a full-height grid left
@@ -5591,10 +5835,11 @@ tr.has-tooltip:active {
     padding: 20px 32px 40px;
   }
 
-  /* The banner was sized to be a phone's whole header. Beside a rail it is
-     a page title, so it stops shouting. */
+  /* Beside a rail the header lines up with the content column, which is
+     wider here, and drops the safe-area allowance it only needs on a phone. */
   .banner {
-    padding: 14px 32px;
+    max-width: 1180px;
+    padding: 24px 32px 6px;
   }
   .banner h1,
   #app-shell .banner h1 {
@@ -5605,7 +5850,8 @@ tr.has-tooltip:active {
 /* Wide enough that 1180px of content would leave the rail looking marooned
    on one side of an otherwise empty screen. */
 @media (min-width: 1500px) {
-  main {
+  main,
+  .banner {
     max-width: 1320px;
   }
 }
@@ -6805,10 +7051,8 @@ body.modal-open {
   position: fixed;
   left: 12px;
   right: 12px;
-  /* 84px is the app's own figure for the tab bar — it is what main already
-     pads its bottom by, so the bar clears it by construction rather than by a
-     number guessed to look right. */
-  bottom: calc(92px + env(safe-area-inset-bottom));
+  /* Above the floating tab bar: its 64px, the 12px it floats at, and a gap. */
+  bottom: calc(88px + env(safe-area-inset-bottom));
   z-index: 55;
   display: flex;
   align-items: center;
@@ -8820,10 +9064,8 @@ h2 .cell-icon {
 .screen--loading .burn-settings-btn {
   visibility: hidden;
 }
-/* The banner's own figures sit on green, so their placeholder is white. */
-.screen--loading .banner #week-range {
-  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.16) 25%, rgba(255, 255, 255, 0.26) 50%, rgba(255, 255, 255, 0.16) 75%);
-}
+/* The header sits on the canvas now, so its placeholder is the same shimmer
+   as everything else's rather than the white it needed on the green band. */
 
 .skeleton-row {
   display: flex;

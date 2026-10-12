@@ -442,10 +442,7 @@ function renderWeekRange(rangeLabel) {
   sub.className = "week-range-sub";
   sub.textContent = weeksAgo === 0 ? "This week" : weeksAgo === 1 ? "Last week" : `${weeksAgo} weeks ago`;
   weekRangeEl.append(main, sub);
-  // The form guide's own heading said "This week" whichever week it showed.
-  if (formGuideTitleEl) formGuideTitleEl.textContent = weeksAgo === 0 ? "This week" : "That week";
 }
-const formGuideTitleEl = document.querySelector("#form-guide .form-guide-title");
 
 // Which way the last arrow went, for loadWeek() to slide the new week in from
 // that side once it has drawn it. See playStep().
@@ -9427,7 +9424,27 @@ const SHARE_H = 1350;
 const PAD = 96;
 const BLOCK_GAP = 70;
 const TILE_GAP = 40;
-const HEADING_STACK = '"Barlow Condensed", "Arial Narrow", sans-serif';
+// The app's own faces, so the image people post looks like the app they'll
+// open. Bricolage for headings and figures, Plus Jakarta for the words.
+const HEADING_STACK = '"Bricolage Grotesque", "Arial Narrow", sans-serif';
+const BODY_STACK = '"Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif';
+
+/**
+ * Fetches the two faces the card is drawn in, and waits for them.
+ *
+ * document.fonts.ready only covers fonts something on the page has already
+ * asked for, and a canvas that draws before its font has arrived falls back
+ * silently — a bug that only shows in the exported image, after it's posted.
+ * load() asks for the exact weights the card uses, so they are fetched even
+ * if nothing on screen happens to be set in them yet.
+ */
+async function loadShareFonts() {
+  if (!document.fonts?.load) return;
+  await Promise.all([
+    document.fonts.load(`700 72px ${HEADING_STACK}`),
+    document.fonts.load(`500 32px ${BODY_STACK}`),
+  ]).catch(() => {});
+}
 
 let shareBlob = null;
 
@@ -9453,10 +9470,7 @@ async function openShareCard() {
     const res = await fetch(`/api/stats/share-card?weeksAgo=${weeksAgo}`);
     if (!res.ok) throw new Error();
     const data = await res.json();
-    // Barlow Condensed is what the app's headings are set in, and a canvas
-    // will silently fall back to something else if it draws before the font
-    // has loaded — which is the sort of bug you only see in the exported image.
-    if (document.fonts?.ready) await document.fonts.ready;
+    await loadShareFonts();
     drawShareCard(shareCanvas.getContext("2d"), data);
     shareBlob = await new Promise((resolve) => shareCanvas.toBlob(resolve, "image/png"));
     shareStatus.hidden = true;
@@ -9615,7 +9629,7 @@ function heading(ctx, textValue, size, x, baseline, colour, tracking) {
 
 function body(ctx, textValue, size, x, baseline, colour) {
   ctx.save();
-  ctx.font = `500 ${size}px Inter, -apple-system, BlinkMacSystemFont, sans-serif`;
+  ctx.font = `500 ${size}px ${BODY_STACK}`;
   ctx.fillStyle = colour;
   ctx.textBaseline = "alphabetic";
   ctx.fillText(textValue, x, baseline);
@@ -11184,7 +11198,8 @@ const themeButtons = {
 // explicit choice in Settings has to pin both to the same colour, or a phone
 // set to dark with the app set to light shows a dark status bar over a light
 // header.
-const THEME_COLOURS = { light: "#176B3A", dark: "#124F2B" };
+// The canvas in each theme — see the theme-color metas in index.html.
+const THEME_COLOURS = { light: "#f6f4ef", dark: "#0c110e" };
 const themeColourMetas = [...document.querySelectorAll('meta[name="theme-color"]')];
 
 function applyTheme(theme) {

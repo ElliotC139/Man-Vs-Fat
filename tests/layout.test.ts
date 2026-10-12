@@ -43,7 +43,9 @@ describe("clearing the tab bar", () => {
   /** The one selector list that grants the clearance. */
   const clearanceSelectors = () => {
     const rule = css.match(
-      /#today-screen main,[\s\S]*?\{\s*padding-bottom: calc\(84px \+ env\(safe-area-inset-bottom\)\);/,
+      // Any clearance: this test is about which screens are in the rule, not
+      // how big the bar is — that changes with the bar, and should.
+      /#today-screen main,[\s\S]*?\{\s*padding-bottom: calc\(\d+px \+ env\(safe-area-inset-bottom\)\);/,
     );
     expect(rule, "the tab-bar clearance rule has moved or been rewritten").not.toBeNull();
     return rule![0];
