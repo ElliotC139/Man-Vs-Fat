@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <!-- Kept in step with VERSION in sw.js by hand; it is what a suggestion
          reports as the version somebody was on. -->
-    <meta name="app-version" content="v76" />
+    <meta name="app-version" content="v77" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <!--
       Never index this file.
@@ -58,7 +58,7 @@
   <body>
     <div id="auth-screen" class="auth-screen" hidden>
       <div class="auth-hero">
-        <h1 class="auth-title"><img src="/icons/mark-inverse.svg" alt="" class="auth-brand-mark" width="56" height="56" /><span class="brand-word"><span class="brand-word-a">Quic</span><span class="brand-word-k">K</span><span class="brand-word-b">cals</span></span></h1>
+        <h1 class="auth-title"><img src="/icons/mark.svg" alt="" class="auth-brand-mark" width="56" height="56" /><span class="brand-word"><span class="brand-word-a">Quic</span><span class="brand-word-k">K</span><span class="brand-word-b">cals</span></span></h1>
         <p class="auth-tagline">The calorie diary that stops being work.</p>
       </div>
       <div class="card auth-card">
@@ -79,7 +79,11 @@
           <label for="auth-username">Username</label>
           <input type="text" id="auth-username" autocomplete="username" required />
           <label for="auth-password">Password</label>
-          <input type="password" id="auth-password" autocomplete="current-password" required />
+          <div class="password-field">
+            <input type="password" id="auth-password" autocomplete="current-password" required />
+            <button type="button" class="password-toggle" aria-label="Show password" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+          <p id="auth-password-hint" class="field-hint" hidden>At least 8 characters.</p>
           <button type="submit" id="auth-submit">Log in</button>
           <p id="auth-error" class="error" hidden></p>
         </form>
@@ -105,7 +109,11 @@
         <form id="reset-form" hidden>
           <p class="muted">Choose a new password for your account.</p>
           <label for="reset-password">New password</label>
-          <input type="password" id="reset-password" autocomplete="new-password" minlength="8" />
+          <div class="password-field">
+            <input type="password" id="reset-password" autocomplete="new-password" minlength="8" />
+            <button type="button" class="password-toggle" aria-label="Show password" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+          <p class="field-hint">At least 8 characters.</p>
           <button type="submit" id="reset-submit">Set password and sign in</button>
           <p id="reset-error" class="error" hidden></p>
         </form>
@@ -180,6 +188,14 @@
               <div class="today-stat today-stat--net">
                 <span id="today-net" class="today-stat-value">—</span>
                 <span id="today-net-caption" class="today-stat-caption">net</span>
+              </div>
+              <!-- Shown in place of the three rows when there is nothing to
+                   measure the day against yet: no target, no body stats, no
+                   tracker. Two dashes told a new account nothing; this says
+                   what the card is waiting for and takes them to it. -->
+              <div id="today-no-target" class="today-no-target" hidden>
+                <p class="today-no-target-text">Give today something to aim at.</p>
+                <button type="button" id="today-set-target" class="ghost-sm">Set a daily target</button>
               </div>
             </div>
           </div>
@@ -526,7 +542,8 @@
 
 
           <div class="summary-total"><span id="week-total">0</span> kcal this week</div>
-          <div class="muted"><span id="week-avg">0</span> kcal/day avg over <span id="days-logged">0</span> <span id="days-logged-word">days</span> logged</div>
+          <div id="week-avg-line" class="muted"><span id="week-avg">0</span> kcal/day avg over <span id="days-logged">0</span> <span id="days-logged-word">days</span> logged</div>
+          <div id="week-empty-line" class="muted" hidden>Nothing logged yet. Your first meal starts the week.</div>
           <div id="week-net-summary" class="week-net-summary" hidden></div>
           <div id="daily-totals" class="day-totals"></div>
           <p id="pending-note" class="error" hidden></p>
@@ -673,7 +690,7 @@
 
     <div id="onboarding-screen" class="onboarding-screen" hidden>
       <div class="auth-hero onboarding-hero">
-        <img src="/icons/mark-inverse.svg" alt="" class="auth-brand-mark" width="46" height="46" />
+        <img src="/icons/mark.svg" alt="" class="auth-brand-mark" width="46" height="46" />
         <p class="auth-tagline">Let's set up your diary.</p>
       </div>
       <div class="card onboarding-card">
@@ -759,6 +776,7 @@
         <div class="result-actions">
           <button type="button" id="onboarding-next">Next</button>
           <button type="button" id="onboarding-skip" class="ghost">Skip for now</button>
+          <button type="button" id="onboarding-back" class="link-btn onboarding-back" hidden>Back</button>
         </div>
         <p id="onboarding-error" class="error" hidden></p>
       </div>
@@ -2197,7 +2215,7 @@
            real markup rather than a ::before so the wordmark can be set the
            way it is everywhere else: "Quic" bold, the K and "cals" not. -->
       <span class="rail-brand" aria-hidden="true">
-        <img src="/icons/mark-inverse.svg" alt="" class="rail-brand-mark" width="30" height="30" />
+        <img src="/icons/mark.svg" alt="" class="rail-brand-mark" width="30" height="30" />
         <span class="brand-word"><span class="brand-word-a">Quic</span><span class="brand-word-k">K</span><span class="brand-word-b">cals</span></span>
       </span>
       <button type="button" class="tab-btn tab-btn--active" data-nav="today">

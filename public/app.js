@@ -331,6 +331,8 @@ const pendingNoteEl = document.getElementById("pending-note");
 const exportPdfEl = document.getElementById("export-pdf");
 
 let weeksAgo = 0;
+// The one delete still waiting out its Undo — see deleteWithUndo().
+let pendingDelete = null;
 let userWeekStartWeekday = 0; // 0=Mon … 6=Sun (same encoding as settings select)
 let userWeekStartHour = 17;
 let userWeekStartMinute = 0;
@@ -483,6 +485,7 @@ async function loadWeek() {
 }
 
 async function loadWeekData() {
+  await flushPendingDelete();
   const res = await fetch(`/api/match-weeks/current?weeksAgo=${weeksAgo}`);
   const week = await res.json();
 
@@ -495,6 +498,12 @@ async function loadWeekData() {
   daysLoggedEl.textContent = week.daysLogged;
   daysLoggedWordEl.textContent = Number(week.daysLogged) === 1 ? "day" : "days";
   exportPdfEl.href = `/api/match-weeks/current/report.pdf?weeksAgo=${weeksAgo}`;
+  // "0 kcal/day avg over 0 days logged" is arithmetic about nothing, and a
+  // share card or PDF of an empty week is a file nobody wants.
+  const emptyWeek = Number(week.daysLogged) === 0 && (week.totalKcal ?? 0) === 0;
+  document.getElementById("week-avg-line").hidden = emptyWeek;
+  document.getElementById("week-empty-line").hidden = !emptyWeek;
+  if (exportPdfEl.parentElement) exportPdfEl.parentElement.hidden = emptyWeek;
 
   weekNoteEl.hidden = weeksAgo === 0;
   exerciseToggle.hidden = weeksAgo !== 0;
@@ -1634,29 +1643,74 @@ function enterEditMode(row, entry) {
 }
 
 /**
- * Deleting an entry, which until now happened on the first tap.
+ * Deleting with an Undo, rather than with a question.
  *
- * The × sits between "Edit" and "+" in a row of three small buttons on a
- * phone, and a mis-tap threw away a logged meal with no undo and no way to
- * find out what it had been. The same dialog the other destructive actions
- * in this app use — leaving the team, deleting a saved meal, wiping an
- * account — rather than a fifth way of asking the same question.
+ * A dialog asking "Delete? There's no undo" is the app protecting itself from
+ * a mis-tap by taxing every deliberate one. The row goes at once and a toast
+ * offers it back for five seconds, which costs nothing when you meant it and
+ * one tap when you didn't.
  *
- * Named, because "Delete this entry?" tells you nothing about which one your
- * thumb actually landed on.
+ * The request itself waits out those five seconds, so Undo has nothing to
+ * restore — the row was never gone. Anything that would redraw the list in
+ * the meantime (loadToday, loadWeekData), another delete, or the page going
+ * away sends it early, so the hidden row can't come back on a refresh and a
+ * closed tab can't leave it un-deleted.
  */
-async function deleteEntry(entry) {
-  const ok = await appConfirm({
-    title: entry.label ? `Delete “${entry.label}”?` : "Delete this entry?",
-    body: "It comes off the day's total. There's no undo.",
-    confirmLabel: "Delete",
-    danger: true,
+function flushPendingDelete({ keepalive = false } = {}) {
+  return pendingDelete ? pendingDelete.commit({ keepalive }) : Promise.resolve();
+}
+
+function deleteWithUndo({ url, rows, message, refresh }) {
+  flushPendingDelete();
+  haptic();
+  const rowList = [...rows].filter((row) => row.isConnected);
+  collapseRows(rowList).then(() => {
+    for (const row of rowList) row.hidden = true;
   });
-  if (!ok) return;
-  const folding = collapseRows(document.querySelectorAll(`.entry-row[data-id="${entry.id}"]`));
-  await fetch(`/api/entries/${entry.id}`, { method: "DELETE" });
-  await folding;
-  refreshCurrentView();
+
+  const pending = { done: false, timer: null };
+  pending.commit = async ({ keepalive = false } = {}) => {
+    if (pending.done) return;
+    pending.done = true;
+    clearTimeout(pending.timer);
+    if (pendingDelete === pending) pendingDelete = null;
+    try {
+      await fetch(url, { method: "DELETE", keepalive });
+    } catch {
+      // Offline: the refresh that follows puts the row back, which is the truth.
+    }
+  };
+  pending.timer = setTimeout(async () => {
+    await pending.commit();
+    refresh();
+  }, 5000);
+  pendingDelete = pending;
+
+  showToast(message, {
+    actionLabel: "Undo",
+    duration: 5000,
+    onAction: () => {
+      if (pending.done) return;
+      pending.done = true;
+      clearTimeout(pending.timer);
+      if (pendingDelete === pending) pendingDelete = null;
+      refresh();
+    },
+  });
+}
+
+window.addEventListener("pagehide", () => flushPendingDelete({ keepalive: true }));
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flushPendingDelete({ keepalive: true });
+});
+
+function deleteEntry(entry) {
+  deleteWithUndo({
+    url: `/api/entries/${entry.id}`,
+    rows: document.querySelectorAll(`.entry-row[data-id="${entry.id}"]`),
+    message: entry.label ? `Deleted “${entry.label}”` : "Entry deleted",
+    refresh: refreshCurrentView,
+  });
 }
 
 /**
@@ -3625,6 +3679,25 @@ function setAuthMode(mode) {
   authToggleText.textContent = mode === "login" ? "Don't have an account?" : "Already have an account?";
   authToggleBtn.textContent = mode === "login" ? "Sign up" : "Log in";
   authError.hidden = true;
+  // So a password manager offers to make one on sign-up and to fill one on
+  // log-in, and the rule is on screen before it is broken rather than after.
+  authPassword.autocomplete = mode === "login" ? "current-password" : "new-password";
+  authPassword.minLength = mode === "login" ? 0 : 8;
+  document.getElementById("auth-password-hint").hidden = mode === "login";
+}
+
+// Show/hide on every password box: typing one blind on a phone keyboard is
+// most of why sign-ups fail on the first go.
+for (const toggle of document.querySelectorAll(".password-toggle")) {
+  toggle.addEventListener("click", () => {
+    const input = toggle.parentElement.querySelector("input");
+    const show = input.type === "password";
+    input.type = show ? "text" : "password";
+    toggle.setAttribute("aria-pressed", String(show));
+    toggle.setAttribute("aria-label", show ? "Hide password" : "Show password");
+    toggle.classList.toggle("password-toggle--on", show);
+    input.focus();
+  });
 }
 
 authToggleBtn.addEventListener("click", () => {
@@ -3978,7 +4051,12 @@ function selectSettingsPane(index) {
   wrap.dataset.open = index === null ? "" : String(index);
   for (const pane of wrap.querySelectorAll(".settings-pane")) {
     pane.hidden = pane.dataset.pane !== String(index);
+    // Which group is open, by name, so the stylesheet can keep Log out to
+    // the list and the Account group.
+    if (!pane.hidden) wrap.dataset.openName = pane.getAttribute("aria-label") ?? "";
   }
+  if (index === null) wrap.dataset.openName = "";
+  window.scrollTo(0, 0);
   for (const item of wrap.querySelectorAll(".settings-nav-item")) {
     item.classList.toggle("settings-nav-item--active", item.dataset.pane === String(index));
     item.setAttribute("aria-current", item.dataset.pane === String(index) ? "true" : "false");
@@ -3993,51 +4071,93 @@ logoutBtn.addEventListener("click", async () => {
   showAuthScreen();
 });
 
+/** Everything the Save button sends, read off the form as it stands. */
+function settingsPayload() {
+  const rawWeight = settingsWeight.value ? Number(settingsWeight.value) : null;
+  const weightVal = rawWeight === null ? null : useImperial ? +(rawWeight / 2.20462).toFixed(2) : rawWeight;
+  let heightVal = null;
+  if (useImperial) {
+    const ft = Number(settingsHeightFt.value) || 0;
+    const inches = Number(settingsHeightIn.value) || 0;
+    if (ft || inches) heightVal = +((ft * 12 + inches) * 2.54).toFixed(1);
+  } else {
+    heightVal = settingsHeight.value ? Number(settingsHeight.value) : null;
+  }
+  const ageVal = settingsAge.value ? Number(settingsAge.value) : null;
+  // Blank is a real answer, not a missing one — it means "prefer not to say".
+  const sexVal = settingsSex.value || null;
+  const activityVal = settingsActivity.value || null;
+  const rawGoal = settingsGoal.value ? Number(settingsGoal.value) : null;
+  const goalVal = rawGoal === null ? null : useImperial ? +(rawGoal / 2.20462).toFixed(3) : rawGoal;
+  const rawGoalWeight = settingsGoalWeight.value ? Number(settingsGoalWeight.value) : null;
+  const goalWeightVal = rawGoalWeight === null ? null : useImperial ? +(rawGoalWeight / 2.20462).toFixed(2) : rawGoalWeight;
+  return {
+    weekStartWeekday: Number(settingsWeekday.value),
+    ...weekStartTimePayload(),
+    weightKg: weightVal,
+    heightCm: heightVal,
+    ageYears: ageVal,
+    sex: sexVal,
+    activityLevel: activityVal,
+    weeklyGoalKg: goalVal,
+    goalWeightKg: goalWeightVal,
+    // Always kcal, never converted — a calorie is a calorie in either
+    // unit system, unlike every other figure on this form.
+    dailyCalorieTarget: settingsCalorieTarget.value === "" ? null : Number(settingsCalorieTarget.value),
+    ...macroSettingsPayload(),
+    ...nutrientSettingsPayload(),
+    reminderHour: settingsReminderHour.value === "" ? null : Number(settingsReminderHour.value),
+    mealReminders: mealRemindersPayload(),
+    eatingWindowHours: settingsEatingWindow.value === "" ? null : Number(settingsEatingWindow.value),
+  };
+}
+
+/**
+ * Save shows up when there is something to save, and not before.
+ *
+ * It used to sit under every group — including Your plan and Your data,
+ * where nothing on screen was saved by it — and nobody could tell whether a
+ * toggle they had just flipped needed it. Now the form as last loaded is
+ * remembered, and the bar floats up the moment the form differs from it.
+ */
+let settingsBaseline = null;
+
+function settingsSnapshot() {
+  try {
+    return JSON.stringify(settingsPayload());
+  } catch {
+    return null;
+  }
+}
+
+function markSettingsClean() {
+  settingsBaseline = settingsSnapshot();
+  settingsSave.classList.remove("settings-save--dirty");
+}
+
+function checkSettingsDirty() {
+  if (settingsBaseline === null) return;
+  settingsSave.classList.toggle("settings-save--dirty", settingsSnapshot() !== settingsBaseline);
+}
+
+{
+  const card = document.getElementById("settings-card");
+  // After the handlers that react to the same event have updated the form.
+  const later = () => setTimeout(checkSettingsDirty, 0);
+  card.addEventListener("input", later);
+  card.addEventListener("change", later);
+  card.addEventListener("click", later);
+}
+
 settingsSave.addEventListener("click", async () => {
   settingsError.hidden = true;
 
   settingsSave.disabled = true;
   try {
-    const rawWeight = settingsWeight.value ? Number(settingsWeight.value) : null;
-    const weightVal = rawWeight === null ? null : useImperial ? +(rawWeight / 2.20462).toFixed(2) : rawWeight;
-    let heightVal = null;
-    if (useImperial) {
-      const ft = Number(settingsHeightFt.value) || 0;
-      const inches = Number(settingsHeightIn.value) || 0;
-      if (ft || inches) heightVal = +((ft * 12 + inches) * 2.54).toFixed(1);
-    } else {
-      heightVal = settingsHeight.value ? Number(settingsHeight.value) : null;
-    }
-    const ageVal = settingsAge.value ? Number(settingsAge.value) : null;
-    // Blank is a real answer, not a missing one — it means "prefer not to say".
-    const sexVal = settingsSex.value || null;
-    const activityVal = settingsActivity.value || null;
-    const rawGoal = settingsGoal.value ? Number(settingsGoal.value) : null;
-    const goalVal = rawGoal === null ? null : useImperial ? +(rawGoal / 2.20462).toFixed(3) : rawGoal;
-    const rawGoalWeight = settingsGoalWeight.value ? Number(settingsGoalWeight.value) : null;
-    const goalWeightVal = rawGoalWeight === null ? null : useImperial ? +(rawGoalWeight / 2.20462).toFixed(2) : rawGoalWeight;
     const res = await fetch("/api/auth/me", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        weekStartWeekday: Number(settingsWeekday.value),
-        ...weekStartTimePayload(),
-        weightKg: weightVal,
-        heightCm: heightVal,
-        ageYears: ageVal,
-        sex: sexVal,
-        activityLevel: activityVal,
-        weeklyGoalKg: goalVal,
-        goalWeightKg: goalWeightVal,
-        // Always kcal, never converted — a calorie is a calorie in either
-        // unit system, unlike every other figure on this form.
-        dailyCalorieTarget: settingsCalorieTarget.value === "" ? null : Number(settingsCalorieTarget.value),
-        ...macroSettingsPayload(),
-        ...nutrientSettingsPayload(),
-        reminderHour: settingsReminderHour.value === "" ? null : Number(settingsReminderHour.value),
-        mealReminders: mealRemindersPayload(),
-        eatingWindowHours: settingsEatingWindow.value === "" ? null : Number(settingsEatingWindow.value),
-      }),
+      body: JSON.stringify(settingsPayload()),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -4045,7 +4165,10 @@ settingsSave.addEventListener("click", async () => {
     }
     populateSettings(body);
     weeksAgo = 0;
-    navTo("today");
+    // Stay where you are: being thrown back to Today after every change made
+    // a second change a trip back through the list.
+    markSettingsClean();
+    showToast("Settings saved");
   } catch (error) {
     settingsError.textContent = error.message;
     settingsError.hidden = false;
@@ -4120,6 +4243,8 @@ function populateSettings(user) {
   renderSecuritySection(user);
   deleteConfirmInput.value = "";
   deletePasswordWrap.hidden = !user.hasPassword;
+  // The form now matches what is stored, so there is nothing to save.
+  setTimeout(markSettingsClean, 0);
 }
 
 async function showApp(user, { firstRun = false } = {}) {
@@ -4463,11 +4588,8 @@ function renderTodayExercise(exercises, isToday) {
   renderExerciseRows(todayExerciseListEl, list, loadToday);
 }
 
-async function deleteExercise(id, refresh, row) {
-  const folding = collapseRows(row ? [row] : []);
-  await fetch(`/api/exercises/${id}`, { method: "DELETE" });
-  await folding;
-  refresh();
+function deleteExercise(id, refresh, row) {
+  deleteWithUndo({ url: `/api/exercises/${id}`, rows: row ? [row] : [], message: "Exercise deleted", refresh });
 }
 
 // ── Calorie balance widget ──────────────────────────────────────────────────
@@ -4664,8 +4786,16 @@ function switchUnits(imperial) {
   if (!statsScreen.hidden) renderStats();
 }
 
-unitsMetricBtn.addEventListener("click", () => switchUnits(false));
-unitsImperialBtn.addEventListener("click", () => switchUnits(true));
+// Switching units rewrites the same figures in another unit, and the round
+// trip can move a decimal. That is not a change anybody made, so a form that
+// was clean before the switch is clean after it.
+function switchUnitsKeepingClean(imperial) {
+  const wasDirty = settingsSave.classList.contains("settings-save--dirty");
+  switchUnits(imperial);
+  if (!wasDirty) setTimeout(markSettingsClean, 0);
+}
+unitsMetricBtn.addEventListener("click", () => switchUnitsKeepingClean(false));
+unitsImperialBtn.addEventListener("click", () => switchUnitsKeepingClean(true));
 
 // Apply on page load
 applyUnitPreference();
@@ -5757,7 +5887,17 @@ function renderFoodLibrary(foods) {
   foodAllList.innerHTML = "";
   foodAllCount.textContent = foods.length === 0 ? "" : `${foods.length}`;
   if (foods.length === 0) {
-    foodAllList.innerHTML = '<p class="empty-state">No foods found.</p>';
+    // An empty library and a search with no hits are different things to be
+    // told: one needs explaining, the other just needs saying.
+    if (foodSearchInput.value.trim()) {
+      foodAllList.innerHTML = '<p class="empty-state">Nothing in your library matches that.</p>';
+    } else {
+      foodAllList.appendChild(emptyState(
+        ICONS.utensils,
+        "Your foods collect here",
+        "Everything you log is remembered with its figures, so the second time is one tap from Quick add.",
+      ));
+    }
     foodAllMore.hidden = true;
     return;
   }
@@ -10924,7 +11064,15 @@ function showOnboardingStep(step) {
   }
   onboardingNext.textContent = step === ONBOARDING_LAST_STEP ? "Start logging" : "Next";
   onboardingSkip.hidden = step === ONBOARDING_LAST_STEP;
+  onboardingBack.hidden = step === 0;
+  window.scrollTo(0, 0);
 }
+
+const onboardingBack = document.getElementById("onboarding-back");
+onboardingBack.addEventListener("click", () => {
+  onboardingError.hidden = true;
+  if (onboardingStep > 0) showOnboardingStep(onboardingStep - 1);
+});
 
 function openOnboarding() {
   showTabBar(false);
@@ -14313,6 +14461,7 @@ function animateRing(toKcal, toPct) {
 
 async function loadToday() {
   try {
+    await flushPendingDelete();
     const query = todayViewDate ? `?date=${encodeURIComponent(todayViewDate)}` : "";
     const res = await fetch(`/api/stats/today${query}`);
     if (!res.ok) throw new Error();
@@ -14413,6 +14562,10 @@ function renderToday(data) {
     todayNet.textContent = `${net > 0 ? "+" : net < 0 ? "−" : ""}${Math.abs(Math.round(net)).toLocaleString()}`;
     todayNetCaption.textContent = burn.netCaption;
   }
+  // Nothing to measure against at all: swap the dashes for the way to fix it.
+  const noTarget = burn.kcal === null && burn.source === "none";
+  document.getElementById("today-no-target").hidden = !noTarget;
+  document.querySelector("#today-screen .today-hero").classList.toggle("today-hero--no-target", noTarget);
   todayNet.className = burn.kcal !== null && eaten > burn.kcal ? "today-stat-value today-stat-value--over" : "today-stat-value today-stat-value--under";
 
   if (data.kcal.pendingEntries > 0) {
@@ -14856,6 +15009,7 @@ const BURN_CHOICES = [
 let currentBurnChoice = "measured";
 
 const burnSettingsBtn = document.getElementById("burn-settings-btn");
+document.getElementById("today-set-target").addEventListener("click", () => openSettingsSection(settingsCalorieTarget));
 const burnModal = document.getElementById("burn-modal");
 const burnCloseBtn = document.getElementById("burn-close-btn");
 const burnChoicesEl = document.getElementById("burn-choices");

@@ -149,6 +149,24 @@ describe("GET /api/plan — the WHOOP promotion", () => {
    * So the contract worth holding is the shape: which feature, and when it
    * stops. The window itself is tested in plans.test.ts, at both edges.
    */
+  // Pinned inside the window. These ran against the real clock, so they
+  // passed until the promotion ended and then failed for everybody on every
+  // change. Only Date is faked: the requests still need real timers.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(WHOOP_FREE_UNTIL.getTime() - 86_400_000));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("says nothing once the promotion is over", async () => {
+    vi.setSystemTime(new Date(WHOOP_FREE_UNTIL.getTime() + 86_400_000));
+    const body = await plan(await signUpAs("free"));
+    expect(body.promotion).toBeNull();
+    expect(body.plan.health).toBe(false);
+  });
+
   it("tells a free account that WHOOP is on, and when that stops", async () => {
     const body = await plan(await signUpAs("free"));
     expect(body.promotion).toEqual({
